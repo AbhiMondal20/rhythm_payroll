@@ -59,5 +59,6 @@
 </div>
 
 <script src="assets/app.js"></script>
+<script src="assets/script.js"></script>
 </body>
 </html>
