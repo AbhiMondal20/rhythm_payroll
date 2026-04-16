@@ -6,7 +6,7 @@
 <title>perk · Ramkrishna IVF Centre — Payroll & HR</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="includes/assets/style.css">
+<link rel="stylesheet" href="../includes/assets/style.css">
 </head>
 <body>
 
@@ -196,6 +196,6 @@
 </div>
 </div>
 
-<script src="includes/assets/script.js"></script>
+<script src="../includes/assets/script.js"></script>
 </body>
 </html>
