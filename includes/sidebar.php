@@ -20,52 +20,73 @@
   <nav style="flex:1;overflow-y:auto;padding:8px 0;margin-top:8px">
     <?php
     $nav_main = [
-      ['href'=>'dashboard',      'label'=>'Dashboard',     'badge'=>'','badge_color'=>''],
+      ['href'=>'dashboard',  'label'=>'Dashboard',     'badge'=>'','badge_color'=>''],
       ['href'=>'employees',  'label'=>'Employee List', 'badge'=>'','badge_color'=>'blue'],
       ['href'=>'approvals',  'label'=>'Approvals',     'badge'=>'','badge_color'=>'red'],
       ['href'=>'attendance', 'label'=>'Attendance',    'badge'=>'','badge_color'=>''],
       ['href'=>'leave',      'label'=>'Leave',         'badge'=>'','badge_color'=>''],
       ['href'=>'holiday',    'label'=>'Holiday',       'badge'=>'','badge_color'=>''],
     ];
+
     $nav_fin = [
-      ['href'=>'payroll',    'label'=>'Payroll',   'badge'=>'','badge_color'=>''],
-      ['href'=>'taxes',      'label'=>'Taxes',     'badge'=>'','badge_color'=>''],
-      ['href'=>'reports',    'label'=>'Reports',   'badge'=>'','badge_color'=>''],
+      ['href'=>'payroll', 'label'=>'Payroll', 'badge'=>'','badge_color'=>''],
+      ['href'=>'taxes',   'label'=>'Taxes',   'badge'=>'','badge_color'=>''],
+      ['href'=>'reports', 'label'=>'Reports', 'badge'=>'','badge_color'=>''],
     ];
+
+    $nav_system = [
+      ['href'=>'data_import',   'label'=>'Data Import',   'badge'=>'','badge_color'=>''],
+      ['href'=>'users',         'label'=>'Users',         'badge'=>'','badge_color'=>''],
+      ['href'=>'configuration', 'label'=>'Configuration', 'badge'=>'','badge_color'=>''],
+    ];
+    
     $icons = [
-      'dashboard'      => '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
-      'employees'  => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
-      'approvals'  => '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
-      'attendance' => '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
-      'leave'      => '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
-      'holiday' => '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="12" cy="15" r="2"/>',
-      'payroll'    => '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
-      'taxes'      => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
-      'reports'    => '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+      'dashboard' => '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
+      'employees' => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+      'approvals' => '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+      'attendance'=> '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+      'leave'     => '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+      'holiday'   => '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="12" cy="15" r="2"/>',
+      'payroll'   => '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+      'taxes'     => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+      'reports'   => '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+      'data_import' => '<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>',
+      'users'       => '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+      'configuration' => '<circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M5.34 17.66l-1.41 1.41M2 12h2M20 12h2M5.34 6.34L3.93 4.93M18.66 17.66l1.41 1.41M12 20v2M12 2v2"/>',
     ];
+
     function render_nav(array $items, string $current, array $icons): void {
         foreach ($items as $item) {
-            $active = basename($current) === $item['href'] ? 'active' : '';
+            $currentPage = basename($current, '.php');
+            $active = $currentPage === $item['href'] ? 'active' : '';
             $icon   = $icons[$item['href']] ?? '';
+
             echo "<a class='nav-item {$active}' href='{$item['href']}'>";
             echo "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>{$icon}</svg>";
             echo $item['label'];
-            if ($item['badge']) {
+
+            if (!empty($item['badge'])) {
                 $bg = match($item['badge_color']) {
                     'blue' => 'background:#DBEAFE;color:#2563EB',
                     'red'  => 'background:#FEE2E2;color:#DC2626',
-                    default=> ''
+                    default => ''
                 };
                 echo "<span class='badge' style='margin-left:auto;{$bg}'>{$item['badge']}</span>";
             }
+
             echo "</a>";
         }
     }
     ?>
+
     <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:4px">MAIN</div>
     <?php render_nav($nav_main, $_SERVER['PHP_SELF'], $icons); ?>
+
     <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:8px">FINANCE</div>
     <?php render_nav($nav_fin, $_SERVER['PHP_SELF'], $icons); ?>
+
+    <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:8px">SYSTEM</div>
+    <?php render_nav($nav_system, $_SERVER['PHP_SELF'], $icons); ?>
   </nav>
 
   <div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.06)">
@@ -79,7 +100,9 @@
     <div style="margin-top:10px;background:rgba(255,224,0,.1);border:1px solid rgba(255,224,0,.2);border-radius:8px;padding:8px 10px">
       <div style="color:#FFE000;font-size:10px;font-weight:700;letter-spacing:.5px">SUBSCRIPTION</div>
       <div style="color:#9DA3C8;font-size:11px;margin-top:2px">Expires 30 Apr 2026</div>
-      <div class="progress-bar" style="margin-top:6px"><div class="progress-fill" style="width:92%;background:var(--yellow)"></div></div>
+      <div class="progress-bar" style="margin-top:6px">
+        <div class="progress-fill" style="width:92%;background:var(--yellow)"></div>
+      </div>
     </div>
   </div>
 </aside>

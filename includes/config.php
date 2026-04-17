@@ -253,6 +253,9 @@ $payroll = [
     ['name'=>'Amit Roy',           'dept'=>'Lab Tech',      'gross'=>32000,'pf'=>3840,'esi'=> 560,'pt'=>150,'net'=>27450,'status'=>'pending',   'month'=>'April 2026'],
     ['name'=>'Priya Sen',          'dept'=>'Administration','gross'=>35000,'pf'=>4200,'esi'=> 612,'pt'=>150,'net'=>30038,'status'=>'pending',   'month'=>'April 2026'],
     ['name'=>'Mohan Das',          'dept'=>'Accounts',      'gross'=>42000,'pf'=>5040,'esi'=> 735,'pt'=>200,'net'=>36025,'status'=>'processed','month'=>'April 2026'],
+    ['name'=>'Dr. Anjali Sharma','dept'=>'Medical',       'gross'=>62000,'pf'=>7440,'esi'=>1085,'pt'=>200,'net'=>53275,'status'=>'processed','month'=>'April 2026'],
+    ['name'=>'Rajib Das',         'dept'=>'Nursing',       'gross'=>38500,'pf'=>4620,'esi'=> 673,'pt'=>150,'net'=>33057,'status'=>'processed','month'=>'April 2026'],
+    ['name'=>'Sunita Paul',        'dept'=>'Reception',     'gross'=>28000,'pf'=>3360,'esi'=> 490,'pt'=>150,'net'=>24000,'status'=>'processed','month'=>'April 2026'],
 ];
 
 $departments = [

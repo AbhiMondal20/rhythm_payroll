@@ -154,7 +154,7 @@ ob_start();
         </div>
       <?php endforeach; ?>
 
-      <a href="leave.php" class="btn" style="width:100%;justify-content:center;margin-top:4px;border-style:dashed;color:#7C3AED">
+      <a href="holidays" class="btn" style="width:100%;justify-content:center;margin-top:4px;border-style:dashed;color:#7C3AED">
         View All Holidays →
       </a>
     </div>
@@ -166,7 +166,7 @@ ob_start();
   <div class="section-card" style="grid-column:span 2">
     <div style="padding:16px 20px;border-bottom:1px solid #F3F4F6;display:flex;align-items:center;justify-content:space-between">
       <h2 style="font-size:15px;font-weight:700">Recent Payroll — April 2026</h2>
-      <a href="payroll.php" class="btn btn-primary" style="font-size:12px">View All</a>
+      <a href="payroll" class="btn btn-primary" style="font-size:12px">View All</a>
     </div>
 
     <table>
@@ -252,7 +252,7 @@ ob_start();
                 <?= htmlspecialchars($a['employee']) ?> · <?= htmlspecialchars($a['detail']) ?>
               </div>
             </div>
-            <a href="approvals.php" style="font-size:11px;background:#D1FAE5;color:#065F46;border:none;border-radius:5px;padding:3px 8px;cursor:pointer;font-weight:600;text-decoration:none">
+            <a href="approvals" style="font-size:11px;background:#D1FAE5;color:#065F46;border:none;border-radius:5px;padding:3px 8px;cursor:pointer;font-weight:600;text-decoration:none">
               Review
             </a>
           </div>
