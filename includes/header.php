@@ -14,6 +14,7 @@
 
 <body>
     <?php include 'includes/sidebar.php'; ?>
+    <div id="toast-container"></div>
     <div class="main-content" id="mainContent">
         <header class="topbar">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;gap:12px">

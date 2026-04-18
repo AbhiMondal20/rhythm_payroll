@@ -824,7 +824,7 @@ ob_start();
         <polyline points="22 4 12 14.01 9 11.01" />
     </svg>
     Employee record <?= $is_edit ? 'updated' : 'created' ?> successfully!
-    <a href="EmployeeList" style="margin-left:auto;font-size:12px;color:#059669;text-decoration:underline">← Back to
+    <a href="employees" style="margin-left:auto;font-size:12px;color:#059669;text-decoration:underline">← Back to
         list</a>
 </div>
 <?php endif; ?>
@@ -842,7 +842,7 @@ ob_start();
 
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;align-items:center;gap:10px">
-        <a href="EmployeeList" class="btn" style="padding:6px 10px;text-decoration:none">
+        <a href="employees" class="btn" style="padding:6px 10px;text-decoration:none">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="15 18 9 12 15 6" />
             </svg>

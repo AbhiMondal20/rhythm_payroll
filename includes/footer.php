@@ -8,7 +8,24 @@ function toggleSidebar(){
   else{sb.classList.toggle('collapsed');document.getElementById('mainContent').classList.toggle('expanded');}
 }
 function closeSidebar(){document.getElementById('sidebar').classList.remove('mobile-open');document.getElementById('overlay').classList.remove('show');}
+
+// show Alert Toast
+function showToast(type, message) {
+    const container = document.getElementById('toast-container');
+
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.innerText = message;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
 </script>
 <?php if (!empty($extra_scripts)) echo $extra_scripts; ?>
+
+
 </body>
 </html>
