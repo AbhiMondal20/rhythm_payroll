@@ -34,10 +34,11 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
                 <tr>
                     <th>EMPLOYEE</th>
                     <th>DEPARTMENT</th>
-                    <th>ROLE</th>
-                    <th>DATE JOINED</th>
-                    <th style="text-align:right">SALARY (GROSS)</th>
-                    <th>STATUS</th>
+                    <th>EMAIL ID</th>
+                    <th>LOCATION</th>
+                    <th>DESIGNATION</th>
+                    <th>DEPARTMENT</th>
+                    <th>GROUP</th>
                     <th>ACTIONS</th>
                 </tr>
             </thead>
@@ -91,11 +92,12 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
                     <td style="color:#6B7280"><?= htmlspecialchars($e['role']) ?></td>
                     <td style="color:#6B7280"><?= date('d M Y', strtotime($e['join'])) ?></td>
                     <td style="text-align:right;font-weight:600"><?= fmt_inr($e['salary']) ?></td>
+                    <td style="text-align:right;font-weight:600"><?= fmt_inr($e['salary']) ?></td>
                     <td><span class="badge" style="background:#D1FAE5;color:#065F46">● Active</span></td>
 
                     <td>
                         <div style="display:flex;gap:6px;flex-wrap:wrap">
-                            <button class="btn" style="padding:4px 10px;font-size:12px">Edit</button>
+                            <a href="AddEmployee?isEditEmployee=true&id=<?= $e['id'] ?> " class="btn" style="padding:4px 10px;font-size:12px;text-decoration:none">Edit</a>
                             <button class="btn"
                                 style="padding:4px 10px;font-size:12px;color:#DC2626;border-color:#FEE2E2">Delete</button>
                         </div>
@@ -261,7 +263,7 @@ ob_start();
 }
 </style>
 
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px">
     <div>
         <h1 class="page-title">Employees</h1>
         <p class="page-sub">Total <?= (int) $total_employees ?> employees</p>
@@ -270,7 +272,7 @@ ob_start();
     <div style="display:flex;gap:8px;flex-wrap:wrap">
         <input type="text" id="empSearch" oninput="filterTable()" placeholder="Search employee..."
             style="padding:8px 14px;border:1px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none;width:220px">
-        <button class="btn btn-primary">+ Add Employee</button>
+        <a href="AddEmployee?isAddEmployee=true" class="btn btn-primary" style="text-decoration:none">+ Add Employee</a>
     </div>
 </div>
 

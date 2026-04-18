@@ -7,7 +7,7 @@ ob_start();
 ?>
 <link rel="stylesheet" href="includes/assets/style.css">
 
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px">
   <div><h1 class="page-title">Holiday Management</h1><p class="page-sub">Holiday Calendar</p></div>
   <button class="btn btn-primary">+ New Holiday Request</button>
 </div>
