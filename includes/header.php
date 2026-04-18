@@ -62,37 +62,37 @@
 
                             <div class="dropdown-divider"></div>
 
-                            <button class="dropdown-item" onclick="openProfileModal()">
+                            <a href="ViewProfile" class="dropdown-item" style="text-decoration:none" onclick="openProfileModal()">
                                 <i class="fa-solid fa-user dropdown-icon"></i>
                                 <span>View Profile</span>
-                            </button>
+                            </a>
 
-                            <button class="dropdown-item" onclick="openChangePasswordModal()">
+                            <a href="ChangePassword" class="dropdown-item" style="text-decoration:none" onclick="openChangePasswordModal()">
                                 <i class="fa-solid fa-lock dropdown-icon"></i>
                                 <span>Change Password</span>
-                            </button>
+                            </a>
 
-                            <button class="dropdown-item" onclick="openStatusModal()">
+                            <button class="dropdown-item"  onclick="openStatusModal()">
                                 <i class="fa-solid fa-comment-dots dropdown-icon"></i>
                                 <span>Set Status</span>
                             </button>
 
-                            <button class="dropdown-item" onclick="openSettingsPage()">
+                            <a href="Settings" class="dropdown-item"  style="text-decoration:none" onclick="openSettingsPage()">
                                 <i class="fa-solid fa-gear dropdown-icon"></i>
                                 <span>Settings</span>
-                            </button>
+                            </a>
 
-                            <button class="dropdown-item" onclick="openHelpPage()">
+                            <a href="HelpSupport" class="dropdown-item" style="text-decoration:none">
                                 <i class="fa-solid fa-circle-question dropdown-icon"></i>
                                 <span>Help & Support</span>
-                            </button>
+                            </a>
 
                             <div class="dropdown-divider"></div>
 
-                            <button class="dropdown-item danger" onclick="logoutUser()">
+                            <a href="logout" class="dropdown-item danger" style="text-decoration:none">
                                 <i class="fa-solid fa-right-from-bracket dropdown-icon"></i>
                                 <span>Logout</span>
-                            </button>
+                            </a>
                         </div>
                     </div>
 
