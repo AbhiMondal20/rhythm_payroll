@@ -1,58 +1,5 @@
 <?php
-session_start();
-include 'db_conn.php';
-
-$error = "";
-
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
-
-    $username = trim($_POST['username']);
-    $password = $_POST['password'];
-    if ($username && $password) {
-        $stmt = $master->prepare("SELECT * FROM users WHERE username = ? OR email = ? LIMIT 1");
-        $stmt->bind_param("ss", $username, $username);
-        $stmt->execute();
-        $result = $stmt->get_result();
-
-        if ($user = $result->fetch_assoc()) {
-
-            // 🔐 Verify password (IMPORTANT)
-            if (password_verify($password, $user['password_hash'])) {
-
-                // ✅ Check active user
-                if ($user['status'] == 1) {
-
-                    // ✅ Set session
-                    $_SESSION['login'] = true;
-                    $_SESSION['user_id'] = $user['id'];
-                    $_SESSION['username'] = $user['username'];
-                    $_SESSION['role'] = $user['role'];
-
-                    // ✅ Update last login
-                    $update = $master->prepare("UPDATE users SET last_login_at = NOW() WHERE id = ?");
-                    $update->bind_param("i", $user['id']);
-                    $update->execute();
-
-                    // ✅ Redirect
-                    header("Location: dashboard.php");
-                    exit;
-
-                } else {
-                    $error = "Account is inactive";
-                }
-
-            } else {
-                $error = "Invalid password";
-            }
-
-        } else {
-            $error = "User not found";
-        }
-
-    } else {
-        $error = "Please fill all fields";
-    }
-}
+include '../db_conn.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -572,7 +519,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <!-- RIGHT -->
     <div class="login-right">
         <div class="login-box">
-            <h1 class="login-title">Login</h1>
+            <h1 class="login-title"> Super Admin Login</h1>
 
             <form action="" method="POST" autocomplete="off">
                 <div class="input-group">
