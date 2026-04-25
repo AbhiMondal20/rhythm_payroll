@@ -1,24 +1,28 @@
-
 <div class="mobile-overlay" id="overlay" onclick="closeSidebar()"></div>
 <aside class="sidebar" id="sidebar">
-  <div style="padding:20px 16px 8px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-      <div style="width:36px;height:36px;background:var(--yellow);border-radius:8px;display:flex;align-items:center;justify-content:center">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#12132A" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-      </div>
-      <div>
-        <div style="color:#fff;font-weight:700;font-size:16px">perk</div>
-        <div style="color:#6B6F8E;font-size:10px;letter-spacing:1px">PAYROLL · HR</div>
-      </div>
+    <div style="padding:20px 16px 8px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <div
+                style="width:36px;height:36px;background:var(--yellow);border-radius:8px;display:flex;align-items:center;justify-content:center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#12132A" stroke-width="2.5">
+                    <polygon
+                        points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+            </div>
+            <div>
+                <div style="color:#fff;font-weight:700;font-size:16px">perk</div>
+                <div style="color:#6B6F8E;font-size:10px;letter-spacing:1px">PAYROLL · HR</div>
+            </div>
+        </div>
+        <div style="background:rgba(255,255,255,.06);border-radius:8px;padding:8px 10px;margin-top:12px">
+            <div style="color:#9DA3C8;font-size:10px;font-weight:600;letter-spacing:.5px;margin-bottom:2px">ORGANISATION
+            </div>
+            <div style="color:#fff;font-size:13px;font-weight:600"><?= APP_NAME ?></div>
+        </div>
     </div>
-    <div style="background:rgba(255,255,255,.06);border-radius:8px;padding:8px 10px;margin-top:12px">
-      <div style="color:#9DA3C8;font-size:10px;font-weight:600;letter-spacing:.5px;margin-bottom:2px">ORGANISATION</div>
-      <div style="color:#fff;font-size:13px;font-weight:600"><?= APP_NAME ?></div>
-    </div>
-  </div>
 
-  <nav style="flex:1;overflow-y:auto;padding:8px 0;margin-top:8px">
-    <?php
+    <nav style="flex:1;overflow-y:auto;padding:8px 0;margin-top:8px">
+        <?php
     $nav_main = [
       ['href'=>'dashboard',  'label'=>'Dashboard',     'badge'=>'','badge_color'=>''],
       ['href'=>'employees',  'label'=>'Employee List', 'badge'=>'','badge_color'=>'blue'],
@@ -47,7 +51,7 @@
       'attendance'=> '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
       'leave'     => '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
       'holiday'   => '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="12" cy="15" r="2"/>',
-      'payroll'   => '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+      'payroll' => '<path d="M5 4h14M5 8h14M5 4c4.5 0 8 2.5 8 6s-3.5 6-8 6l9 7"/>',
       'taxes'     => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
       'reports'   => '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
       'data_import' => '<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>',
@@ -79,30 +83,35 @@
     }
     ?>
 
-    <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:4px">MAIN</div>
-    <?php render_nav($nav_main, $_SERVER['PHP_SELF'], $icons); ?>
+        <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:4px">
+            MAIN</div>
+        <?php render_nav($nav_main, $_SERVER['PHP_SELF'], $icons); ?>
 
-    <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:8px">FINANCE</div>
-    <?php render_nav($nav_fin, $_SERVER['PHP_SELF'], $icons); ?>
+        <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:8px">
+            FINANCE</div>
+        <?php render_nav($nav_fin, $_SERVER['PHP_SELF'], $icons); ?>
 
-    <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:8px">SYSTEM</div>
-    <?php render_nav($nav_system, $_SERVER['PHP_SELF'], $icons); ?>
-  </nav>
+        <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:8px">
+            SYSTEM</div>
+        <?php render_nav($nav_system, $_SERVER['PHP_SELF'], $icons); ?>
+    </nav>
 
-  <div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.06)">
-    <div style="display:flex;align-items:center;gap:10px">
-      <div class="avatar" style="background:var(--yellow);color:var(--navy);font-size:12px;flex-shrink:0">AD</div>
-      <div style="flex:1;min-width:0">
-        <div style="color:#fff;font-size:13px;font-weight:600">Admin</div>
-        <div style="color:#6B6F8E;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ramkrishnaivf@perk.in</div>
-      </div>
+    <div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;align-items:center;gap:10px">
+            <div class="avatar" style="background:var(--yellow);color:var(--navy);font-size:12px;flex-shrink:0">AD</div>
+            <div style="flex:1;min-width:0">
+                <div style="color:#fff;font-size:13px;font-weight:600">Admin</div>
+                <div style="color:#6B6F8E;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                    ramkrishnaivf@perk.in</div>
+            </div>
+        </div>
+        <div
+            style="margin-top:10px;background:rgba(255,224,0,.1);border:1px solid rgba(255,224,0,.2);border-radius:8px;padding:8px 10px">
+            <div style="color:#FFE000;font-size:10px;font-weight:700;letter-spacing:.5px">SUBSCRIPTION</div>
+            <div style="color:#9DA3C8;font-size:11px;margin-top:2px">Expires 30 Apr 2026</div>
+            <div class="progress-bar" style="margin-top:6px">
+                <div class="progress-fill" style="width:92%;background:var(--yellow)"></div>
+            </div>
+        </div>
     </div>
-    <div style="margin-top:10px;background:rgba(255,224,0,.1);border:1px solid rgba(255,224,0,.2);border-radius:8px;padding:8px 10px">
-      <div style="color:#FFE000;font-size:10px;font-weight:700;letter-spacing:.5px">SUBSCRIPTION</div>
-      <div style="color:#9DA3C8;font-size:11px;margin-top:2px">Expires 30 Apr 2026</div>
-      <div class="progress-bar" style="margin-top:6px">
-        <div class="progress-fill" style="width:92%;background:var(--yellow)"></div>
-      </div>
-    </div>
-  </div>
 </aside>
