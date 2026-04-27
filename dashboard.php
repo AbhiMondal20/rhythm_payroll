@@ -171,11 +171,12 @@ ob_start();
         </div>
 
         <!-- Pending Approvals -->
+         <?php $approvals = 'Pending'; ?>
         <div class="section-card">
             <div
                 style="padding:14px 16px;border-bottom:1px solid #F3F4F6;display:flex;align-items:center;justify-content:space-between">
                 <h2 style="font-size:14px;font-weight:700">Pending Approvals</h2>
-                <span class="badge" style="background:#FEE2E2;color:#B91C1C"><?= count($approvals) ?></span>
+                <span class="badge" style="background:#FEE2E2;color:#B91C1C"><?= $approvals ?></span>
             </div>
             <div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px">
                 <?php foreach ($approvals as $a): ?>

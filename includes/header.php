@@ -9,6 +9,11 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <link rel="icon" type="image/png" sizes="32x32" href="includes/assets/img/favicon.svg">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon.svg">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <?php if (!empty($extra_head)) echo $extra_head; ?>
 </head>
 
@@ -62,22 +67,25 @@
 
                             <div class="dropdown-divider"></div>
 
-                            <a href="ViewProfile" class="dropdown-item" style="text-decoration:none" onclick="openProfileModal()">
+                            <a href="ViewProfile" class="dropdown-item" style="text-decoration:none"
+                                onclick="openProfileModal()">
                                 <i class="fa-solid fa-user dropdown-icon"></i>
                                 <span>View Profile</span>
                             </a>
 
-                            <a href="ChangePassword" class="dropdown-item" style="text-decoration:none" onclick="openChangePasswordModal()">
+                            <a href="ChangePassword" class="dropdown-item" style="text-decoration:none"
+                                onclick="openChangePasswordModal()">
                                 <i class="fa-solid fa-lock dropdown-icon"></i>
                                 <span>Change Password</span>
                             </a>
 
-                            <button class="dropdown-item"  onclick="openStatusModal()">
+                            <button class="dropdown-item" onclick="openStatusModal()">
                                 <i class="fa-solid fa-comment-dots dropdown-icon"></i>
                                 <span>Set Status</span>
                             </button>
 
-                            <a href="Settings" class="dropdown-item"  style="text-decoration:none" onclick="openSettingsPage()">
+                            <a href="Settings" class="dropdown-item" style="text-decoration:none"
+                                onclick="openSettingsPage()">
                                 <i class="fa-solid fa-gear dropdown-icon"></i>
                                 <span>Settings</span>
                             </a>

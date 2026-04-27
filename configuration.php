@@ -13,8 +13,8 @@ $active_tab = isset($_GET['tab']) && in_array($_GET['tab'], $valid_tabs)
 /* ─────────────────────────────────────────
    PERMISSION CHECK  (mock — replace with real role check)
 ───────────────────────────────────────── */
-$user_role      = 'Admin';   // e.g. from $_SESSION['role']
-$restricted_tabs = ['Training'];   // tabs the current role cannot access
+$user_role      = 'Admin';  
+$restricted_tabs = ['Training']; 
 
 /* ─────────────────────────────────────────
    TAB DEFINITIONS

@@ -10,7 +10,7 @@
                 </svg>
             </div>
             <div>
-                <div style="color:#fff;font-weight:700;font-size:16px">perk</div>
+                <div style="color:#fff;font-weight:700;font-size:16px">Rhythm</div>
                 <div style="color:#6B6F8E;font-size:10px;letter-spacing:1px">PAYROLL · HR</div>
             </div>
         </div>
@@ -29,7 +29,6 @@
       ['href'=>'approvals',  'label'=>'Approvals',     'badge'=>'','badge_color'=>'red'],
       ['href'=>'attendance', 'label'=>'Attendance',    'badge'=>'','badge_color'=>''],
       ['href'=>'leave',      'label'=>'Leave',         'badge'=>'','badge_color'=>''],
-      ['href'=>'holiday',    'label'=>'Holiday',       'badge'=>'','badge_color'=>''],
     ];
 
     $nav_fin = [
