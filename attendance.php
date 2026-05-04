@@ -1,340 +1,385 @@
 <?php
 require_once 'includes/config.php';
-
 $page_title = 'Attendance';
 
-/* -----------------------------
-   Date filter
------------------------------ */
-$selected_date = isset($_GET['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['date'])
-    ? $_GET['date']
-    : date('Y-m-d');
-
-/* -----------------------------
-   Demo attendance data by employee
-   Replace with DB data later if needed
------------------------------ */
-$att_statuses = ['present', 'present', 'present', 'absent', 'on_leave', 'present'];
-$check_times  = ['09:05', '09:12', '08:58', null, '—', '09:30'];
-$check_out    = ['18:02', '18:15', '17:55', null, '—', '—'];
-
-$attendance_rows = [];
-
-foreach ($employees as $i => $e) {
-    $status = $att_statuses[$i % 6];
-    $ci     = $check_times[$i % 6];
-    $co     = $check_out[$i % 6];
-    $hrs    = ($ci && $co && $co !== '—') ? '9h 00m' : '—';
-
-    $cfg = match ($status) {
-        'present'  => ['bg' => '#D1FAE5', 'c' => '#065F46', 'label' => '✓ Present'],
-        'absent'   => ['bg' => '#FEE2E2', 'c' => '#B91C1C', 'label' => '✗ Absent'],
-        'on_leave' => ['bg' => '#FEF3C7', 'c' => '#92400E', 'label' => '📅 On Leave'],
-        default    => ['bg' => '#F3F4F6', 'c' => '#6B7280', 'label' => ucfirst($status)],
-    };
-
-    $attendance_rows[] = [
-        'employee' => $e,
-        'status'   => $status,
-        'check_in' => $ci,
-        'check_out'=> $co,
-        'hours'    => $hrs,
-        'cfg'      => $cfg,
-    ];
-}
-
-/* -----------------------------
-   Stats from generated rows
------------------------------ */
-$total_count    = count($attendance_rows);
-$present_count  = count(array_filter($attendance_rows, fn($r) => $r['status'] === 'present'));
-$leave_count    = count(array_filter($attendance_rows, fn($r) => $r['status'] === 'on_leave'));
-$absent_count   = count(array_filter($attendance_rows, fn($r) => $r['status'] === 'absent'));
-
-/* -----------------------------
-   Pagination
------------------------------ */
-$per_page = 10;
-$total_pages = max(1, (int) ceil($total_count / $per_page));
-$current_page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
-$current_page = max(1, min($current_page, $total_pages));
-$offset = ($current_page - 1) * $per_page;
-$attendance_page = array_slice($attendance_rows, $offset, $per_page);
-
-/* -----------------------------
-   Query builder helper
------------------------------ */
-function buildAttendanceUrl(array $params = []): string
-{
-    $query = array_merge($_GET, $params);
-    return '?' . http_build_query($query);
-}
 ob_start();
 ?>
 <link rel="stylesheet" href="includes/assets/style.css">
 
-<style>
-#attendanceTableWrap {
-  max-height: 420px;
-  overflow-y: auto;
-  overflow-x: auto;
-  border-radius: 0 0 12px 12px;
-}
+<div class="min-h-screen bg-[#f4f7fb] p-5">
 
-#attendanceTable {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  min-width: 1000px;
-}
-
-#attendanceTable thead th {
-  position: sticky;
-  top: 0;
-  background: #fff;
-  z-index: 5;
-  box-shadow: 0 1px 0 #E5E7EB;
-}
-
-#attendanceTable th,
-#attendanceTable td {
-  padding: 14px 16px;
-  vertical-align: middle;
-}
-
-#attendanceTable tbody tr:nth-child(even) {
-  background: #fcfcfd;
-}
-
-#attendanceTable tbody tr:hover {
-  background: #f9fafb;
-}
-
-#attendanceTableWrap::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-#attendanceTableWrap::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 10px;
-}
-
-#attendanceTableWrap::-webkit-scrollbar-track {
-  background: #f3f4f6;
-}
-
-.pagination-link {
-  padding: 5px 12px;
-  font-size: 12px;
-  text-decoration: none;
-}
-
-.pagination-link.active {
-  background: #EDE9FE;
-  color: #7C3AED;
-}
-
-@media (max-width: 768px) {
-  .attendance-toolbar {
-    flex-direction: column;
-    align-items: stretch !important;
-  }
-
-  .attendance-toolbar-right {
-    width: 100%;
-  }
-
-  .attendance-toolbar-right form {
-    width: 100%;
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .attendance-toolbar-right input[type="date"] {
-    flex: 1;
-    min-width: 180px;
-  }
-}
-</style>
-
-<div class="attendance-toolbar" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-  <div>
-    <h1 class="page-title">Attendance</h1>
-    <p class="page-sub"><?= htmlspecialchars(date('l, d F Y', strtotime($selected_date))) ?></p>
+  <!-- Page Header -->
+  <div class="mb-4 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-slate-900">Attendance</h1>
+      <p class="text-sm text-slate-500">Manage employee time entries and attendance records</p>
+    </div>
   </div>
 
-  <div class="attendance-toolbar-right" style="display:flex;gap:8px">
-    <form method="GET" action="" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <input
-        type="date"
-        name="date"
-        value="<?= htmlspecialchars($selected_date) ?>"
-        onchange="this.form.submit()"
-        style="padding:8px 14px;border:1px solid #E5E7EB;border-radius:8px;font-size:13px"
-      >
-      <button type="submit" class="btn">Filter</button>
-      <a href="?date=<?= htmlspecialchars(date('Y-m-d')) ?>" class="btn" style="text-decoration:none">Today</a>
-      <button type="button" class="btn btn-primary">Mark Bulk Attendance</button>
+  <!-- Tabs -->
+  <div class="mb-4 overflow-x-auto border-b border-slate-200">
+    <div class="flex gap-1 min-w-max">
+      <button class="tab-btn active px-4 py-2 text-sm font-semibold border-b-2 border-blue-600 text-blue-600" data-tab="time">
+        Time Entries
+      </button>
+      <button class="tab-btn px-4 py-2 text-sm text-slate-600 hover:text-blue-600" data-tab="calendar">
+        Calendar View
+      </button>
+      <button class="tab-btn px-4 py-2 text-sm text-slate-600 hover:text-blue-600" data-tab="manual">
+        Manual Attendance
+      </button>
+      <button class="tab-btn px-4 py-2 text-sm text-slate-600 hover:text-blue-600" data-tab="discrepancies">
+        Discrepancies
+      </button>
+      <button class="tab-btn px-4 py-2 text-sm text-slate-600 hover:text-blue-600" data-tab="process">
+        Process Time Card
+      </button>
+      <button class="tab-btn px-4 py-2 text-sm text-slate-600 hover:text-blue-600" data-tab="overtime">
+        Approve Overtime
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Card -->
+  <div class="rounded-xl bg-white border border-slate-200 shadow-sm p-4">
+
+    <div class="flex items-center justify-between mb-4">
+      <h2 id="sectionTitle" class="text-sm font-bold text-slate-900 uppercase">Time Entries</h2>
+      <button onclick="openAddModal()" class="hidden md:inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+        <i class="fa-solid fa-plus"></i> Add Entry
+      </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex flex-wrap gap-3 mb-6">
+      <div class="relative">
+        <i class="fa-solid fa-search absolute left-3 top-3 text-slate-400 text-sm"></i>
+        <input 
+          type="text" 
+          id="searchInput"
+          onkeyup="filterEmployees()"
+          placeholder="Search by name or #code"
+          class="w-80 max-w-full rounded-lg border border-slate-300 pl-10 pr-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        >
+      </div>
+
+      <div class="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2">
+        <i class="fa-regular fa-calendar text-slate-500"></i>
+        <input id="fromDate" type="date" value="2026-04-01" class="text-sm outline-none">
+        <span class="text-slate-400">-</span>
+        <input id="toDate" type="date" value="2026-04-27" class="text-sm outline-none">
+      </div>
+
+      <button onclick="applyDate()" class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+        Apply
+      </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p class="text-xs text-slate-500">Total Employees</p>
+        <h3 id="totalEmp" class="text-2xl font-bold text-slate-900">0</h3>
+      </div>
+      <div class="rounded-xl border border-green-200 bg-green-50 p-4">
+        <p class="text-xs text-green-600">Present</p>
+        <h3 id="presentCount" class="text-2xl font-bold text-green-700">0</h3>
+      </div>
+      <div class="rounded-xl border border-red-200 bg-red-50 p-4">
+        <p class="text-xs text-red-600">Absent</p>
+        <h3 id="absentCount" class="text-2xl font-bold text-red-700">0</h3>
+      </div>
+      <div class="rounded-xl border border-yellow-200 bg-yellow-50 p-4">
+        <p class="text-xs text-yellow-700">Late</p>
+        <h3 id="lateCount" class="text-2xl font-bold text-yellow-700">0</h3>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="hidden py-20 text-center">
+      <div class="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-blue-50">
+        <i class="fa-solid fa-user-clock text-3xl text-blue-600"></i>
+      </div>
+      <h3 class="font-bold text-slate-900">Search employees to edit their time entries</h3>
+      <p class="mt-1 text-sm text-slate-500">No employee found for your search.</p>
+    </div>
+
+    <!-- Table -->
+    <div id="tableWrap" class="overflow-x-auto rounded-xl border border-slate-200">
+      <table class="min-w-full text-sm">
+        <thead class="bg-slate-50 text-slate-600">
+          <tr>
+            <th class="px-4 py-3 text-left font-semibold">Employee</th>
+            <th class="px-4 py-3 text-left font-semibold">Date</th>
+            <th class="px-4 py-3 text-left font-semibold">Check In</th>
+            <th class="px-4 py-3 text-left font-semibold">Check Out</th>
+            <th class="px-4 py-3 text-left font-semibold">Total Hours</th>
+            <th class="px-4 py-3 text-left font-semibold">Status</th>
+            <th class="px-4 py-3 text-right font-semibold">Action</th>
+          </tr>
+        </thead>
+        <tbody id="attendanceBody" class="divide-y divide-slate-100"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- Edit/Add Modal -->
+<div id="entryModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4">
+  <div class="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+    <div class="flex items-center justify-between border-b border-slate-200 p-5">
+      <h3 id="modalTitle" class="text-lg font-bold text-slate-900">Edit Time Entry</h3>
+      <button onclick="closeModal()" class="text-slate-400 hover:text-red-500">
+        <i class="fa-solid fa-xmark text-xl"></i>
+      </button>
+    </div>
+
+    <form onsubmit="saveEntry(event)" class="p-5 space-y-4">
+      <input type="hidden" id="editId">
+
+      <div>
+        <label class="mb-1 block text-xs font-bold text-slate-500">Employee Name</label>
+        <input id="empName" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="mb-1 block text-xs font-bold text-slate-500">Code</label>
+          <input id="empCode" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-bold text-slate-500">Date</label>
+          <input id="entryDate" type="date" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="mb-1 block text-xs font-bold text-slate-500">Check In</label>
+          <input id="checkIn" type="time" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-bold text-slate-500">Check Out</label>
+          <input id="checkOut" type="time" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+        </div>
+      </div>
+
+      <div>
+        <label class="mb-1 block text-xs font-bold text-slate-500">Status</label>
+        <select id="entryStatus" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+          <option>Present</option>
+          <option>Absent</option>
+          <option>Late</option>
+          <option>Half Day</option>
+          <option>Overtime</option>
+        </select>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-3">
+        <button type="button" onclick="closeModal()" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+          Cancel
+        </button>
+        <button class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+          Save Entry
+        </button>
+      </div>
     </form>
   </div>
 </div>
 
-<div class="grid-4" style="margin-bottom:20px">
-  <?php
-  $astats = [
-    ['l' => 'TOTAL EMPLOYEES', 'v' => $total_count,   'c' => '#1a1a2e'],
-    ['l' => 'PRESENT',         'v' => $present_count, 'c' => '#059669'],
-    ['l' => 'ON LEAVE',        'v' => $leave_count,   'c' => '#D97706'],
-    ['l' => 'ABSENT',          'v' => $absent_count,  'c' => '#DC2626'],
-  ];
-  foreach ($astats as $s):
-  ?>
-    <div class="stat-card">
-      <p style="font-size:11px;font-weight:600;color:#6B7280;letter-spacing:.3px">
-        <?= htmlspecialchars($s['l']) ?>
-      </p>
-      <p style="font-size:28px;font-weight:700;color:<?= htmlspecialchars($s['c']) ?>;margin-top:4px">
-        <?= (int) $s['v'] ?>
-      </p>
-    </div>
-  <?php endforeach; ?>
-</div>
+<script>
+let attendanceData = [
+  {id:1, name:"Anita Sharma", code:"EMP001", date:"2026-04-27", in:"09:12", out:"18:05", status:"Late"},
+  {id:2, name:"Rahul Das", code:"EMP002", date:"2026-04-27", in:"09:00", out:"18:00", status:"Present"},
+  {id:3, name:"Priya Gupta", code:"EMP003", date:"2026-04-27", in:"", out:"", status:"Absent"},
+  {id:4, name:"Suman Roy", code:"EMP004", date:"2026-04-26", in:"08:55", out:"18:20", status:"Overtime"},
+  {id:5, name:"Neha Singh", code:"EMP005", date:"2026-04-26", in:"09:05", out:"14:00", status:"Half Day"},
+  {id:6, name:"Arjun Mondal", code:"EMP006", date:"2026-04-25", in:"09:00", out:"18:00", status:"Present"}
+];
 
-<div class="section-card">
-  <div style="padding:16px 20px;border-bottom:1px solid #F3F4F6;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-    <h2 style="font-size:15px;font-weight:700">Attendance Register</h2>
-    <span style="font-size:12px;color:#6B7280">
-      Date: <?= htmlspecialchars(date('d M Y', strtotime($selected_date))) ?>
-    </span>
-  </div>
+let currentTab = 'time';
 
-  <div id="attendanceTableWrap">
-    <table id="attendanceTable">
-      <thead>
-        <tr>
-          <th>EMPLOYEE</th>
-          <th>DEPARTMENT</th>
-          <th>CHECK-IN</th>
-          <th>CHECK-OUT</th>
-          <th>HOURS</th>
-          <th style="text-align:center">STATUS</th>
-          <th>ACTION</th>
-        </tr>
-      </thead>
-      <tbody>
-      <?php foreach ($attendance_page as $row): ?>
-        <?php
-          $e   = $row['employee'];
-          $ci  = $row['check_in'];
-          $co  = $row['check_out'];
-          $hrs = $row['hours'];
-          $cfg = $row['cfg'];
-        ?>
-        <tr>
-          <td>
-            <div style="display:flex;align-items:center;gap:10px">
-              <div class="avatar" style="background:#EDE9FE;color:#7C3AED;font-size:11px">
-                <?= htmlspecialchars(initials($e['name'])) ?>
-              </div>
-              <span style="font-weight:500"><?= htmlspecialchars($e['name']) ?></span>
-            </div>
-          </td>
+function calculateHours(start, end) {
+  if (!start || !end) return '-';
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
+  let mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins < 0) mins += 1440;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h}h ${m}m`;
+}
 
-          <td style="color:#6B7280"><?= htmlspecialchars($e['dept']) ?></td>
+function badge(status) {
+  const map = {
+    "Present": "bg-green-100 text-green-700",
+    "Absent": "bg-red-100 text-red-700",
+    "Late": "bg-yellow-100 text-yellow-700",
+    "Half Day": "bg-orange-100 text-orange-700",
+    "Overtime": "bg-blue-100 text-blue-700"
+  };
+  return `<span class="rounded-full px-3 py-1 text-xs font-bold ${map[status] || 'bg-slate-100 text-slate-700'}">${status}</span>`;
+}
 
-          <td style="color:#374151;font-weight:500">
-            <?php if ($ci === null): ?>
-              <span style="color:#D1D5DB">—</span>
-            <?php else: ?>
-              <?= htmlspecialchars($ci) ?>
-            <?php endif; ?>
-          </td>
+function renderTable(data = attendanceData) {
+  const tbody = document.getElementById('attendanceBody');
+  const emptyState = document.getElementById('emptyState');
+  const tableWrap = document.getElementById('tableWrap');
 
-          <td style="color:#374151">
-            <?php if ($co === null): ?>
-              <span style="color:#D1D5DB">—</span>
-            <?php else: ?>
-              <?= htmlspecialchars($co) ?>
-            <?php endif; ?>
-          </td>
+  if (!data.length) {
+    emptyState.classList.remove('hidden');
+    tableWrap.classList.add('hidden');
+    updateStats([]);
+    return;
+  }
 
-          <td style="color:#6B7280"><?= htmlspecialchars($hrs) ?></td>
+  emptyState.classList.add('hidden');
+  tableWrap.classList.remove('hidden');
 
-          <td style="text-align:center">
-            <span class="badge" style="background:<?= htmlspecialchars($cfg['bg']) ?>;color:<?= htmlspecialchars($cfg['c']) ?>">
-              <?= htmlspecialchars($cfg['label']) ?>
-            </span>
-          </td>
+  tbody.innerHTML = data.map(row => `
+    <tr class="hover:bg-slate-50">
+      <td class="px-4 py-3">
+        <div class="flex items-center gap-3">
+          <div class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-bold">
+            ${row.name.charAt(0)}
+          </div>
+          <div>
+            <div class="font-semibold text-slate-900">${row.name}</div>
+            <div class="text-xs text-slate-500">#${row.code}</div>
+          </div>
+        </div>
+      </td>
+      <td class="px-4 py-3 text-slate-600">${formatDate(row.date)}</td>
+      <td class="px-4 py-3 text-slate-700">${row.in || '-'}</td>
+      <td class="px-4 py-3 text-slate-700">${row.out || '-'}</td>
+      <td class="px-4 py-3 font-semibold text-slate-800">${calculateHours(row.in, row.out)}</td>
+      <td class="px-4 py-3">${badge(row.status)}</td>
+      <td class="px-4 py-3 text-right">
+        <button onclick="editEntry(${row.id})" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-100">
+          <i class="fa-solid fa-pen"></i> Edit
+        </button>
+      </td>
+    </tr>
+  `).join('');
 
-          <td>
-            <button class="btn" style="padding:4px 10px;font-size:12px">Edit</button>
-          </td>
-        </tr>
-      <?php endforeach; ?>
+  updateStats(data);
+}
 
-      <?php if (empty($attendance_page)): ?>
-        <tr>
-          <td colspan="7" style="text-align:center;padding:24px;color:#6B7280">No attendance records found</td>
-        </tr>
-      <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
+function updateStats(data) {
+  document.getElementById('totalEmp').innerText = data.length;
+  document.getElementById('presentCount').innerText = data.filter(x => x.status === 'Present' || x.status === 'Overtime').length;
+  document.getElementById('absentCount').innerText = data.filter(x => x.status === 'Absent').length;
+  document.getElementById('lateCount').innerText = data.filter(x => x.status === 'Late').length;
+}
 
-  <div style="padding:12px 20px;border-top:1px solid #F3F4F6;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-    <span style="font-size:12px;color:#6B7280">
-      Showing <?= count($attendance_page) ?> of <?= $total_count ?> employees
-    </span>
+function formatDate(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
+}
 
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-      <?php if ($current_page > 1): ?>
-        <a href="<?= htmlspecialchars(buildAttendanceUrl(['page' => $current_page - 1, 'date' => $selected_date])) ?>" class="btn pagination-link">← Prev</a>
-      <?php else: ?>
-        <button class="btn" style="padding:5px 12px;font-size:12px;opacity:.5" disabled>← Prev</button>
-      <?php endif; ?>
+function filterEmployees() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const filtered = attendanceData.filter(row =>
+    row.name.toLowerCase().includes(q) ||
+    row.code.toLowerCase().includes(q)
+  );
+  renderTable(filtered);
+}
 
-      <?php
-      $visible = 5;
-      $start = max(1, $current_page - 2);
-      $end = min($total_pages, $start + $visible - 1);
+function applyDate() {
+  const from = document.getElementById('fromDate').value;
+  const to = document.getElementById('toDate').value;
 
-      if (($end - $start + 1) < $visible) {
-          $start = max(1, $end - $visible + 1);
-      }
-      ?>
+  const filtered = attendanceData.filter(row => {
+    return row.date >= from && row.date <= to;
+  });
 
-      <?php if ($start > 1): ?>
-        <a href="<?= htmlspecialchars(buildAttendanceUrl(['page' => 1, 'date' => $selected_date])) ?>" class="btn pagination-link">1</a>
-        <?php if ($start > 2): ?>
-          <span style="padding:0 4px;color:#6B7280">...</span>
-        <?php endif; ?>
-      <?php endif; ?>
+  renderTable(filtered);
+}
 
-      <?php for ($i = $start; $i <= $end; $i++): ?>
-        <?php if ($i == $current_page): ?>
-          <a href="<?= htmlspecialchars(buildAttendanceUrl(['page' => $i, 'date' => $selected_date])) ?>" class="btn pagination-link active"><?= $i ?></a>
-        <?php else: ?>
-          <a href="<?= htmlspecialchars(buildAttendanceUrl(['page' => $i, 'date' => $selected_date])) ?>" class="btn pagination-link"><?= $i ?></a>
-        <?php endif; ?>
-      <?php endfor; ?>
+function openAddModal() {
+  document.getElementById('modalTitle').innerText = 'Add Time Entry';
+  document.getElementById('editId').value = '';
+  document.getElementById('empName').value = '';
+  document.getElementById('empCode').value = '';
+  document.getElementById('entryDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('checkIn').value = '09:00';
+  document.getElementById('checkOut').value = '18:00';
+  document.getElementById('entryStatus').value = 'Present';
+  openModal();
+}
 
-      <?php if ($end < $total_pages): ?>
-        <?php if ($end < $total_pages - 1): ?>
-          <span style="padding:0 4px;color:#6B7280">...</span>
-        <?php endif; ?>
-        <a href="<?= htmlspecialchars(buildAttendanceUrl(['page' => $total_pages, 'date' => $selected_date])) ?>" class="btn pagination-link"><?= $total_pages ?></a>
-      <?php endif; ?>
+function editEntry(id) {
+  const row = attendanceData.find(x => x.id === id);
+  if (!row) return;
 
-      <?php if ($current_page < $total_pages): ?>
-        <a href="<?= htmlspecialchars(buildAttendanceUrl(['page' => $current_page + 1, 'date' => $selected_date])) ?>" class="btn pagination-link">Next →</a>
-      <?php else: ?>
-        <button class="btn" style="padding:5px 12px;font-size:12px;opacity:.5" disabled>Next →</button>
-      <?php endif; ?>
-    </div>
-  </div>
-</div>
+  document.getElementById('modalTitle').innerText = 'Edit Time Entry';
+  document.getElementById('editId').value = row.id;
+  document.getElementById('empName').value = row.name;
+  document.getElementById('empCode').value = row.code;
+  document.getElementById('entryDate').value = row.date;
+  document.getElementById('checkIn').value = row.in;
+  document.getElementById('checkOut').value = row.out;
+  document.getElementById('entryStatus').value = row.status;
+  openModal();
+}
+
+function openModal() {
+  const modal = document.getElementById('entryModal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+
+function closeModal() {
+  const modal = document.getElementById('entryModal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+
+function saveEntry(e) {
+  e.preventDefault();
+
+  const id = document.getElementById('editId').value;
+  const data = {
+    id: id ? Number(id) : Date.now(),
+    name: document.getElementById('empName').value,
+    code: document.getElementById('empCode').value,
+    date: document.getElementById('entryDate').value,
+    in: document.getElementById('checkIn').value,
+    out: document.getElementById('checkOut').value,
+    status: document.getElementById('entryStatus').value
+  };
+
+  if (id) {
+    attendanceData = attendanceData.map(x => x.id == id ? data : x);
+  } else {
+    attendanceData.unshift(data);
+  }
+
+  closeModal();
+  renderTable();
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      b.classList.remove('active', 'border-b-2', 'border-blue-600', 'text-blue-600', 'font-semibold');
+      b.classList.add('text-slate-600');
+    });
+
+    this.classList.add('active', 'border-b-2', 'border-blue-600', 'text-blue-600', 'font-semibold');
+    this.classList.remove('text-slate-600');
+
+    currentTab = this.dataset.tab;
+    document.getElementById('sectionTitle').innerText = this.innerText;
+
+    renderTable(attendanceData);
+  });
+});
+
+renderTable();
+</script>
 
 <?php
 $page_content = ob_get_clean();
@@ -342,4 +387,5 @@ include 'includes/header.php';
 echo $page_content;
 include 'includes/footer.php';
 ?>
+
 <script src="includes/assets/scripts.js"></script>

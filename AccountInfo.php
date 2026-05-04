@@ -385,6 +385,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- ── Column labels ── -->
 <div class="section-card" style="padding:0">
 
+
     <div style="padding:0 24px">
         <div class="ai-col-labels">
             <div class="ai-col-label">Configuration</div>

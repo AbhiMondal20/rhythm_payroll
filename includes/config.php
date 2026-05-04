@@ -407,6 +407,10 @@ $pending_requests = [
     ],
 ];
 
+
+
+
+
 function fmt_inr(int $n): string {
     return '₹' . number_format($n);
 }
