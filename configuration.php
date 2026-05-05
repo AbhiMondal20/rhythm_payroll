@@ -69,7 +69,7 @@ $config_data = [
         'title' => 'Payroll Configuration',
         'sub'   => 'You can manage your company accounts info, activity, security options here.',
         'cards' => [
-            ['icon'=>'template',    'title'=>'CTC Breakup Template',       'desc'=>'Create & manage Templates using Salary Components and Statutory options.',                    'href'=>'ctc-template'],
+            ['icon'=>'template',    'title'=>'CTC Breakup Template',       'desc'=>'Create & manage Templates using Salary Components and Statutory options.',                    'href'=>'CTCTemplate'],
             ['icon'=>'assign',      'title'=>'Assign CTC and Templates',   'desc'=>'Add/Update the CTC of Employee(s). Also, assign them a suitable Template.',                  'href'=>'assign-ctc'],
             ['icon'=>'salary',      'title'=>'Salary Components',          'desc'=>'Create & Manage Components like Earnings, Deduction, Contribution, Etc. that appear in the CTC.','href'=>'salary-components'],
             ['icon'=>'salcat',      'title'=>'Salary Component Category',  'desc'=>'Statutory Configuration of the Salary components.',                                           'href'=>'salary-category'],
@@ -386,7 +386,6 @@ ob_start();
     ════════════════════════════════════ -->
     <?php foreach ($config_data as $tab_key => $tab): ?>
     <div class="cfg-panel <?= $active_tab === $tab_key ? 'active' : '' ?>" id="panel-<?= $tab_key ?>">
-
         <!-- Panel header -->
         <div class="cfg-card-head">
             <h2><?= htmlspecialchars($tab['title']) ?></h2>
