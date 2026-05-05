@@ -4,3 +4,5 @@ Leave - UI Done
 
 
 User - Done
+ForgotPassword - Done
+Contact Support - Done

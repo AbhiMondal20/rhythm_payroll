@@ -1,11 +1,8 @@
 <?php
 session_start();
 include 'db_conn.php';
-
 $error = "";
-
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-
     $username = trim($_POST['username']);
     $password = $_POST['password'];
     if ($username && $password) {
@@ -13,38 +10,24 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $stmt->bind_param("ss", $username, $username);
         $stmt->execute();
         $result = $stmt->get_result();
-
         if ($user = $result->fetch_assoc()) {
-
-            // 🔐 Verify password (IMPORTANT)
             if (password_verify($password, $user['password_hash'])) {
-
-                // ✅ Check active user
                 if ($user['status'] == 1) {
-
-                    // ✅ Set session
                     $_SESSION['login'] = true;
                     $_SESSION['user_id'] = $user['id'];
                     $_SESSION['username'] = $user['username'];
                     $_SESSION['role'] = $user['role'];
-
-                    // ✅ Update last login
                     $update = $master->prepare("UPDATE users SET last_login_at = NOW() WHERE id = ?");
                     $update->bind_param("i", $user['id']);
                     $update->execute();
-
-                    // ✅ Redirect
                     header("Location: dashboard.php");
                     exit;
-
                 } else {
                     $error = "Account is inactive";
                 }
-
             } else {
                 $error = "Invalid password";
             }
-
         } else {
             $error = "User not found";
         }
@@ -63,7 +46,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
+<link rel="icon" type="image/png" sizes="32x32" href="includes/assets/img/favicon.svg">
 <style>
     * {
         margin: 0;
@@ -502,56 +485,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <!-- LEFT -->
     <div class="login-left">
         <div class="brand-wrap">
-            <div class="brand-logo">
-                <svg width="320" height="120" viewBox="0 0 820 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="HR Solution logo">
-                  <defs>
-                    <style>
-                      .navy { fill: #08163f; }
-                      .yellow { fill: #f2c319; }
-                      .text-main {
-                        fill: #08163f;
-                        font-family: Arial, Helvetica, sans-serif;
-                        font-weight: 700;
-                      }
-                      .text-sub {
-                        fill: #08163f;
-                        font-family: Arial, Helvetica, sans-serif;
-                        font-weight: 500;
-                        letter-spacing: 10px;
-                      }
-                      .tag {
-                        fill: #4b5563;
-                        font-family: Arial, Helvetica, sans-serif;
-                        font-weight: 600;
-                        letter-spacing: 4px;
-                      }
-                    </style>
-                  </defs>
-
-                  <g transform="translate(20,20)">
-                    <circle class="navy" cx="72" cy="42" r="22"/>
-                    <rect class="navy" x="38" y="82" width="68" height="126" rx="34"/>
-
-                    <circle class="yellow" cx="150" cy="24" r="28"/>
-                    <path class="yellow" d="M112 86 C112 68,126 56,144 56 L156 56 C174 56,188 68,188 86 L188 168 C163 162,137 162,112 168 Z"/>
-                    <path fill="#ffffff" d="M148 58 L162 58 L170 78 L160 124 L150 138 L140 124 L130 78 Z"/>
-
-                    <circle class="navy" cx="228" cy="42" r="22"/>
-                    <rect class="navy" x="194" y="82" width="68" height="126" rx="34"/>
-
-                    <path class="navy" d="M36 194
-                                          C70 152,109 134,150 134
-                                          C191 134,230 152,264 194
-                                          L264 214
-                                          C232 176,193 158,150 158
-                                          C107 158,68 176,36 214 Z"/>
-                  </g>
-
-                  <g transform="translate(330,38)">
-                    <text x="0" y="95" font-size="128" class="text-main">HR</text>
-                    <text x="0" y="155" font-size="44" class="text-sub">SOLUTION</text>
-                  </g>
-                </svg>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <div
+                    style="width:40px;height:40px;background:var(--yellow);border-radius:8px;display:flex;align-items:center;justify-content:center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#12132A" stroke-width="2.5">
+                        <polygon
+                            points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                </div>
+                <div>
+                    <div style="color:#000;font-weight:700;font-size:24px">Rhythm</div>
+                    <div style="color:#6B6F8E;font-size:10px;letter-spacing:1px">PAYROLL · HR</div>
+                </div>
             </div>
         </div>
 
@@ -562,8 +507,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 <strong>smart Payroll &amp;<br>HR Solutions</strong>
             </h2>
         </div>
-
-        <a href="#" class="support-link">
+        <a href="contactSupport" class="support-link">
             <i class="fa-solid fa-headset"></i>
             Contact Support
         </a>
@@ -593,7 +537,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 <button type="submit" class="login-btn">Login</button>
             </form>
 
-            <a href="#" class="forgot-link">Forget Password?</a>
+            <a href="ForgotPassword" class="forgot-link">Forget Password?</a>
 
             <div class="or-divider">
                 <span>OR</span>
