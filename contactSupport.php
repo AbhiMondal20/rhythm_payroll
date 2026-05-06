@@ -1,6 +1,7 @@
 <?php
 session_start();
-include 'db_conn.php';
+include 'includes/db_conn.php';
+include 'includes/auth.php';
 
 $error = "";
 $success = "";

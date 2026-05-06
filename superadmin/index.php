@@ -1,5 +1,85 @@
 <?php
-include '../db_conn.php';
+session_start();
+
+include '../includes/db_conn.php';
+include '../includes/auth.php';
+
+$error = "";
+
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+
+    $username = trim($_POST['username'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    if ($username !== "" && $password !== "") {
+
+        $stmt = $master->prepare("
+            SELECT id, client_id, username, email, password_hash, role, status
+            FROM users
+            WHERE username = ? OR email = ?
+            LIMIT 1
+        ");
+
+        if (!$stmt) {
+            $error = "Database query failed.";
+        } else {
+            $stmt->bind_param("ss", $username, $username);
+            $stmt->execute();
+            $result = $stmt->get_result();
+
+            if ($user = $result->fetch_assoc()) {
+
+                if (password_verify($password, $user['password_hash'])) {
+
+                    $role = strtolower(trim($user['role'] ?? ''));
+
+                    /*
+                        Login rule:
+                        - superadmin can login even if status is inactive
+                        - all other roles need status = 1
+                    */
+                    if ((int)$user['status'] === 1 || $role === 'superadmin') {
+
+                        session_regenerate_id(true);
+
+                        $_SESSION['login']    = true;
+                        $_SESSION['user_id']  = (int)$user['id'];
+                        $_SESSION['client_id'] = (int)$user['client_id'];
+                        $_SESSION['username'] = $user['username'];
+                        $_SESSION['email']    = $user['email'];
+                        $_SESSION['role']     = $role;
+
+                        $update = $master->prepare("UPDATE users SET last_login_at = NOW() WHERE id = ?");
+                        if ($update) {
+                            $uid = (int)$user['id'];
+                            $update->bind_param("i", $uid);
+                            $update->execute();
+                        }
+
+                        if ($role === 'superadmin') {
+                            header("Location: dashboard");
+                        } else {
+                            header("Location: index");
+                        }
+                        exit;
+
+                    } else {
+                        $error = "Account is inactive";
+                    }
+
+                } else {
+                    $error = "Invalid password";
+                }
+
+            } else {
+                $error = "User not found";
+            }
+        }
+
+    } else {
+        $error = "Please fill all fields";
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -10,6 +90,7 @@ include '../db_conn.php';
 
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link rel="icon" type="image/png" sizes="32x32" href="../includes/assets/img/favicon.svg">
 
 <style>
     * {
@@ -446,59 +527,16 @@ include '../db_conn.php';
 <body>
 
 <div id="loginPage">
-    <!-- LEFT -->
     <div class="login-left">
         <div class="brand-wrap">
-            <div class="brand-logo">
-                <svg width="320" height="120" viewBox="0 0 820 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="HR Solution logo">
-                  <defs>
-                    <style>
-                      .navy { fill: #08163f; }
-                      .yellow { fill: #f2c319; }
-                      .text-main {
-                        fill: #08163f;
-                        font-family: Arial, Helvetica, sans-serif;
-                        font-weight: 700;
-                      }
-                      .text-sub {
-                        fill: #08163f;
-                        font-family: Arial, Helvetica, sans-serif;
-                        font-weight: 500;
-                        letter-spacing: 10px;
-                      }
-                      .tag {
-                        fill: #4b5563;
-                        font-family: Arial, Helvetica, sans-serif;
-                        font-weight: 600;
-                        letter-spacing: 4px;
-                      }
-                    </style>
-                  </defs>
-
-                  <g transform="translate(20,20)">
-                    <circle class="navy" cx="72" cy="42" r="22"/>
-                    <rect class="navy" x="38" y="82" width="68" height="126" rx="34"/>
-
-                    <circle class="yellow" cx="150" cy="24" r="28"/>
-                    <path class="yellow" d="M112 86 C112 68,126 56,144 56 L156 56 C174 56,188 68,188 86 L188 168 C163 162,137 162,112 168 Z"/>
-                    <path fill="#ffffff" d="M148 58 L162 58 L170 78 L160 124 L150 138 L140 124 L130 78 Z"/>
-
-                    <circle class="navy" cx="228" cy="42" r="22"/>
-                    <rect class="navy" x="194" y="82" width="68" height="126" rx="34"/>
-
-                    <path class="navy" d="M36 194
-                                          C70 152,109 134,150 134
-                                          C191 134,230 152,264 194
-                                          L264 214
-                                          C232 176,193 158,150 158
-                                          C107 158,68 176,36 214 Z"/>
-                  </g>
-
-                  <g transform="translate(330,38)">
-                    <text x="0" y="95" font-size="128" class="text-main">HR</text>
-                    <text x="0" y="155" font-size="44" class="text-sub">SOLUTION</text>
-                  </g>
-                </svg>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <div style="width:40px;height:40px;background:var(--yellow);border-radius:8px;display:flex;align-items:center;justify-content:center">
+                    <i class="fa-solid fa-star" style="color:#12132A"></i>
+                </div>
+                <div>
+                    <div style="color:#000;font-weight:700;font-size:24px">Rhythm</div>
+                    <div style="color:#6B6F8E;font-size:10px;letter-spacing:1px">PAYROLL · HR</div>
+                </div>
             </div>
         </div>
 
@@ -510,22 +548,27 @@ include '../db_conn.php';
             </h2>
         </div>
 
-        <a href="#" class="support-link">
+        <a href="contactSupport" class="support-link">
             <i class="fa-solid fa-headset"></i>
             Contact Support
         </a>
     </div>
 
-    <!-- RIGHT -->
     <div class="login-right">
         <div class="login-box">
-            <h1 class="login-title"> Super Admin Login</h1>
+            <h1 class="login-title">Login</h1>
+
+            <?php if (!empty($error)): ?>
+                <p style="background:rgba(177,0,0,.12);color:#9b0000;border:1px solid rgba(177,0,0,.25);padding:11px 12px;border-radius:6px;text-align:center;font-size:14px;font-weight:700;margin-bottom:18px;">
+                    <?= htmlspecialchars($error) ?>
+                </p>
+            <?php endif; ?>
 
             <form action="" method="POST" autocomplete="off">
                 <div class="input-group">
                     <div class="input-wrap">
                         <i class="fa-regular fa-circle-user"></i>
-                        <input type="text" name="username" placeholder="Username" required>
+                        <input type="text" name="username" placeholder="Username or Email" required>
                     </div>
                 </div>
 
@@ -540,7 +583,7 @@ include '../db_conn.php';
                 <button type="submit" class="login-btn">Login</button>
             </form>
 
-            <a href="#" class="forgot-link">Forget Password?</a>
+            <a href="ForgotPassword" class="forgot-link">Forget Password?</a>
 
             <div class="or-divider">
                 <span>OR</span>
@@ -577,23 +620,22 @@ include '../db_conn.php';
                 </div>
             </div>
 
-            <p class="err-msg" id="loginErr">Invalid username or password.</p>
         </div>
     </div>
 </div>
 
 <script>
-    const togglePassword = document.getElementById('togglePassword');
-    const password = document.getElementById('password');
+const togglePassword = document.getElementById('togglePassword');
+const password = document.getElementById('password');
 
-    if (togglePassword && password) {
-        togglePassword.addEventListener('click', function () {
-            const isPassword = password.type === 'password';
-            password.type = isPassword ? 'text' : 'password';
-            this.classList.toggle('fa-eye');
-            this.classList.toggle('fa-eye-slash');
-        });
-    }
+if (togglePassword && password) {
+    togglePassword.addEventListener('click', function () {
+        const isPassword = password.type === 'password';
+        password.type = isPassword ? 'text' : 'password';
+        this.classList.toggle('fa-eye');
+        this.classList.toggle('fa-eye-slash');
+    });
+}
 </script>
 
 </body>

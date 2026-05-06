@@ -1,74 +1,233 @@
 <?php
 session_start();
-include 'db_conn.php';
-$error = "";
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    $username = trim($_POST['username']);
-    $password = $_POST['password'];
-    if ($username && $password) {
-        $stmt = $master->prepare("SELECT * FROM users WHERE username = ? OR email = ? LIMIT 1");
-        $stmt->bind_param("ss", $username, $username);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        if ($user = $result->fetch_assoc()) {
-            if (password_verify($password, $user['password_hash'])) {
-                if ($user['status'] == 1) {
-                    $_SESSION['login'] = true;
-                    $_SESSION['user_id'] = $user['id'];
-                    $_SESSION['username'] = $user['username'];
-                    $_SESSION['role'] = $user['role'];
-                    $update = $master->prepare("UPDATE users SET last_login_at = NOW() WHERE id = ?");
-                    $update->bind_param("i", $user['id']);
-                    $update->execute();
-                    header("Location: dashboard.php");
-                    exit;
-                } else {
-                    $error = "Account is inactive";
-                }
-            } else {
-                $error = "Invalid password";
-            }
-        } else {
-            $error = "User not found";
-        }
 
+require_once 'includes/db_conn.php';
+// Do NOT include auth.php on login page
+
+$error = '';
+$success = '';
+
+if (!isset($master) || !($master instanceof mysqli)) {
+    $error = "Master database connection not found.";
+}
+
+function hasAccessLocal(string $key): bool {
+    $access = $_SESSION['user_access'] ?? [];
+    return in_array(strtolower($key), $access, true);
+}
+
+function getRedirectPageLocal(): string {
+    $access = $_SESSION['user_access'] ?? [];
+
+    if (in_array('dashboard', $access, true)) {
+        return 'dashboard';
+    }
+
+    if (!empty($access[0])) {
+        return 'dashboard/' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $access[0]);
+    }
+
+    return 'dashboard';
+}
+
+if (!empty($_SESSION['login'])) {
+    header("Location: " . getRedirectPageLocal());
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $client_code = strtolower(trim($_POST['client_code'] ?? ''));
+    $module_key  = strtolower(trim($_POST['module_key'] ?? 'payroll'));
+    $username    = trim($_POST['username'] ?? '');
+    $password    = trim($_POST['password'] ?? '');
+
+    if ($client_code === '') {
+        $error = "Please enter Client Code.";
+    } elseif ($username === '') {
+        $error = "Please enter Username or Email.";
+    } elseif ($password === '') {
+        $error = "Please enter Password.";
+    } elseif (!$master) {
+        $error = "Master database not connected.";
     } else {
-        $error = "Please fill all fields";
+
+
+    
+        $stmt = mysqli_prepare($master, "
+            SELECT db_host, db_name, db_user, db_pass, port
+            FROM client_databases
+            WHERE client_code = ?
+              AND module_key = ?
+              AND status = 'active'
+            LIMIT 1
+        ");
+
+        if (!$stmt) {
+            $error = "Master query failed: " . mysqli_error($master);
+        } else {
+            mysqli_stmt_bind_param($stmt, "ss", $client_code, $module_key);
+            mysqli_stmt_execute($stmt);
+            $res = mysqli_stmt_get_result($stmt);
+            $db  = mysqli_fetch_assoc($res);
+            mysqli_stmt_close($stmt);
+
+            if (!$db) {
+                $error = "Invalid Client Code or inactive module.";
+            } else {
+
+                $conn = mysqli_init();
+                mysqli_options($conn, MYSQLI_OPT_CONNECT_TIMEOUT, 5);
+
+                $db_port = !empty($db['port']) ? (int)$db['port'] : 3307;
+
+                    $connected = @mysqli_real_connect(
+                        $conn,
+                        $db['db_host'],
+                        $db['db_user'],
+                        $db['db_pass'],
+                        $db['db_name'],
+                        $db_port
+                    );
+
+                if (!$connected) {
+                    $error = "Cannot connect to client database.";
+                } else {
+                    mysqli_set_charset($conn, "utf8mb4");
+
+                    $u = mysqli_prepare($conn, "
+                        SELECT id, username, email, password_hash, role, status, client_code
+                        FROM users
+                        WHERE username = ? OR email = ?
+                        LIMIT 1
+                    ");
+
+                    if (!$u) {
+                        $error = "User query failed: " . mysqli_error($conn);
+                    } else {
+                        mysqli_stmt_bind_param($u, "ss", $username, $username);
+                        mysqli_stmt_execute($u);
+                        $ures = mysqli_stmt_get_result($u);
+                        $user = mysqli_fetch_assoc($ures);
+                        mysqli_stmt_close($u);
+
+                        if (!$user) {
+                            $error = "User not found.";
+                        } elseif (($user['status'] ?? '') !== 'active') {
+                            $error = "Your account is inactive.";
+                        } elseif (empty($user['password_hash']) || !password_verify($password, $user['password_hash'])) {
+                            $error = "Wrong password.";
+                        } else {
+
+                            $accStmt = mysqli_prepare($conn, "
+                                SELECT page_name
+                                FROM user_access
+                                WHERE user_id = ?
+                                  AND (
+                                      can_view = 1
+                                      OR can_add = 1
+                                      OR can_edit = 1
+                                      OR can_delete = 1
+                                  )
+                            ");
+
+                            if (!$accStmt) {
+                                $error = "Access query failed: " . mysqli_error($conn);
+                            } else {
+                                mysqli_stmt_bind_param($accStmt, "i", $user['id']);
+                                mysqli_stmt_execute($accStmt);
+                                $accRes = mysqli_stmt_get_result($accStmt);
+
+                                $user_access = [];
+
+                                while ($row = mysqli_fetch_assoc($accRes)) {
+                                    if (!empty($row['page_name'])) {
+                                        $user_access[] = strtolower(trim($row['page_name']));
+                                    }
+                                }
+
+                                mysqli_stmt_close($accStmt);
+
+                                if (empty($user_access)) {
+                                    $error = "Login blocked. You do not have access to any page.";
+                                } else {
+                                    session_regenerate_id(true);
+
+                                    $_SESSION['login']       = true;
+                                    $_SESSION['user_id']     = (int)$user['id'];
+                                    $_SESSION['username']    = $user['username'];
+                                    $_SESSION['email']       = $user['email'] ?? '';
+                                    $_SESSION['role']        = $user['role'] ?? 'user';
+                                    $_SESSION['client_code'] = $client_code;
+                                    $_SESSION['module_key']  = $module_key;
+                                    $_SESSION['client_db']   = $db['db_name'];
+                                    $_SESSION['user_access'] = $user_access;
+                                    $_SESSION['client_id']   = (int)($user['client_id'] ?? 0);
+
+                                    $up = mysqli_prepare($conn, "UPDATE users SET last_login_at = NOW() WHERE id = ?");
+                                    if ($up) {
+                                        mysqli_stmt_bind_param($up, "i", $_SESSION['user_id']);
+                                        mysqli_stmt_execute($up);
+                                        mysqli_stmt_close($up);
+                                    }
+
+                                    setcookie("client_code", $client_code, time() + (30 * 24 * 60 * 60), "/", "", false, true);
+
+                                    mysqli_close($conn);
+
+                                    header("Location: " . getRedirectPageLocal());
+                                    exit;
+                                }
+                            }
+                        }
+                    }
+
+                    if (isset($conn) && $conn instanceof mysqli) {
+                        mysqli_close($conn);
+                    }
+                }
+            }
+        }
     }
 }
+
+$savedClientCode = $_COOKIE['client_code'] ?? '';
+$savedClientCode = is_string($savedClientCode) ? $savedClientCode : '';
 ?>
+
+
 <!DOCTYPE html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rhythm · Ramkrishna IVF Centre — Payroll & HR</title>
 
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<link rel="icon" type="image/png" sizes="32x32" href="includes/assets/img/favicon.svg">
-<style>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Rhythm · Payroll & HR</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="icon" type="image/png" sizes="32x32" href="includes/assets/img/favicon.svg">
+
+    <style>
     * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
     }
 
-    :root{
+    :root {
         --yellow: #f4ea00;
         --black: #0b0f19;
         --gray-bg: #ececec;
         --text-gray: #8d9096;
         --line: rgba(11, 15, 25, 0.85);
-        --white: #ffffff;
-        --muted: #5f6470;
-        --panel-shadow: 0 10px 30px rgba(0,0,0,0.08);
     }
 
-    html, body {
+    html,
+    body {
         width: 100%;
         height: 100%;
-        overflow: hidden;
     }
 
     body {
@@ -88,38 +247,46 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     #loginPage {
         width: 100%;
-        height: 100vh;
+        min-height: 100vh;
         display: flex;
         overflow: hidden;
     }
 
-    /* LEFT PANEL */
     .login-left {
-        flex: 1 1 auto;
+        flex: 1;
         background: var(--gray-bg);
         padding: 38px 64px 38px 66px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        position: relative;
-        overflow: hidden;
     }
 
-    .brand-wrap {
+    .brand-box {
         display: flex;
         align-items: center;
+        gap: 10px;
     }
 
-    .brand-logo {
-        display: inline-flex;
+    .brand-icon {
+        width: 40px;
+        height: 40px;
+        background: var(--yellow);
+        border-radius: 8px;
+        display: flex;
         align-items: center;
-        max-width: 320px;
+        justify-content: center;
     }
 
-    .brand-logo svg {
-        width: 240px;
-        height: auto;
-        display: block;
+    .brand-name {
+        color: #000;
+        font-weight: 800;
+        font-size: 24px;
+    }
+
+    .brand-sub {
+        color: #6B6F8E;
+        font-size: 10px;
+        letter-spacing: 1px;
     }
 
     .hero-content {
@@ -152,11 +319,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         text-underline-offset: 3px;
     }
 
-    .support-link i {
-        font-size: 17px;
-    }
-
-    /* RIGHT PANEL */
     .login-right {
         width: 460px;
         min-width: 460px;
@@ -165,7 +327,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         align-items: center;
         justify-content: center;
         padding: 38px 42px;
-        position: relative;
     }
 
     .login-box {
@@ -176,15 +337,34 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     .login-title {
         text-align: center;
         font-size: 32px;
-        line-height: 1;
         font-weight: 800;
-        margin-bottom: 46px;
+        margin-bottom: 10px;
         color: #000;
-        letter-spacing: -0.8px;
+    }
+
+    .alert {
+        padding: 12px 14px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 18px;
+        text-align: center;
+    }
+
+    .alert-error {
+        background: rgba(255, 0, 0, 0.12);
+        color: #a40000;
+        border: 1px solid rgba(164, 0, 0, 0.25);
+    }
+
+    .alert-success {
+        background: rgba(0, 120, 50, 0.12);
+        color: #006b2d;
+        border: 1px solid rgba(0, 120, 50, 0.25);
     }
 
     .input-group {
-        margin-bottom: 22px;
+        margin-bottom: 10px;
     }
 
     .input-wrap {
@@ -211,7 +391,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         width: 100%;
         font-size: 16px;
         color: #111;
-        min-width: 0;
     }
 
     .input-wrap input::placeholder {
@@ -229,22 +408,24 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         background: #000;
         color: #ffe600;
         font-size: 17px;
-        font-weight: 700;
-        border-radius: 4px;
+        font-weight: 800;
+        border-radius: 5px;
         padding: 14px 18px;
         margin-top: 8px;
         cursor: pointer;
-        transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
-        box-shadow: 0 8px 18px rgba(0,0,0,0.12);
+        transition: 0.2s;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
     }
 
     .login-btn:hover {
         transform: translateY(-1px);
-        box-shadow: 0 10px 22px rgba(0,0,0,0.16);
+        box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
     }
 
-    .login-btn:active {
-        transform: translateY(0);
+    .login-btn:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+        transform: none;
     }
 
     .forgot-link {
@@ -261,7 +442,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         display: flex;
         align-items: center;
         gap: 14px;
-        margin: 28px 0 26px;
+        margin: 28px 0 15px;
     }
 
     .or-divider::before,
@@ -269,21 +450,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         content: "";
         flex: 1;
         height: 1px;
-        background: rgba(0,0,0,0.4);
+        background: rgba(0, 0, 0, 0.4);
     }
 
     .or-divider span {
         font-size: 16px;
-        font-weight: 500;
-        color: #111;
-        line-height: 1;
+        font-weight: 600;
     }
 
     .social-btn {
         width: 100%;
         background: #fff;
         border: none;
-        border-radius: 4px;
+        border-radius: 5px;
         min-height: 40px;
         padding: 12px 16px;
         display: flex;
@@ -294,20 +473,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         color: #111;
         cursor: pointer;
         margin-bottom: 12px;
-        box-shadow: 0 0 0 1px rgba(0,0,0,0.05) inset;
-        transition: transform .2s ease, box-shadow .2s ease;
-    }
-
-    .social-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 18px rgba(0,0,0,0.08);
     }
 
     .social-btn img {
         width: 20px;
         height: 20px;
-        object-fit: contain;
-        flex-shrink: 0;
     }
 
     .store-section {
@@ -319,7 +489,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         font-size: 14px;
         margin-bottom: 12px;
         color: #111;
-        font-weight: 500;
+        font-weight: 600;
     }
 
     .store-buttons {
@@ -340,11 +510,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         gap: 10px;
         font-size: 12px;
         text-align: left;
-        transition: transform .2s ease;
-    }
-
-    .store-badge:hover {
-        transform: translateY(-1px);
     }
 
     .store-badge i {
@@ -356,63 +521,22 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         font-size: 8px;
         opacity: 0.82;
         line-height: 1.1;
-        letter-spacing: .4px;
     }
 
     .store-badge strong {
         display: block;
         font-size: 15px;
         line-height: 1.1;
-        font-weight: 700;
     }
 
-    .err-msg {
-        display: none;
-        margin-top: 14px;
-        color: #b10000;
-        font-size: 14px;
-        text-align: center;
-        font-weight: 600;
-    }
-
-    /* TABLET */
-    @media (max-width: 1180px) {
-        .login-left {
-            padding: 34px 42px;
-        }
-
-        .login-right {
-            width: 420px;
-            min-width: 420px;
-            padding: 30px;
-        }
-
-        .brand-logo svg {
-            width: 220px;
-        }
-
-        .hero-title {
-            letter-spacing: -1.8px;
-        }
-    }
-
-    /* MOBILE / STACK */
     @media (max-width: 900px) {
-        html, body {
-            overflow: auto;
-        }
-
         #loginPage {
-            min-height: 100vh;
-            height: auto;
             flex-direction: column;
-            overflow: visible;
         }
 
         .login-left {
-            min-height: auto;
-            padding: 28px 22px 24px;
-            gap: 32px;
+            padding: 28px 22px;
+            gap: 36px;
         }
 
         .login-right {
@@ -421,18 +545,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             padding: 28px 22px 34px;
         }
 
-        .brand-logo svg {
-            width: 210px;
-        }
-
         .hero-content {
             margin: 0;
-            max-width: 100%;
         }
 
         .hero-title {
             font-size: clamp(34px, 8vw, 50px);
-            line-height: 1.08;
             letter-spacing: -1.4px;
         }
 
@@ -443,155 +561,179 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     @media (max-width: 576px) {
         .login-left {
-            padding: 24px 18px 22px;
+            padding: 24px 18px;
         }
 
         .login-right {
             padding: 24px 18px 28px;
         }
 
-        .brand-logo svg {
-            width: 180px;
-        }
-
         .hero-title {
             font-size: 33px;
-            letter-spacing: -1px;
         }
 
         .login-title {
             font-size: 28px;
-            margin-bottom: 34px;
-        }
-
-        .input-wrap input {
-            font-size: 15px;
-        }
-
-        .store-buttons {
-            gap: 10px;
-        }
-
-        .store-badge {
-            min-width: 118px;
-            padding: 7px 10px;
         }
     }
-</style>
+    </style>
 </head>
+
 <body>
 
-<div id="loginPage">
-    <!-- LEFT -->
-    <div class="login-left">
-        <div class="brand-wrap">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-                <div
-                    style="width:40px;height:40px;background:var(--yellow);border-radius:8px;display:flex;align-items:center;justify-content:center">
+    <div id="loginPage">
+
+        <div class="login-left">
+
+            <div class="brand-box">
+                <div class="brand-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#12132A" stroke-width="2.5">
                         <polygon
                             points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                     </svg>
                 </div>
                 <div>
-                    <div style="color:#000;font-weight:700;font-size:24px">Rhythm</div>
-                    <div style="color:#6B6F8E;font-size:10px;letter-spacing:1px">PAYROLL · HR</div>
+                    <div class="brand-name">Rhythm</div>
+                    <div class="brand-sub">PAYROLL · HR</div>
                 </div>
             </div>
-        </div>
 
-        <div class="hero-content">
-            <h2 class="hero-title">
-                Simplifying workforce<br>
-                management with
-                <strong>smart Payroll &amp;<br>HR Solutions</strong>
-            </h2>
-        </div>
-        <a href="contactSupport" class="support-link">
-            <i class="fa-solid fa-headset"></i>
-            Contact Support
-        </a>
-    </div>
-
-    <!-- RIGHT -->
-    <div class="login-right">
-        <div class="login-box">
-            <h1 class="login-title">Login</h1>
-
-            <form action="" method="POST" autocomplete="off">
-                <div class="input-group">
-                    <div class="input-wrap">
-                        <i class="fa-regular fa-circle-user"></i>
-                        <input type="text" name="username" placeholder="Username" required>
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <div class="input-wrap">
-                        <i class="fa-solid fa-key"></i>
-                        <input type="password" name="password" id="password" placeholder="Password" required>
-                        <i class="fa-regular fa-eye-slash toggle-password" id="togglePassword"></i>
-                    </div>
-                </div>
-
-                <button type="submit" class="login-btn">Login</button>
-            </form>
-
-            <a href="ForgotPassword" class="forgot-link">Forget Password?</a>
-
-            <div class="or-divider">
-                <span>OR</span>
+            <div class="hero-content">
+                <h2 class="hero-title">
+                    Simplifying workforce<br>
+                    management with
+                    <strong>smart Payroll &amp;<br>HR Solutions</strong>
+                </h2>
             </div>
 
-            <button type="button" class="social-btn">
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
-                <span>Continue with Google</span>
-            </button>
+            <a href="contactSupport" class="support-link">
+                <i class="fa-solid fa-headset"></i>
+                Contact Support
+            </a>
 
-            <button type="button" class="social-btn">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg" alt="Outlook">
-                <span>Continue with Outlook</span>
-            </button>
+        </div>
 
-            <div class="store-section">
-                <p>Also Available On</p>
-                <div class="store-buttons">
-                    <div class="store-badge">
-                        <i class="fa-brands fa-google-play"></i>
-                        <div>
-                            <small>GET IT ON</small>
-                            <strong>Google Play</strong>
+        <div class="login-right">
+
+            <div class="login-box">
+
+                <h1 class="login-title">Login</h1>
+
+                <?php if (!empty($error)): ?>
+                <div class="alert alert-error">
+                    <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if (!empty($success)): ?>
+                <div class="alert alert-success">
+                    <?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?>
+                </div>
+                <?php endif; ?>
+
+                <form action="" method="POST" autocomplete="off" id="loginForm">
+
+                    <input type="hidden" name="module_key" value="payroll">
+
+                    <div class="input-group">
+                        <div class="input-wrap">
+                            <i class="fa-solid fa-building"></i>
+                            <input type="text" name="client_code" placeholder="Client Code"
+                                value="<?= htmlspecialchars($_POST['client_code'] ?? $savedClientCode, ENT_QUOTES, 'UTF-8') ?>"
+                                required>
                         </div>
                     </div>
 
-                    <div class="store-badge">
-                        <i class="fa-brands fa-apple"></i>
-                        <div>
-                            <small>Download on the</small>
-                            <strong>App Store</strong>
+                    <div class="input-group">
+                        <div class="input-wrap">
+                            <i class="fa-regular fa-circle-user"></i>
+                            <input type="text" name="username" placeholder="Username or Email" required>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <div class="input-wrap">
+                            <i class="fa-solid fa-key"></i>
+                            <input type="password" name="password" id="password" placeholder="Password" required>
+                            <i class="fa-regular fa-eye-slash toggle-password" id="togglePassword"></i>
+                        </div>
+                    </div>
+
+                    <button type="submit" name="login" value="1" class="login-btn" id="loginBtn">
+                        Login
+                    </button>
+
+                </form>
+
+                <a href="ForgotPassword" class="forgot-link">Forgot Password?</a>
+
+                <div class="or-divider">
+                    <span>OR</span>
+                </div>
+
+                <button type="button" class="social-btn">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+                    <span>Continue with Google</span>
+                </button>
+
+                <button type="button" class="social-btn">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg" alt="Outlook">
+                    <span>Continue with Outlook</span>
+                </button>
+
+                <div class="store-section">
+                    <p>Also Available On</p>
+
+                    <div class="store-buttons">
+                        <div class="store-badge">
+                            <i class="fa-brands fa-google-play"></i>
+                            <div>
+                                <small>GET IT ON</small>
+                                <strong>Google Play</strong>
+                            </div>
+                        </div>
+
+                        <div class="store-badge">
+                            <i class="fa-brands fa-apple"></i>
+                            <div>
+                                <small>Download on the</small>
+                                <strong>App Store</strong>
+                            </div>
                         </div>
                     </div>
                 </div>
+
             </div>
 
-            <p class="err-msg" id="loginErr">Invalid username or password.</p>
         </div>
-    </div>
-</div>
 
-<script>
+    </div>
+
+    <script>
     const togglePassword = document.getElementById('togglePassword');
     const password = document.getElementById('password');
 
     if (togglePassword && password) {
-        togglePassword.addEventListener('click', function () {
+        togglePassword.addEventListener('click', function() {
             const isPassword = password.type === 'password';
             password.type = isPassword ? 'text' : 'password';
-            this.classList.toggle('fa-eye');
-            this.classList.toggle('fa-eye-slash');
+
+            this.classList.toggle('fa-eye', isPassword);
+            this.classList.toggle('fa-eye-slash', !isPassword);
         });
     }
-</script>
+
+    const loginForm = document.getElementById('loginForm');
+    const loginBtn = document.getElementById('loginBtn');
+
+    if (loginForm && loginBtn) {
+        loginForm.addEventListener('submit', function() {
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Please wait...';
+        });
+    }
+    </script>
 
 </body>
+
 </html>
