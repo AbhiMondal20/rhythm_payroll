@@ -1,6 +1,36 @@
+<?php
+// session_start();
+include 'db_client.php';
+$userId = $_SESSION['user_id'] ?? null;
+$username = $_SESSION['username'] ?? 'Admin';
+$email = $_SESSION['email'] ?? 'admin@example.com';
+$role = $_SESSION['role'] ?? 'user';
+$client_code = $_SESSION['client_code'] ?? 'N/A';
+$module_key = $_SESSION['module_key'] ?? 'N/A';
+$user_access = $_SESSION['user_access'] ?? [];
+$license_type = $_SESSION['license_type'] ?? 'Trial';
+$expiry_date = $_SESSION['expiry_date'] ?? 'N/A';
+
+if ($expiry_date !== 'N/A') {
+    $expiry_date = date('d M Y', strtotime($expiry_date));
+}
+
+$sql = "SELECT `id`, `client_code`, `client_name`, `logo`, `phone`, `email`, `website`, `address`, `status`, `created_at`, `updated_at` FROM `companies` WHERE client_code = ? LIMIT 1";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("s", $client_code);
+$stmt->execute();
+$result = $stmt->get_result();
+if ($result->num_rows > 0) {
+    $row = $result->fetch_assoc();
+    $company_name = $row['client_name'];
+    $company_logo = $row['logo'];
+
+} else {
+    $profile_pic = 'default.png';
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -32,7 +62,7 @@
                             <line x1="3" y1="18" x2="21" y2="18" />
                         </svg>
                     </button>
-                    <span style="font-weight:600;font-size:15px;color:#1a1a2e"><?= APP_NAME ?></span>
+                    <span style="font-weight:600;font-size:15px;color:#1a1a2e"><?= $company_name ?? APP_NAME ?></span>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px">
                     <button style="position:relative;padding:7px 9px" class="btn">

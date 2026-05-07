@@ -52,10 +52,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Master database not connected.";
     } else {
 
-
-    
         $stmt = mysqli_prepare($master, "
-            SELECT db_host, db_name, db_user, db_pass, port
+            SELECT 
+                id,
+                client_id,
+                client_code,
+                module_key,
+                db_host,
+                db_name,
+                db_user,
+                db_pass,
+                port,
+                status
             FROM client_databases
             WHERE client_code = ?
               AND module_key = ?
@@ -76,10 +84,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Invalid Client Code or inactive module.";
             } else {
 
-                $conn = mysqli_init();
-                mysqli_options($conn, MYSQLI_OPT_CONNECT_TIMEOUT, 5);
+                /* ─────────────────────────────────────────
+                   LICENSE CHECK FROM MASTER DB
+                ───────────────────────────────────────── */
+                $licStmt = mysqli_prepare($master, "
+                    SELECT 
+                        id,
+                        client_id,
+                        module_key,
+                        license_key,
+                        license_type,
+                        start_date,
+                        expiry_date,
+                        max_users,
+                        status,
+                        notes,
+                        created_at,
+                        updated_at
+                    FROM licenses
+                    WHERE client_id = ?
+                      AND module_key = ?
+                    LIMIT 1
+                ");
 
-                $db_port = !empty($db['port']) ? (int)$db['port'] : 3307;
+                if (!$licStmt) {
+                    $error = "License check failed: " . mysqli_error($master);
+                } else {
+
+                    $clientIdForLicense = (int)($db['client_id'] ?? 0);
+
+                    mysqli_stmt_bind_param($licStmt, "is", $clientIdForLicense, $module_key);
+                    mysqli_stmt_execute($licStmt);
+                    $licRes  = mysqli_stmt_get_result($licStmt);
+                    $license = mysqli_fetch_assoc($licRes);
+                    mysqli_stmt_close($licStmt);
+
+                    if (!$license) {
+                        $error = "No license found for this client/module.";
+                    } else {
+
+                        $licenseType   = strtolower(trim($license['license_type'] ?? 'trial'));
+                        $licenseStatus = strtolower(trim($license['status'] ?? 'inactive'));
+                        $today         = date('Y-m-d');
+
+                        if ($licenseStatus !== 'active') {
+                            $error = "License is not active. Please contact support.";
+                        } elseif (!in_array($licenseType, ['trial', 'monthly', 'yearly', 'lifetime'], true)) {
+                            $error = "Invalid license type. Please contact support.";
+                        } else {
+
+                            if ($licenseType === 'trial') {
+
+                                if (empty($license['start_date'])) {
+                                    $error = "Trial license start date not found.";
+                                } else {
+                                    $trialEndDate = date('Y-m-d', strtotime($license['start_date'] . ' +14 days'));
+
+                                    if ($today > $trialEndDate) {
+                                        $error = "Your 14 days trial expired on " . date('d M Y', strtotime($trialEndDate)) . ". Please upgrade your plan.";
+                                    }
+                                }
+
+                            } elseif ($licenseType === 'monthly') {
+
+                                if (empty($license['expiry_date'])) {
+                                    $error = "Monthly license expiry date not found.";
+                                } elseif ($today > $license['expiry_date']) {
+                                    $error = "Your monthly license expired on " . date('d M Y', strtotime($license['expiry_date'])) . ". Please renew to continue.";
+                                }
+
+                            } elseif ($licenseType === 'yearly') {
+
+                                if (empty($license['expiry_date'])) {
+                                    $error = "Yearly license expiry date not found.";
+                                } elseif ($today > $license['expiry_date']) {
+                                    $error = "Your yearly license expired on " . date('d M Y', strtotime($license['expiry_date'])) . ". Please renew to continue.";
+                                }
+
+                            } elseif ($licenseType === 'lifetime') {
+                                // Lifetime license never expires.
+                                $error = "";
+                            }
+                        }
+                    }
+                }
+
+                if ($error === '') {
+
+                    $conn = mysqli_init();
+                    mysqli_options($conn, MYSQLI_OPT_CONNECT_TIMEOUT, 5);
+
+                    $db_port = !empty($db['port']) ? (int)$db['port'] : 3306;
 
                     $connected = @mysqli_real_connect(
                         $conn,
@@ -90,100 +185,128 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $db_port
                     );
 
-                if (!$connected) {
-                    $error = "Cannot connect to client database.";
-                } else {
-                    mysqli_set_charset($conn, "utf8mb4");
-
-                    $u = mysqli_prepare($conn, "
-                        SELECT id, username, email, password_hash, role, status, client_code
-                        FROM users
-                        WHERE username = ? OR email = ?
-                        LIMIT 1
-                    ");
-
-                    if (!$u) {
-                        $error = "User query failed: " . mysqli_error($conn);
+                    if (!$connected) {
+                        $error = "Cannot connect to client database.";
                     } else {
-                        mysqli_stmt_bind_param($u, "ss", $username, $username);
-                        mysqli_stmt_execute($u);
-                        $ures = mysqli_stmt_get_result($u);
-                        $user = mysqli_fetch_assoc($ures);
-                        mysqli_stmt_close($u);
+                        mysqli_set_charset($conn, "utf8mb4");
 
-                        if (!$user) {
-                            $error = "User not found.";
-                        } elseif (($user['status'] ?? '') !== 'active') {
-                            $error = "Your account is inactive.";
-                        } elseif (empty($user['password_hash']) || !password_verify($password, $user['password_hash'])) {
-                            $error = "Wrong password.";
+                        $u = mysqli_prepare($conn, "
+                            SELECT 
+                                id,
+                                username,
+                                email,
+                                password_hash,
+                                role,
+                                status,
+                                client_code
+                            FROM users
+                            WHERE username = ? OR email = ?
+                            LIMIT 1
+                        ");
+
+                        if (!$u) {
+                            $error = "User query failed: " . mysqli_error($conn);
                         } else {
+                            mysqli_stmt_bind_param($u, "ss", $username, $username);
+                            mysqli_stmt_execute($u);
+                            $ures = mysqli_stmt_get_result($u);
+                            $user = mysqli_fetch_assoc($ures);
+                            mysqli_stmt_close($u);
 
-                            $accStmt = mysqli_prepare($conn, "
-                                SELECT page_name
-                                FROM user_access
-                                WHERE user_id = ?
-                                  AND (
-                                      can_view = 1
-                                      OR can_add = 1
-                                      OR can_edit = 1
-                                      OR can_delete = 1
-                                  )
-                            ");
-
-                            if (!$accStmt) {
-                                $error = "Access query failed: " . mysqli_error($conn);
+                            if (!$user) {
+                                $error = "User not found.";
+                            } elseif (($user['status'] ?? '') !== 'active') {
+                                $error = "Your account is inactive.";
+                            } elseif (empty($user['password_hash']) || !password_verify($password, $user['password_hash'])) {
+                                $error = "Wrong password.";
                             } else {
-                                mysqli_stmt_bind_param($accStmt, "i", $user['id']);
-                                mysqli_stmt_execute($accStmt);
-                                $accRes = mysqli_stmt_get_result($accStmt);
 
-                                $user_access = [];
+                                $accStmt = mysqli_prepare($conn, "
+                                    SELECT page_name
+                                    FROM user_access
+                                    WHERE user_id = ?
+                                      AND (
+                                          can_view = 1
+                                          OR can_add = 1
+                                          OR can_edit = 1
+                                          OR can_delete = 1
+                                      )
+                                ");
 
-                                while ($row = mysqli_fetch_assoc($accRes)) {
-                                    if (!empty($row['page_name'])) {
-                                        $user_access[] = strtolower(trim($row['page_name']));
-                                    }
-                                }
-
-                                mysqli_stmt_close($accStmt);
-
-                                if (empty($user_access)) {
-                                    $error = "Login blocked. You do not have access to any page.";
+                                if (!$accStmt) {
+                                    $error = "Access query failed: " . mysqli_error($conn);
                                 } else {
-                                    session_regenerate_id(true);
+                                    mysqli_stmt_bind_param($accStmt, "i", $user['id']);
+                                    mysqli_stmt_execute($accStmt);
+                                    $accRes = mysqli_stmt_get_result($accStmt);
 
-                                    $_SESSION['login']       = true;
-                                    $_SESSION['user_id']     = (int)$user['id'];
-                                    $_SESSION['username']    = $user['username'];
-                                    $_SESSION['email']       = $user['email'] ?? '';
-                                    $_SESSION['role']        = $user['role'] ?? 'user';
-                                    $_SESSION['client_code'] = $client_code;
-                                    $_SESSION['module_key']  = $module_key;
-                                    $_SESSION['client_db']   = $db['db_name'];
-                                    $_SESSION['user_access'] = $user_access;
-                                    $_SESSION['client_id']   = (int)($user['client_id'] ?? 0);
+                                    $user_access = [];
 
-                                    $up = mysqli_prepare($conn, "UPDATE users SET last_login_at = NOW() WHERE id = ?");
-                                    if ($up) {
-                                        mysqli_stmt_bind_param($up, "i", $_SESSION['user_id']);
-                                        mysqli_stmt_execute($up);
-                                        mysqli_stmt_close($up);
+                                    while ($row = mysqli_fetch_assoc($accRes)) {
+                                        if (!empty($row['page_name'])) {
+                                            $user_access[] = strtolower(trim($row['page_name']));
+                                        }
                                     }
 
-                                    setcookie("client_code", $client_code, time() + (30 * 24 * 60 * 60), "/", "", false, true);
+                                    mysqli_stmt_close($accStmt);
 
-                                    mysqli_close($conn);
+                                    if (empty($user_access)) {
+                                        $error = "Login blocked. You do not have access to any page.";
+                                    } else {
+                                        session_regenerate_id(true);
 
-                                    header("Location: " . getRedirectPageLocal());
-                                    exit;
+                                        $_SESSION['login']       = true;
+                                        $_SESSION['user_id']     = (int)$user['id'];
+                                        $_SESSION['username']    = $user['username'];
+                                        $_SESSION['email']       = $user['email'] ?? '';
+                                        $_SESSION['role']        = $user['role'] ?? 'user';
+                                        $_SESSION['client_code'] = $client_code;
+                                        $_SESSION['module_key']  = $module_key;
+                                        $_SESSION['client_db']   = $db['db_name'];
+                                        $_SESSION['client_id']   = (int)($db['client_id'] ?? 0);
+                                        $_SESSION['user_access'] = $user_access;
+                                        $_SESSION['license_type'] = $license['license_type'] ?? 'trial';
+                                        $_SESSION['expiry_date'] = $license['expiry_date'] ?? 'N/A';
+                                        
+                                        $_SESSION['license'] = [
+                                            'id'           => (int)$license['id'],
+                                            'license_key'  => $license['license_key'] ?? '',
+                                            'license_type' => $license['license_type'] ?? '',
+                                            'start_date'   => $license['start_date'] ?? '',
+                                            'expiry_date'  => $license['expiry_date'] ?? '',
+                                            'max_users'    => (int)($license['max_users'] ?? 0),
+                                            'status'       => $license['status'] ?? '',
+                                        ];
+
+                                        $_SESSION['client_db_config'] = [
+                                            'host' => $db['db_host'],
+                                            'name' => $db['db_name'],
+                                            'user' => $db['db_user'],
+                                            'pass' => $db['db_pass'],
+                                            'port' => (int)$db_port,
+                                        ];
+
+                                        $up = mysqli_prepare($conn, "UPDATE users SET last_login_at = NOW() WHERE id = ?");
+                                        if ($up) {
+                                            mysqli_stmt_bind_param($up, "i", $_SESSION['user_id']);
+                                            mysqli_stmt_execute($up);
+                                            mysqli_stmt_close($up);
+                                        }
+
+                                        setcookie("client_code", $client_code, time() + (30 * 24 * 60 * 60), "/", "", false, true);
+
+                                        mysqli_close($conn);
+
+                                        header("Location: " . getRedirectPageLocal());
+                                        exit;
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    if (isset($conn) && $conn instanceof mysqli) {
-                        mysqli_close($conn);
+                        if (isset($conn) && $conn instanceof mysqli) {
+                            mysqli_close($conn);
+                        }
                     }
                 }
             }
@@ -195,14 +318,12 @@ $savedClientCode = $_COOKIE['client_code'] ?? '';
 $savedClientCode = is_string($savedClientCode) ? $savedClientCode : '';
 ?>
 
-
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>Rhythm · Payroll & HR</title>
 
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">

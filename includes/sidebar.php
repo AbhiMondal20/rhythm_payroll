@@ -14,11 +14,15 @@
                 <div style="color:#6B6F8E;font-size:10px;letter-spacing:1px">PAYROLL · HR</div>
             </div>
         </div>
-        <div style="background:rgba(255,255,255,.06);border-radius:8px;padding:8px 10px;margin-top:12px">
+        <!-- <div style="background:rgba(255,255,255,.06);border-radius:8px;padding:8px 10px;margin-top:12px">
             <div style="color:#9DA3C8;font-size:10px;font-weight:600;letter-spacing:.5px;margin-bottom:2px">ORGANISATION
             </div>
             <div style="color:#fff;font-size:13px;font-weight:600"><?= APP_NAME ?></div>
-        </div>
+            <div style="color:#9DA3C8;font-size:10px;margin-top:4px">
+                <span>License Type: <?= $license_type ?></span>
+                <span style="margin-left:10px">Expiry Date: <?= $expiry_date ?></span>
+            </div>
+        </div> -->
     </div>
 
     <nav style="flex:1;overflow-y:auto;padding:8px 0;margin-top:8px">
@@ -107,7 +111,7 @@
         <div
             style="margin-top:10px;background:rgba(255,224,0,.1);border:1px solid rgba(255,224,0,.2);border-radius:8px;padding:8px 10px">
             <div style="color:#FFE000;font-size:10px;font-weight:700;letter-spacing:.5px">SUBSCRIPTION</div>
-            <div style="color:#9DA3C8;font-size:11px;margin-top:2px">Expires 30 Apr 2026</div>
+            <div style="color:#9DA3C8;font-size:11px;margin-top:2px">Expires <?= $expiry_date ?></div>
             <div class="progress-bar" style="margin-top:6px">
                 <div class="progress-fill" style="width:92%;background:var(--yellow)"></div>
             </div>

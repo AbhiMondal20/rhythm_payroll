@@ -4,7 +4,7 @@
 <?php
 define('APP_NAME',  'Ramkrishna IVF Centre');
 define('APP_SHORT', 'perk');
-define('APP_CITY',  'Siliguri, West Bengal');
+// define('APP_CITY',  '');
 
 $employees = [
     ['id'=>1,'name'=>'Dr. Anjali Sharma','dept'=>'Medical',       'role'=>'Senior Doctor',  'status'=>'active','join'=>'2021-06-01','salary'=>62000],

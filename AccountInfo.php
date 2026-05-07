@@ -1,82 +1,264 @@
 <?php
+session_start();
+if (!isset($_SESSION['login'])) {
+    header('Location: login');
+    exit();
+}
+require_once 'includes/db_client.php';
 require_once 'includes/config.php';
 $page_title = 'Account Information';
 
 /* ─────────────────────────────────────────
-   MOCK DATA  (replace with real DB queries)
+   SETTINGS
 ───────────────────────────────────────── */
-$account = [
-    /* Company Info */
-    'company_name'    => 'Ramkrishna IVF Centre',
-    'address1'        => 'Ramkrishna IVF Centre, Pakurtala More',
-    'address2'        => '',
-    'city'            => 'Siliguri',
-    'state'           => 'West Bengal',
-    'country'         => 'India',
-    'pincode'         => '734001',
-    'fax'             => '',
-    'phone'           => '+91 93750 17xxx',
-    'website'         => 'https://ramkrishnaivf.in',
-    'logo'            => '',
-
-    /* Statutory Info */
-    'pan'             => 'AABCR1234F',
-    'tan'             => 'CALC12345D',
-    'gstin'           => '19AABCR1234F1Z5',
-    'pf_no'           => 'WB/SLG/0012345',
-    'esi_no'          => '31-00-123456-000-0001',
-    'pt_no'           => 'WBPT123456',
-    'lwf_no'          => '',
-    'factory_no'      => '',
-    'incorporation_no'=> '',
-    'cin'             => '',
-
-    /* Mail Configuration */
-    'mail_from_name'  => 'Ramkrishna IVF Centre',
-    'mail_from_email' => 'hr@ramkrishnaivf.in',
-    'mail_host'       => 'smtp.gmail.com',
-    'mail_port'       => '587',
-    'mail_encryption' => 'TLS',
-    'mail_username'   => 'hr@ramkrishnaivf.in',
-    'mail_password'   => '',
-    'mail_signature'  => '',
-
-    /* Other Configuration */
-    'date_format'     => 'DD/MM/YYYY',
-    'time_format'     => '12 Hour',
-    'currency'        => 'INR (₹)',
-    'timezone'        => 'Asia/Kolkata',
-    'week_start'      => 'Monday',
-    'financial_year'  => 'April – March',
-    'payroll_cycle'   => 'Monthly',
-    'payslip_format'  => 'Standard',
-
-    'subscription_expiry' => '30-04-2026',
-];
+$company_id = 1;
 
 /* ─────────────────────────────────────────
-   POST — handle save per section
+   HELPERS
 ───────────────────────────────────────── */
-$save_success = false;
-$save_section = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['section'])) {
-    // TODO: validate and save to DB
-    $save_section = $_POST['section'];
-    $save_success = true;
+function esc($v) {
+    return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-/* active accordion section (from URL or POST) */
+function sel($v, $o) {
+    return ((string)$v === (string)$o) ? 'selected' : '';
+}
+
+/* ─────────────────────────────────────────
+   EXTRA COLUMNS CHECK NOTE
+─────────────────────────────────────────
+   Your companies table already has:
+   id, client_code, client_name, logo, phone, email,
+   website, address, status, created_at, updated_at
+
+   If statutory/mail/other config sections are needed,
+   add extra columns given below in SQL section.
+───────────────────────────────────────── */
+
+/* ─────────────────────────────────────────
+   FETCH COMPANY
+───────────────────────────────────────── */
+$account = [];
+
+$stmt = $conn->prepare("SELECT * FROM companies WHERE id = ? LIMIT 1");
+$stmt->bind_param("i", $company_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result && $result->num_rows > 0) {
+    $account = $result->fetch_assoc();
+} else {
+    $account = [
+        'id'          => '',
+        'client_code' => '',
+        'client_name' => '',
+        'logo'        => '',
+        'phone'       => '',
+        'email'       => '',
+        'website'     => '',
+        'address'     => '',
+        'status'      => '',
+    ];
+}
+
+/* Default values for extra config fields */
+$defaults = [
+    'pan' => '',
+    'tan' => '',
+    'gstin' => '',
+    'pf_no' => '',
+    'esi_no' => '',
+    'pt_no' => '',
+    'lwf_no' => '',
+    'factory_no' => '',
+    'incorporation_no' => '',
+    'cin' => '',
+
+    'mail_from_name' => '',
+    'mail_from_email' => '',
+    'mail_host' => '',
+    'mail_port' => '',
+    'mail_encryption' => '',
+    'mail_username' => '',
+    'mail_password' => '',
+    'mail_signature' => '',
+
+    'date_format' => 'DD/MM/YYYY',
+    'time_format' => '12 Hour',
+    'currency' => 'INR (₹)',
+    'timezone' => 'Asia/Kolkata',
+    'week_start' => 'Monday',
+    'financial_year' => 'April – March',
+    'payroll_cycle' => 'Monthly',
+    'payslip_format' => 'Standard',
+];
+
+foreach ($defaults as $k => $v) {
+    if (!array_key_exists($k, $account)) {
+        $account[$k] = $v;
+    }
+}
+
+/* ─────────────────────────────────────────
+   SAVE DATA
+───────────────────────────────────────── */
+$save_success = false;
+$save_error   = '';
+$save_section = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['section'])) {
+
+    $save_section = $_POST['section'];
+
+    $sectionFields = [
+        'company' => [
+            'client_name',
+            'phone',
+            'email',
+            'website',
+            'address',
+            'status'
+        ],
+
+        'statutory' => [
+            'pan',
+            'tan',
+            'gstin',
+            'pf_no',
+            'esi_no',
+            'pt_no',
+            'lwf_no',
+            'factory_no',
+            'incorporation_no',
+            'cin'
+        ],
+
+        'mail' => [
+            'mail_from_name',
+            'mail_from_email',
+            'mail_host',
+            'mail_port',
+            'mail_encryption',
+            'mail_username',
+            'mail_password',
+            'mail_signature'
+        ],
+
+        'other' => [
+            'date_format',
+            'time_format',
+            'currency',
+            'timezone',
+            'week_start',
+            'financial_year',
+            'payroll_cycle',
+            'payslip_format'
+        ]
+    ];
+
+    $fields = $sectionFields[$save_section] ?? [];
+
+    $setParts = [];
+    $values   = [];
+    $types    = '';
+
+    foreach ($fields as $field) {
+        if (isset($_POST[$field])) {
+
+            /* Do not overwrite password with blank */
+            if ($field === 'mail_password' && trim($_POST[$field]) === '') {
+                continue;
+            }
+
+            $setParts[] = "`$field` = ?";
+            $values[]   = trim($_POST[$field]);
+            $types     .= 's';
+        }
+    }
+
+    /* Logo upload */
+    if ($save_section === 'company' && !empty($_FILES['logo']['name'])) {
+
+        $uploadDir = __DIR__ . '/uploads/company/';
+        $uploadUrl = 'uploads/company/';
+
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
+
+        $allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        $ext = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
+
+        if (in_array($ext, $allowedExt, true)) {
+
+            $fileName = 'company_logo_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
+            $targetPath = $uploadDir . $fileName;
+            $dbPath = $uploadUrl . $fileName;
+
+            if (move_uploaded_file($_FILES['logo']['tmp_name'], $targetPath)) {
+                $setParts[] = "`logo` = ?";
+                $values[]   = $dbPath;
+                $types     .= 's';
+            } else {
+                $save_error = 'Logo upload failed.';
+            }
+
+        } else {
+            $save_error = 'Invalid logo file type.';
+        }
+    }
+
+    if (empty($save_error) && !empty($setParts)) {
+
+        $setParts[] = "`updated_at` = NOW()";
+
+        $sql = "UPDATE companies SET " . implode(', ', $setParts) . " WHERE id = ?";
+
+        $types .= 'i';
+        $values[] = $company_id;
+
+        $stmt = $conn->prepare($sql);
+
+        if ($stmt) {
+            $stmt->bind_param($types, ...$values);
+
+            if ($stmt->execute()) {
+                $save_success = true;
+            } else {
+                $save_error = 'Save failed: ' . $stmt->error;
+            }
+
+        } else {
+            $save_error = 'Prepare failed: ' . $conn->error;
+        }
+    }
+
+    /* Refresh company data */
+    $stmt = $conn->prepare("SELECT * FROM companies WHERE id = ? LIMIT 1");
+    $stmt->bind_param("i", $company_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result && $result->num_rows > 0) {
+        $account = $result->fetch_assoc();
+
+        foreach ($defaults as $k => $v) {
+            if (!array_key_exists($k, $account)) {
+                $account[$k] = $v;
+            }
+        }
+    }
+}
+
 $active_section = $_GET['section'] ?? ($save_section ?: 'company');
-
-/* active edit section */
-$edit_section = $_GET['edit'] ?? ($save_success ? '' : '');
-
-function esc($v) { return htmlspecialchars($v ?? '', ENT_QUOTES, 'UTF-8'); }
-function sel($v,$o) { return $v===$o?'selected':''; }
+$edit_section   = $_GET['edit'] ?? ($save_success ? '' : '');
 
 ob_start();
 ?>
+
 <link rel="stylesheet" href="includes/assets/style.css">
+
+
 
 <style>
 
@@ -414,45 +596,60 @@ ob_start();
 <?php if ($save_success): ?>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    showAiToast('✅', '<?= esc(ucfirst($save_section)) ?> information saved successfully!');
+    if (typeof showAiToast === 'function') {
+        showAiToast('✅', '<?= esc(ucfirst($save_section)) ?> information saved successfully!');
+    }
 });
 </script>
 <?php endif; ?>
+
+<?php if (!empty($save_error)): ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof showAiToast === 'function') {
+        showAiToast('❌', '<?= esc($save_error) ?>');
+    } else {
+        alert('<?= esc($save_error) ?>');
+    }
+});
+</script>
+<?php endif; ?>
+
 <div class="cfg-page-head">
     <h1 class="page-title">Configuration</h1>
 </div>
 
-
-
 <div class="section-card" style="padding:0;overflow:hidden">
     <div class="cfg-tabs">
-        <?php $cfg_tabs=['AccountInfo'=>'Account Info','Organization'=>'Organization','Payroll'=>'Payroll','Attendance'=>'Attendance','Leave'=>'Leave','Training'=>'Training','Others'=>'Others'];
-        foreach($cfg_tabs as $k=>$l): ?>
-        <a href="configuration#<?= $k ?>" class="cfg-tab <?= $k==='AccountInfo'?'active':'' ?>"><?= $l ?></a>
+        <?php
+        $cfg_tabs = [
+            'AccountInfo'  => 'Account Info',
+            'Organization' => 'Organization',
+            'Payroll'      => 'Payroll',
+            'Attendance'   => 'Attendance',
+            'Leave'        => 'Leave',
+            'Training'     => 'Training',
+            'Others'       => 'Others'
+        ];
+
+        foreach ($cfg_tabs as $k => $l):
+        ?>
+            <a href="configuration#<?= esc($k) ?>" class="cfg-tab <?= $k === 'AccountInfo' ? 'active' : '' ?>">
+                <?= esc($l) ?>
+            </a>
         <?php endforeach; ?>
     </div>
 
-    <!-- ── Breadcrumb ── -->
-    <!-- <div class="ai-breadcrumb">
-        <a href="configuration#AccountInfo">Account Info</a>
-        <span class="sep">›</span>
-        <span class="current">Account Information</span>
-        <span class="sub-exp">
-            Subscription Expires on <?= esc($account['subscription_expiry']) ?>
-        </span>
-    </div> -->
+    <div style="padding:0;overflow:hidden">
 
-    <!-- ── Column labels ── -->
-    <div  style="padding:0;overflow:hidden">
-
-<!-- top bar: breadcrumb + col labels -->
         <div style="padding:14px 20px;border-bottom:1px solid #E5E7EB">
-            <div class="ctc-bc">  
+            <div class="ctc-bc">
                 <a href="configuration#AccountInfo">Account Info</a>
                 <span class="sep">›</span>
                 <span class="cur">Account Information</span>
             </div>
         </div>
+
         <div style="padding:0 24px">
             <div class="ai-col-labels">
                 <div class="ai-col-label">Configuration</div>
@@ -461,441 +658,485 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
 
         <div style="padding:0 24px 28px">
-        <div class="ai-layout">
+            <div class="ai-layout">
 
-            <!-- ══════════════════════════════
-                LEFT ACCORDION
-            ══════════════════════════════ -->
-            <div class="ai-accordion">
+                <div class="ai-accordion">
+                    <?php
+                    $sections = [
+                        'company'   => 'Company Info',
+                        'statutory' => 'Statutory Info',
+                        'mail'      => 'Mail Configuration',
+                        'other'     => 'Other Configuration',
+                    ];
 
-                <?php
-                $sections = [
-                    'company'   => 'Company info',
-                    'statutory' => 'Statutory Info',
-                    'mail'      => 'Mail Configuration',
-                    'other'     => 'Other Configuration',
-                ];
-                foreach ($sections as $skey => $slabel):
-                    $is_active = ($active_section === $skey);
-                ?>
-                <div class="ai-acc-item">
-                    <button class="ai-acc-btn <?= $is_active ? 'active' : '' ?>"
-                        onclick="switchSection('<?= $skey ?>')" type="button">
-                        <?= esc($slabel) ?>
-                        <div class="ai-acc-arrow">
-                            <?php if ($is_active): ?>
-                            <svg viewBox="0 0 12 12"><polyline points="2 8 6 4 10 8"/></svg>
-                            <?php else: ?>
-                            <svg viewBox="0 0 12 12"><polyline points="2 4 6 8 10 4"/></svg>
-                            <?php endif; ?>
+                    foreach ($sections as $skey => $slabel):
+                        $is_active = ($active_section === $skey);
+                    ?>
+                        <div class="ai-acc-item">
+                            <button class="ai-acc-btn <?= $is_active ? 'active' : '' ?>"
+                                    onclick="switchSection('<?= esc($skey) ?>')"
+                                    type="button">
+                                <?= esc($slabel) ?>
+
+                                <div class="ai-acc-arrow">
+                                    <?php if ($is_active): ?>
+                                        <svg viewBox="0 0 12 12">
+                                            <polyline points="2 8 6 4 10 8"></polyline>
+                                        </svg>
+                                    <?php else: ?>
+                                        <svg viewBox="0 0 12 12">
+                                            <polyline points="2 4 6 8 10 4"></polyline>
+                                        </svg>
+                                    <?php endif; ?>
+                                </div>
+                            </button>
                         </div>
-                    </button>
-                </div>
-                <?php endforeach; ?>
-
-            </div><!-- end accordion -->
-
-            <!-- ══════════════════════════════
-                RIGHT DETAIL PANELS
-            ══════════════════════════════ -->
-            <div class="ai-detail" id="aiDetail">
-
-                <!-- ─────────────────────────
-                    COMPANY INFO
-                ───────────────────────────── -->
-                <div class="ai-detail-panel <?= $active_section==='company' ? 'active' : '' ?>" id="panel-company">
-
-                    <div class="ai-detail-head">
-                        <h3>COMPANY INFO</h3>
-                        <?php if ($edit_section !== 'company'): ?>
-                        <a class="ai-edit-link" href="?section=company&edit=company">
-                            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            Edit Details
-                        </a>
-                        <?php endif; ?>
-                    </div>
-
-                    <form method="POST" id="form-company" novalidate>
-                    <input type="hidden" name="section" value="company">
-
-                    <div class="ai-fields">
-
-                        <?php
-                        $company_fields = [
-                            ['company_name', 'Company Name',  false, 'text'],
-                            ['address1',     'Address 1',     false, 'text'],
-                            ['address2',     'Address 2',     false, 'text'],
-                            ['city',         'City',          false, 'text'],
-                            ['state',        'State',         false, 'text'],
-                            ['country',      'Country',       false, 'text'],
-                            ['pincode',      'Pin Code',      false, 'text'],
-                            ['fax',          'Fax',           false, 'text'],
-                            ['phone',        'Phone Number',  false, 'tel'],
-                            ['website',      'Website',       false, 'url'],
-                        ];
-
-                        foreach ($company_fields as [$fkey, $flabel, $full, $ftype]):
-                            $fval   = $account[$fkey] ?? '';
-                            $is_edit_mode = ($edit_section === 'company');
-                        ?>
-                        <div class="ai-field <?= $full ? 'full' : '' ?>">
-                            <div class="ai-field-label"><?= esc($flabel) ?></div>
-                            <?php if ($is_edit_mode): ?>
-                            <input type="<?= $ftype ?>" name="<?= $fkey ?>" value="<?= esc($fval) ?>"
-                                placeholder="<?= esc($flabel) ?>">
-                            <?php else: ?>
-                            <div class="ai-field-val <?= $fval==='' ? 'empty' : '' ?>">
-                                <?= $fval !== '' ? esc($fval) : '—' ?>
-                            </div>
-                            <?php endif; ?>
-                        </div>
-                        <?php endforeach; ?>
-
-                        <!-- Logo upload -->
-                        <div class="ai-field">
-                            <div class="ai-field-label">Company Logo</div>
-                            <?php if ($edit_section === 'company'): ?>
-                            <input type="file" name="logo" accept="image/*" style="padding-top:4px">
-                            <?php else: ?>
-                            <div class="ai-field-val empty">
-                                <?= $account['logo'] ? '<img src="'.esc($account['logo']).'" style="height:32px">' : '—' ?>
-                            </div>
-                            <?php endif; ?>
-                        </div>
-
-                        <?php if ($edit_section === 'company'): ?>
-                        <div class="ai-action-bar">
-                            <button type="button" class="btn" onclick="cancelEdit()">Cancel</button>
-                            <button type="submit" class="btn btn-primary">Save Changes</button>
-                        </div>
-                        <?php endif; ?>
-
-                    </div>
-                    </form>
+                    <?php endforeach; ?>
                 </div>
 
-                <!-- ─────────────────────────
-                    STATUTORY INFO
-                ───────────────────────────── -->
-                <div class="ai-detail-panel <?= $active_section==='statutory' ? 'active' : '' ?>" id="panel-statutory">
+                <div class="ai-detail" id="aiDetail">
 
-                    <div class="ai-detail-head">
-                        <h3>STATUTORY INFO</h3>
-                        <?php if ($edit_section !== 'statutory'): ?>
-                        <a class="ai-edit-link" href="?section=statutory&edit=statutory">
-                            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            Edit Details
-                        </a>
-                        <?php endif; ?>
-                    </div>
+                    <!-- COMPANY INFO -->
+                    <div class="ai-detail-panel <?= $active_section === 'company' ? 'active' : '' ?>" id="panel-company">
 
-                    <form method="POST" id="form-statutory" novalidate>
-                    <input type="hidden" name="section" value="statutory">
+                        <div class="ai-detail-head">
+                            <h3>COMPANY INFO</h3>
 
-                    <div class="ai-fields">
-                        <?php
-                        $stat_fields = [
-                            ['pan',              'PAN Number',                false, 'text', 'AABC D 1234 E'],
-                            ['tan',              'TAN Number',                false, 'text', 'CALC12345D'],
-                            ['gstin',            'GSTIN',                     false, 'text', '22AAAAA0000A1Z5'],
-                            ['pf_no',            'PF Registration Number',    false, 'text', 'WB/XXX/0012345'],
-                            ['esi_no',           'ESI Registration Number',   false, 'text', '31-00-XXXXXX'],
-                            ['pt_no',            'PT Registration Number',    false, 'text', 'WBPTXXXXXX'],
-                            ['lwf_no',           'LWF Number',                false, 'text', ''],
-                            ['factory_no',       'Factory Registration No.',  false, 'text', ''],
-                            ['incorporation_no', 'Incorporation Number',      false, 'text', ''],
-                            ['cin',              'CIN',                       false, 'text', 'U85110WB2010PTC000001'],
-                        ];
-                        foreach ($stat_fields as [$fkey, $flabel, $full, $ftype, $ph]):
-                            $fval = $account[$fkey] ?? '';
-                            $is_em = ($edit_section === 'statutory');
-                        ?>
-                        <div class="ai-field <?= $full ? 'full':'' ?>">
-                            <div class="ai-field-label"><?= esc($flabel) ?></div>
-                            <?php if ($is_em): ?>
-                            <input type="<?= $ftype ?>" name="<?= $fkey ?>" value="<?= esc($fval) ?>" placeholder="<?= esc($ph) ?>">
-                            <?php else: ?>
-                            <div class="ai-field-val <?= $fval===''?'empty':'' ?>"><?= $fval!==''?esc($fval):'—' ?></div>
-                            <?php endif; ?>
-                        </div>
-                        <?php endforeach; ?>
-
-                        <?php if ($edit_section === 'statutory'): ?>
-                        <div class="ai-action-bar">
-                            <button type="button" class="btn" onclick="cancelEdit()">Cancel</button>
-                            <button type="submit" class="btn btn-primary">Save Changes</button>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                    </form>
-                </div>
-
-                <!-- ─────────────────────────
-                    MAIL CONFIGURATION
-                ───────────────────────────── -->
-                <div class="ai-detail-panel <?= $active_section==='mail' ? 'active' : '' ?>" id="panel-mail">
-
-                    <div class="ai-detail-head">
-                        <h3>MAIL CONFIGURATION</h3>
-                        <?php if ($edit_section !== 'mail'): ?>
-                        <a class="ai-edit-link" href="?section=mail&edit=mail">
-                            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            Edit Details
-                        </a>
-                        <?php endif; ?>
-                    </div>
-
-                    <form method="POST" id="form-mail" novalidate>
-                    <input type="hidden" name="section" value="mail">
-
-                    <div class="ai-fields">
-                        <?php
-                        $mail_fields = [
-                            ['mail_from_name',  'From Name',       false, 'text',     ''],
-                            ['mail_from_email', 'From Email',      false, 'email',    ''],
-                            ['mail_host',       'SMTP Host',       false, 'text',     'smtp.gmail.com'],
-                            ['mail_port',       'SMTP Port',       false, 'number',   '587'],
-                            ['mail_encryption', 'Encryption',      false, 'text',     'TLS / SSL'],
-                            ['mail_username',   'SMTP Username',   false, 'email',    ''],
-                            ['mail_password',   'SMTP Password',   false, 'password', ''],
-                        ];
-                        foreach ($mail_fields as [$fkey,$flabel,$full,$ftype,$ph]):
-                            $fval = $fkey==='mail_password' ? '' : ($account[$fkey]??'');
-                            $is_em = ($edit_section==='mail');
-                        ?>
-                        <div class="ai-field <?= $full?'full':'' ?>">
-                            <div class="ai-field-label"><?= esc($flabel) ?></div>
-                            <?php if ($is_em): ?>
-                            <input type="<?= $ftype ?>" name="<?= $fkey ?>" value="<?= esc($fval) ?>" placeholder="<?= esc($ph) ?>">
-                            <?php else: ?>
-                            <div class="ai-field-val <?= $fval===''?'empty':'' ?>">
-                                <?= $fkey==='mail_password'&&$fval!=='' ? '••••••••' : ($fval!==''?esc($fval):'—') ?>
-                            </div>
-                            <?php endif; ?>
-                        </div>
-                        <?php endforeach; ?>
-
-                        <!-- Email Signature -->
-                        <div class="ai-field full">
-                            <div class="ai-field-label">Email Signature</div>
-                            <?php if ($edit_section==='mail'): ?>
-                            <textarea name="mail_signature" rows="3" placeholder="Optional HTML or plain-text signature..."><?= esc($account['mail_signature']) ?></textarea>
-                            <?php else: ?>
-                            <div class="ai-field-val <?= $account['mail_signature']===''?'empty':'' ?>">
-                                <?= $account['mail_signature']!=='' ? nl2br(esc($account['mail_signature'])) : '—' ?>
-                            </div>
+                            <?php if ($edit_section !== 'company'): ?>
+                                <a class="ai-edit-link" href="?section=company&edit=company">
+                                    <svg viewBox="0 0 24 24">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                    </svg>
+                                    Edit Details
+                                </a>
                             <?php endif; ?>
                         </div>
 
-                        <?php if ($edit_section==='mail'): ?>
-                        <div class="ai-action-bar">
-                            <button type="button" class="btn" onclick="cancelEdit()">Cancel</button>
-                            <button type="button" class="btn" onclick="testMail()" style="background:#EFF6FF;color:#2563EB;border-color:#BFDBFE">Test Connection</button>
-                            <button type="submit" class="btn btn-primary">Save Changes</button>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                    </form>
-                </div>
+                        <form method="POST" enctype="multipart/form-data" id="form-company" novalidate>
+                            <input type="hidden" name="section" value="company">
 
-                <!-- ─────────────────────────
-                    OTHER CONFIGURATION
-                ───────────────────────────── -->
-                <div class="ai-detail-panel <?= $active_section==='other' ? 'active' : '' ?>" id="panel-other">
+                            <div class="ai-fields">
 
-                    <div class="ai-detail-head">
-                        <h3>OTHER CONFIGURATION</h3>
-                        <?php if ($edit_section !== 'other'): ?>
-                        <a class="ai-edit-link" href="?section=other&edit=other">
-                            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            Edit Details
-                        </a>
-                        <?php endif; ?>
-                    </div>
+                                <?php
+                                $company_fields = [
+                                    ['client_code', 'Client Code', false, 'text', true],
+                                    ['client_name', 'Company Name', false, 'text', false],
+                                    ['phone', 'Phone Number', false, 'tel', false],
+                                    ['email', 'Email Address', false, 'email', false],
+                                    ['website', 'Website', false, 'url', false],
+                                    ['address', 'Address', true, 'text', false],
+                                    ['status', 'Status', false, 'select', false],
+                                ];
 
-                    <form method="POST" id="form-other" novalidate>
-                    <input type="hidden" name="section" value="other">
+                                foreach ($company_fields as [$fkey, $flabel, $full, $ftype, $readonly]):
+                                    $fval = $account[$fkey] ?? '';
+                                    $is_edit_mode = ($edit_section === 'company' && !$readonly);
+                                ?>
+                                    <div class="ai-field <?= $full ? 'full' : '' ?>">
+                                        <div class="ai-field-label"><?= esc($flabel) ?></div>
 
-                    <div class="ai-fields">
-                        <?php
-                        $is_em   = ($edit_section==='other');
-                        $opt_dft = ['DD/MM/YYYY','MM/DD/YYYY','YYYY-MM-DD','DD MMM YYYY'];
-                        $opt_tf  = ['12 Hour','24 Hour'];
-                        $opt_tz  = ['Asia/Kolkata','UTC','Asia/Dubai'];
-                        $opt_ws  = ['Monday','Sunday'];
-                        $opt_fy  = ['April – March','January – December','October – September'];
-                        $opt_pc  = ['Monthly','Weekly','Bi-Weekly','Fortnightly'];
-                        $opt_pf  = ['Standard','Detailed','Simple'];
-                        $select_fields = [
-                            ['date_format',   'Date Format',       $opt_dft],
-                            ['time_format',   'Time Format',       $opt_tf ],
-                            ['currency',      'Currency',          ['INR (₹)','USD ($)','EUR (€)']],
-                            ['timezone',      'Timezone',          $opt_tz ],
-                            ['week_start',    'Week Starts On',    $opt_ws ],
-                            ['financial_year','Financial Year',    $opt_fy ],
-                            ['payroll_cycle', 'Payroll Cycle',     $opt_pc ],
-                            ['payslip_format','Payslip Format',    $opt_pf ],
-                        ];
-                        foreach ($select_fields as [$fkey,$flabel,$fopts]):
-                            $fval = $account[$fkey]??'';
-                        ?>
-                        <div class="ai-field">
-                            <div class="ai-field-label"><?= esc($flabel) ?></div>
-                            <?php if ($is_em): ?>
-                            <select name="<?= $fkey ?>">
-                                <?php foreach ($fopts as $fo): ?>
-                                <option <?= sel($fval,$fo) ?>><?= esc($fo) ?></option>
+                                        <?php if ($is_edit_mode && $ftype === 'select'): ?>
+
+                                            <select name="<?= esc($fkey) ?>">
+                                                <option value="active" <?= sel($fval, 'active') ?>>Active</option>
+                                                <option value="inactive" <?= sel($fval, 'inactive') ?>>Inactive</option>
+                                            </select>
+
+                                        <?php elseif ($is_edit_mode && $full): ?>
+
+                                            <textarea name="<?= esc($fkey) ?>" rows="3" placeholder="<?= esc($flabel) ?>"><?= esc($fval) ?></textarea>
+
+                                        <?php elseif ($is_edit_mode): ?>
+
+                                            <input type="<?= esc($ftype) ?>"
+                                                   name="<?= esc($fkey) ?>"
+                                                   value="<?= esc($fval) ?>"
+                                                   placeholder="<?= esc($flabel) ?>">
+
+                                        <?php else: ?>
+
+                                            <div class="ai-field-val <?= $fval === '' ? 'empty' : '' ?>">
+                                                <?= $fval !== '' ? esc($fval) : '—' ?>
+                                            </div>
+
+                                        <?php endif; ?>
+                                    </div>
                                 <?php endforeach; ?>
-                            </select>
-                            <?php else: ?>
-                            <div class="ai-field-val <?= $fval===''?'empty':'' ?>"><?= $fval!==''?esc($fval):'—' ?></div>
+
+                                <div class="ai-field">
+                                    <div class="ai-field-label">Company Logo</div>
+
+                                    <?php if ($edit_section === 'company'): ?>
+
+                                        <input type="file" name="logo" accept="image/*" style="padding-top:4px">
+
+                                        <?php if (!empty($account['logo'])): ?>
+                                            <div style="margin-top:8px">
+                                                <img src="<?= esc($account['logo']) ?>" alt="Logo" style="height:38px;max-width:160px;object-fit:contain">
+                                            </div>
+                                        <?php endif; ?>
+
+                                    <?php else: ?>
+
+                                        <div class="ai-field-val <?= empty($account['logo']) ? 'empty' : '' ?>">
+                                            <?php if (!empty($account['logo'])): ?>
+                                                <img src="<?= esc($account['logo']) ?>" alt="Logo" style="height:38px;max-width:160px;object-fit:contain">
+                                            <?php else: ?>
+                                                —
+                                            <?php endif; ?>
+                                        </div>
+
+                                    <?php endif; ?>
+                                </div>
+
+                                <?php if ($edit_section === 'company'): ?>
+                                    <div class="ai-action-bar">
+                                        <button type="button" class="btn" onclick="cancelEdit()">Cancel</button>
+                                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                                    </div>
+                                <?php endif; ?>
+
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- STATUTORY INFO -->
+                    <div class="ai-detail-panel <?= $active_section === 'statutory' ? 'active' : '' ?>" id="panel-statutory">
+
+                        <div class="ai-detail-head">
+                            <h3>STATUTORY INFO</h3>
+
+                            <?php if ($edit_section !== 'statutory'): ?>
+                                <a class="ai-edit-link" href="?section=statutory&edit=statutory">
+                                    <svg viewBox="0 0 24 24">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                    </svg>
+                                    Edit Details
+                                </a>
                             <?php endif; ?>
                         </div>
-                        <?php endforeach; ?>
 
-                        <?php if ($is_em): ?>
-                        <div class="ai-action-bar">
-                            <button type="button" class="btn" onclick="cancelEdit()">Cancel</button>
-                            <button type="submit" class="btn btn-primary">Save Changes</button>
-                        </div>
-                        <?php endif; ?>
+                        <form method="POST" id="form-statutory" novalidate>
+                            <input type="hidden" name="section" value="statutory">
+
+                            <div class="ai-fields">
+
+                                <?php
+                                $stat_fields = [
+                                    ['pan', 'PAN Number', false, 'text', 'AABCR1234F'],
+                                    ['tan', 'TAN Number', false, 'text', 'CALC12345D'],
+                                    ['gstin', 'GSTIN', false, 'text', '19AABCR1234F1Z5'],
+                                    ['pf_no', 'PF Registration Number', false, 'text', 'WB/XXX/0012345'],
+                                    ['esi_no', 'ESI Registration Number', false, 'text', '31-00-XXXXXX'],
+                                    ['pt_no', 'PT Registration Number', false, 'text', 'WBPTXXXXXX'],
+                                    ['lwf_no', 'LWF Number', false, 'text', ''],
+                                    ['factory_no', 'Factory Registration No.', false, 'text', ''],
+                                    ['incorporation_no', 'Incorporation Number', false, 'text', ''],
+                                    ['cin', 'CIN', false, 'text', 'U85110WB2010PTC000001'],
+                                ];
+
+                                foreach ($stat_fields as [$fkey, $flabel, $full, $ftype, $ph]):
+                                    $fval = $account[$fkey] ?? '';
+                                    $is_edit_mode = ($edit_section === 'statutory');
+                                ?>
+                                    <div class="ai-field <?= $full ? 'full' : '' ?>">
+                                        <div class="ai-field-label"><?= esc($flabel) ?></div>
+
+                                        <?php if ($is_edit_mode): ?>
+
+                                            <input type="<?= esc($ftype) ?>"
+                                                   name="<?= esc($fkey) ?>"
+                                                   value="<?= esc($fval) ?>"
+                                                   placeholder="<?= esc($ph) ?>">
+
+                                        <?php else: ?>
+
+                                            <div class="ai-field-val <?= $fval === '' ? 'empty' : '' ?>">
+                                                <?= $fval !== '' ? esc($fval) : '—' ?>
+                                            </div>
+
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+
+                                <?php if ($edit_section === 'statutory'): ?>
+                                    <div class="ai-action-bar">
+                                        <button type="button" class="btn" onclick="cancelEdit()">Cancel</button>
+                                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                                    </div>
+                                <?php endif; ?>
+
+                            </div>
+                        </form>
                     </div>
-                    </form>
+
+                    <!-- MAIL CONFIGURATION -->
+                    <div class="ai-detail-panel <?= $active_section === 'mail' ? 'active' : '' ?>" id="panel-mail">
+
+                        <div class="ai-detail-head">
+                            <h3>MAIL CONFIGURATION</h3>
+
+                            <?php if ($edit_section !== 'mail'): ?>
+                                <a class="ai-edit-link" href="?section=mail&edit=mail">
+                                    <svg viewBox="0 0 24 24">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                    </svg>
+                                    Edit Details
+                                </a>
+                            <?php endif; ?>
+                        </div>
+
+                        <form method="POST" id="form-mail" novalidate>
+                            <input type="hidden" name="section" value="mail">
+
+                            <div class="ai-fields">
+
+                                <?php
+                                $mail_fields = [
+                                    ['mail_from_name', 'From Name', false, 'text', ''],
+                                    ['mail_from_email', 'From Email', false, 'email', ''],
+                                    ['mail_host', 'SMTP Host', false, 'text', 'smtp.gmail.com'],
+                                    ['mail_port', 'SMTP Port', false, 'number', '587'],
+                                    ['mail_encryption', 'Encryption', false, 'text', 'TLS / SSL'],
+                                    ['mail_username', 'SMTP Username', false, 'email', ''],
+                                    ['mail_password', 'SMTP Password', false, 'password', ''],
+                                ];
+
+                                foreach ($mail_fields as [$fkey, $flabel, $full, $ftype, $ph]):
+                                    $fval = ($fkey === 'mail_password') ? '' : ($account[$fkey] ?? '');
+                                    $actualVal = $account[$fkey] ?? '';
+                                    $is_edit_mode = ($edit_section === 'mail');
+                                ?>
+                                    <div class="ai-field <?= $full ? 'full' : '' ?>">
+                                        <div class="ai-field-label"><?= esc($flabel) ?></div>
+
+                                        <?php if ($is_edit_mode): ?>
+
+                                            <input type="<?= esc($ftype) ?>"
+                                                   name="<?= esc($fkey) ?>"
+                                                   value="<?= esc($fval) ?>"
+                                                   placeholder="<?= esc($ph) ?>">
+
+                                        <?php else: ?>
+
+                                            <div class="ai-field-val <?= $actualVal === '' ? 'empty' : '' ?>">
+                                                <?php
+                                                if ($fkey === 'mail_password' && $actualVal !== '') {
+                                                    echo '••••••••';
+                                                } else {
+                                                    echo $actualVal !== '' ? esc($actualVal) : '—';
+                                                }
+                                                ?>
+                                            </div>
+
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+
+                                <div class="ai-field full">
+                                    <div class="ai-field-label">Email Signature</div>
+
+                                    <?php if ($edit_section === 'mail'): ?>
+
+                                        <textarea name="mail_signature" rows="3" placeholder="Optional HTML or plain-text signature..."><?= esc($account['mail_signature'] ?? '') ?></textarea>
+
+                                    <?php else: ?>
+
+                                        <div class="ai-field-val <?= empty($account['mail_signature']) ? 'empty' : '' ?>">
+                                            <?= !empty($account['mail_signature']) ? nl2br(esc($account['mail_signature'])) : '—' ?>
+                                        </div>
+
+                                    <?php endif; ?>
+                                </div>
+
+                                <?php if ($edit_section === 'mail'): ?>
+                                    <div class="ai-action-bar">
+                                        <button type="button" class="btn" onclick="cancelEdit()">Cancel</button>
+                                        <button type="button" class="btn" onclick="testMail()" style="background:#EFF6FF;color:#2563EB;border-color:#BFDBFE">
+                                            Test Connection
+                                        </button>
+                                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                                    </div>
+                                <?php endif; ?>
+
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- OTHER CONFIGURATION -->
+                    <div class="ai-detail-panel <?= $active_section === 'other' ? 'active' : '' ?>" id="panel-other">
+
+                        <div class="ai-detail-head">
+                            <h3>OTHER CONFIGURATION</h3>
+
+                            <?php if ($edit_section !== 'other'): ?>
+                                <a class="ai-edit-link" href="?section=other&edit=other">
+                                    <svg viewBox="0 0 24 24">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                    </svg>
+                                    Edit Details
+                                </a>
+                            <?php endif; ?>
+                        </div>
+
+                        <form method="POST" id="form-other" novalidate>
+                            <input type="hidden" name="section" value="other">
+
+                            <div class="ai-fields">
+
+                                <?php
+                                $is_edit_mode = ($edit_section === 'other');
+
+                                $select_fields = [
+                                    ['date_format', 'Date Format', ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD', 'DD MMM YYYY']],
+                                    ['time_format', 'Time Format', ['12 Hour', '24 Hour']],
+                                    ['currency', 'Currency', ['INR (₹)', 'USD ($)', 'EUR (€)']],
+                                    ['timezone', 'Timezone', ['Asia/Kolkata', 'UTC', 'Asia/Dubai']],
+                                    ['week_start', 'Week Starts On', ['Monday', 'Sunday']],
+                                    ['financial_year', 'Financial Year', ['April – March', 'January – December', 'October – September']],
+                                    ['payroll_cycle', 'Payroll Cycle', ['Monthly', 'Weekly', 'Bi-Weekly', 'Fortnightly']],
+                                    ['payslip_format', 'Payslip Format', ['Standard', 'Detailed', 'Simple']],
+                                ];
+
+                                foreach ($select_fields as [$fkey, $flabel, $fopts]):
+                                    $fval = $account[$fkey] ?? '';
+                                ?>
+                                    <div class="ai-field">
+                                        <div class="ai-field-label"><?= esc($flabel) ?></div>
+
+                                        <?php if ($is_edit_mode): ?>
+
+                                            <select name="<?= esc($fkey) ?>">
+                                                <?php foreach ($fopts as $fo): ?>
+                                                    <option value="<?= esc($fo) ?>" <?= sel($fval, $fo) ?>>
+                                                        <?= esc($fo) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+
+                                        <?php else: ?>
+
+                                            <div class="ai-field-val <?= $fval === '' ? 'empty' : '' ?>">
+                                                <?= $fval !== '' ? esc($fval) : '—' ?>
+                                            </div>
+
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+
+                                <?php if ($is_edit_mode): ?>
+                                    <div class="ai-action-bar">
+                                        <button type="button" class="btn" onclick="cancelEdit()">Cancel</button>
+                                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                                    </div>
+                                <?php endif; ?>
+
+                            </div>
+                        </form>
+                    </div>
+
                 </div>
 
-            </div><!-- end ai-detail -->
-        </div><!-- end ai-layout -->
+            </div>
         </div>
 
-    </div><!-- end section-card -->
+    </div>
 </div>
 
-<!-- toast -->
 <div class="ai-toast" id="aiToast">
     <span id="aiToastIcon">✅</span>
     <span id="aiToastMsg">Saved!</span>
 </div>
 
 <script>
-/* ── Section switch ── */
 function switchSection(key) {
-    /* update accordion buttons */
     document.querySelectorAll('.ai-acc-btn').forEach(function(btn) {
         const active = btn.getAttribute('onclick').includes("'" + key + "'");
         btn.classList.toggle('active', active);
-        /* flip arrow */
+
         const svg = btn.querySelector('.ai-acc-arrow svg');
+
         if (svg) {
-            svg.querySelector('polyline').setAttribute('points',
-                active ? '2 8 6 4 10 8' : '2 4 6 8 10 4');
+            const polyline = svg.querySelector('polyline');
+
+            if (polyline) {
+                polyline.setAttribute('points', active ? '2 8 6 4 10 8' : '2 4 6 8 10 4');
+            }
         }
     });
 
-    /* show panel */
-    document.querySelectorAll('.ai-detail-panel').forEach(function(p) {
-        p.classList.toggle('active', p.id === 'panel-' + key);
+    document.querySelectorAll('.ai-detail-panel').forEach(function(panel) {
+        panel.classList.toggle('active', panel.id === 'panel-' + key);
     });
 
-    /* cancel any in-progress edit */
-    cancelEdit(true);
-
-    /* push to URL without reload */
     const url = new URL(window.location.href);
     url.searchParams.set('section', key);
     url.searchParams.delete('edit');
     history.replaceState(null, '', url.toString());
 }
 
-/* ── Edit mode ── */
-let currentEditSection = null;
-
-function startEdit(section) {
-    currentEditSection = section;
-
-    const panel = document.getElementById('panel-' + section);
-    if (!panel) return;
-
-    /* Hide all "Edit Details" links */
-    panel.querySelectorAll('.ai-edit-link').forEach(function(el){ el.style.display='none'; });
-
-    /* Convert all view values to inputs in this panel */
-    panel.querySelectorAll('.ai-field').forEach(function(field) {
-        const valDiv = field.querySelector('.ai-field-val');
-        if (!valDiv) return;
-
-        const name  = field.dataset.fname || '';
-        const ftype = field.dataset.ftype || 'text';
-        const val   = valDiv.dataset.val  || (valDiv.textContent.trim() === '—' ? '' : valDiv.textContent.trim());
-
-        if (ftype === 'select') {
-            /* handled server-side; ignore */
-            return;
-        }
-
-        const input = document.createElement('input');
-        input.type  = ftype;
-        input.name  = name;
-        input.value = val;
-        input.className = '';
-        input.style.cssText = 'width:100%;padding:8px 10px;border:none;border-bottom:1.5px solid #D1D5DB;font-family:inherit;font-size:13.5px;color:#111827;outline:none;background:transparent;transition:border-color .15s';
-        input.addEventListener('focus', function(){ this.style.borderBottomColor='#2563EB'; });
-        input.addEventListener('blur',  function(){ this.style.borderBottomColor='#D1D5DB'; });
-
-        valDiv.replaceWith(input);
-    });
-
-    /* Show action bar */
-    const bar = panel.querySelector('.ai-action-bar-js');
-    if (bar) bar.style.display = 'flex';
-
-    /* scroll panel into view */
-    panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
-}
-
-function cancelEdit(silent) {
-    /* Re-load the page to restore view state cleanly */
-    if (!silent && currentEditSection) {
-        const url = new URL(window.location.href);
-        url.searchParams.delete('edit');
-        window.location.href = url.toString();
-    }
-    currentEditSection = null;
+function cancelEdit() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('edit');
+    window.location.href = url.toString();
 }
 
 function testMail() {
     showAiToast('⏳', 'Sending test email...');
-    setTimeout(function(){ showAiToast('✅','Test email sent successfully!'); }, 1800);
+
+    setTimeout(function() {
+        showAiToast('✅', 'Test email sent successfully!');
+    }, 1200);
 }
 
-/* ── Toast ── */
 function showAiToast(icon, msg) {
-    const t  = document.getElementById('aiToast');
-    const ti = document.getElementById('aiToastIcon');
-    const tm = document.getElementById('aiToastMsg');
-    ti.textContent = icon;
-    tm.textContent = msg;
-    t.classList.add('show');
-    clearTimeout(t._t);
-    t._t = setTimeout(function(){ t.classList.remove('show'); }, 3200);
+    const toast = document.getElementById('aiToast');
+    const toastIcon = document.getElementById('aiToastIcon');
+    const toastMsg = document.getElementById('aiToastMsg');
+
+    if (!toast || !toastIcon || !toastMsg) {
+        alert(msg);
+        return;
+    }
+
+    toastIcon.textContent = icon;
+    toastMsg.textContent = msg;
+
+    toast.classList.add('show');
+
+    clearTimeout(toast._timer);
+
+    toast._timer = setTimeout(function() {
+        toast.classList.remove('show');
+    }, 3200);
 }
 
-/* ── Read URL params on load ── */
 document.addEventListener('DOMContentLoaded', function() {
-    const params  = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(window.location.search);
     const section = params.get('section');
 
-    if (section && ['company','statutory','mail','other'].includes(section)) {
+    if (section && ['company', 'statutory', 'mail', 'other'].includes(section)) {
         document.querySelectorAll('.ai-acc-btn').forEach(function(btn) {
             const active = btn.getAttribute('onclick').includes("'" + section + "'");
             btn.classList.toggle('active', active);
+
             const svg = btn.querySelector('.ai-acc-arrow svg');
+
             if (svg) {
-                svg.querySelector('polyline').setAttribute('points',
-                    active ? '2 8 6 4 10 8' : '2 4 6 8 10 4');
+                const polyline = svg.querySelector('polyline');
+
+                if (polyline) {
+                    polyline.setAttribute('points', active ? '2 8 6 4 10 8' : '2 4 6 8 10 4');
+                }
             }
         });
-        document.querySelectorAll('.ai-detail-panel').forEach(function(p) {
-            p.classList.toggle('active', p.id === 'panel-' + section);
+
+        document.querySelectorAll('.ai-detail-panel').forEach(function(panel) {
+            panel.classList.toggle('active', panel.id === 'panel-' + section);
         });
     }
 });
@@ -907,4 +1148,5 @@ include 'includes/header.php';
 echo $page_content;
 include 'includes/footer.php';
 ?>
+
 <script src="includes/assets/scripts.js"></script>
