@@ -16,6 +16,9 @@ Salary Component Category - Competed
 Statutory Components - Completed
 Rounding rule - Completed
 Department - Completed 
+Approvals - Completed
+Employee - Completed
+
 
 
 

@@ -1,38 +1,15 @@
 <?php
+session_start();
+if (!isset($_SESSION['login'])) {
+    header('Location: login');
+    exit();
+}
+
+
+require_once 'includes/db_client.php';
 require_once 'includes/config.php';
 
 $page_title = 'Approval Request';
-
-$pending_requests = $pending_requests ?? [];
-
-$total_requests     = count($pending_requests);
-$leave_count        = count(array_filter($pending_requests, fn($r) => ($r['type'] ?? '') === 'Leave'));
-$attendance_count   = count(array_filter($pending_requests, fn($r) => ($r['type'] ?? '') === 'Attendance'));
-
-$active_tab = $_GET['tab'] ?? 'insights';
-
-$selected_id  = isset($_GET['req']) ? (int)$_GET['req'] : ($pending_requests[0]['id'] ?? null);
-$selected_req = null;
-
-foreach ($pending_requests as $r) {
-    if ((int)$r['id'] === (int)$selected_id) {
-        $selected_req = $r;
-        break;
-    }
-}
-
-if (!$selected_req && !empty($pending_requests)) {
-    $selected_req = $pending_requests[0];
-    $selected_id  = $selected_req['id'];
-}
-
-$filter_type = $_GET['filter'] ?? 'All';
-
-$action_done = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action_done = $_POST['action'] ?? '';
-    // TODO: DB update
-}
 
 function esc($v) {
     return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
@@ -48,6 +25,157 @@ if (!function_exists('initials')) {
     }
 }
 
+function fmtDate($date) {
+    if (empty($date) || $date === '0000-00-00') return '—';
+    return date('d M Y', strtotime($date));
+}
+
+function fmtDateTime($date) {
+    if (empty($date) || $date === '0000-00-00 00:00:00') return '—';
+    return date('d M Y h:i A', strtotime($date));
+}
+
+$active_tab  = $_GET['tab'] ?? 'insights';
+$filter_type = $_GET['filter'] ?? 'All';
+$search_q    = trim($_GET['search'] ?? '');
+$selected_id = isset($_GET['req']) ? (int)$_GET['req'] : 0;
+
+$toast_msg  = $_SESSION['toast_msg'] ?? '';
+$toast_icon = $_SESSION['toast_icon'] ?? '✅';
+unset($_SESSION['toast_msg'], $_SESSION['toast_icon']);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    $req_id = (int)($_POST['req_id'] ?? 0);
+
+    if (($action === 'approve' || $action === 'reject') && $req_id > 0) {
+        $new_status = $action === 'approve' ? 'approved' : 'rejected';
+        $action_by  = (int)($_SESSION['user_id'] ?? $_SESSION['userid'] ?? 0);
+
+        $stmt = $conn->prepare("
+            UPDATE approval_requests
+            SET status = ?, action_by = ?, action_at = NOW()
+            WHERE id = ?
+        ");
+        $stmt->bind_param("sii", $new_status, $action_by, $req_id);
+
+        if ($stmt->execute()) {
+            $_SESSION['toast_icon'] = $action === 'approve' ? '✅' : '✕';
+            $_SESSION['toast_msg']  = $action === 'approve' ? 'Request approved successfully!' : 'Request rejected.';
+        } else {
+            $_SESSION['toast_icon'] = '❌';
+            $_SESSION['toast_msg']  = 'Action failed: ' . $stmt->error;
+        }
+
+        header("Location: ?tab=" . urlencode($active_tab));
+        exit;
+    }
+}
+
+$where = [];
+$params = [];
+$types = '';
+
+if ($active_tab === 'pending' || $active_tab === 'insights' || $active_tab === 'all_requests') {
+    $where[] = "status = 'pending'";
+}
+
+if ($active_tab === 'completed') {
+    $where[] = "status IN ('approved','rejected')";
+}
+
+if ($filter_type !== 'All' && in_array($filter_type, ['Leave', 'Attendance'], true)) {
+    $where[] = "type = ?";
+    $params[] = $filter_type;
+    $types .= 's';
+}
+
+if ($search_q !== '') {
+    $where[] = "(emp_name LIKE ? OR emp_code LIKE ?)";
+    $like = '%' . $search_q . '%';
+    $params[] = $like;
+    $params[] = $like;
+    $types .= 'ss';
+}
+
+$where_sql = $where ? "WHERE " . implode(" AND ", $where) : "";
+
+$sql = "
+    SELECT *
+    FROM approval_requests
+    $where_sql
+    ORDER BY requested_on DESC, id DESC
+";
+
+$stmt = $conn->prepare($sql);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$res = $stmt->get_result();
+
+$pending_requests = [];
+while ($row = $res->fetch_assoc()) {
+    $pending_requests[] = [
+        'id'         => $row['id'],
+        'emp_code'   => $row['emp_code'],
+        'emp_name'   => $row['emp_name'],
+        'type'       => $row['type'],
+        'stage'      => $row['stage'],
+        'date'       => fmtDate($row['request_date']),
+        'requested'  => fmtDateTime($row['requested_on']),
+        'shift_date' => fmtDate($row['shift_date']),
+        'in_old'     => $row['in_old'],
+        'in_new'     => $row['in_new'],
+        'out_old'    => $row['out_old'],
+        'out_new'    => $row['out_new'],
+        'reasons'    => $row['reasons'],
+        'remarks'    => $row['remarks'],
+        'status'     => $row['status'],
+        'action_at'  => fmtDateTime($row['action_at']),
+    ];
+}
+$stmt->close();
+
+$total_requests   = count($pending_requests);
+$leave_count      = count(array_filter($pending_requests, fn($r) => ($r['type'] ?? '') === 'Leave'));
+$attendance_count = count(array_filter($pending_requests, fn($r) => ($r['type'] ?? '') === 'Attendance'));
+
+$completed_total = 0;
+$approved_total  = 0;
+$rejected_total  = 0;
+
+$resStats = $conn->query("
+    SELECT
+      SUM(status='pending') AS pending_total,
+      SUM(status='approved') AS approved_total,
+      SUM(status='rejected') AS rejected_total,
+      COUNT(*) AS all_total
+    FROM approval_requests
+");
+if ($resStats && $stats = $resStats->fetch_assoc()) {
+    $approved_total  = (int)$stats['approved_total'];
+    $rejected_total  = (int)$stats['rejected_total'];
+    $completed_total = $approved_total + $rejected_total;
+}
+
+if ($selected_id <= 0 && !empty($pending_requests)) {
+    $selected_id = (int)$pending_requests[0]['id'];
+}
+
+$selected_req = null;
+foreach ($pending_requests as $r) {
+    if ((int)$r['id'] === (int)$selected_id) {
+        $selected_req = $r;
+        break;
+    }
+}
+
+if (!$selected_req && !empty($pending_requests)) {
+    $selected_req = $pending_requests[0];
+    $selected_id  = (int)$selected_req['id'];
+}
+
 function renderRightPanel($selected_req) {
     if (!$selected_req) {
         return '<div class="ar-empty"><p>No request selected</p></div>';
@@ -55,6 +183,8 @@ function renderRightPanel($selected_req) {
 
     ob_start();
     ?>
+
+    
     <div class="ar-right-head">
         <div class="ar-right-av"><?= initials($selected_req['emp_name'] ?? '') ?></div>
         <div>
@@ -108,21 +238,26 @@ function renderRightPanel($selected_req) {
         <span class="ar-detail-val"><?= esc($selected_req['remarks'] ?? '') ?: '—' ?></span>
     </div>
 
+    <?php if (($selected_req['status'] ?? '') === 'pending'): ?>
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
         <form method="POST" style="flex:1">
             <input type="hidden" name="action" value="reject">
             <input type="hidden" name="req_id" value="<?= esc($selected_req['id'] ?? '') ?>">
-            <button type="submit" class="ar-btn-reject" style="width:100%;padding:8px"
-                onclick="handleAction(event,'reject',<?= (int)($selected_req['id'] ?? 0) ?>)">Reject</button>
+            <button type="submit" class="ar-btn-reject" style="width:100%;padding:8px">Reject</button>
         </form>
 
         <form method="POST" style="flex:1">
             <input type="hidden" name="action" value="approve">
             <input type="hidden" name="req_id" value="<?= esc($selected_req['id'] ?? '') ?>">
-            <button type="submit" class="ar-btn-approve" style="width:100%;padding:8px"
-                onclick="handleAction(event,'approve',<?= (int)($selected_req['id'] ?? 0) ?>)">Approve</button>
+            <button type="submit" class="ar-btn-approve" style="width:100%;padding:8px">Approve</button>
         </form>
     </div>
+    <?php else: ?>
+    <div class="ar-detail-row">
+        <span class="ar-detail-label">Status :</span>
+        <span class="ar-detail-val"><?= esc(ucfirst($selected_req['status'] ?? '')) ?></span>
+    </div>
+    <?php endif; ?>
     <?php
     return ob_get_clean();
 }
@@ -151,6 +286,7 @@ ob_start();
 ?>
 
 <link rel="stylesheet" href="includes/assets/style.css">
+
 
 <style>
 /* ═══════════════════════════════════════
@@ -685,14 +821,6 @@ ob_start();
 }
 </style>
 
-<?php if (!empty($action_done)): ?>
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-    arToast('✅', '<?= $action_done === "approve" ? "Request approved!" : "Request rejected." ?>');
-});
-</script>
-<?php endif; ?>
-
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
     <h1 class="page-title">Approval Request</h1>
     <div class="ar-tabs">
@@ -724,27 +852,16 @@ document.addEventListener('DOMContentLoaded', function(){
             <span class="ar-stat-title">Total Approvals</span>
             <?= insightFilterButton() ?>
         </div>
-        <div class="ar-stat-big" id="insightTotalBig"><?= (int)$total_requests ?></div>
+        <div class="ar-stat-big" id="insightTotalBig"><?= (int)($total_requests + $completed_total) ?></div>
         <div class="ar-stat-sub">Total Approvals Received</div>
         <div class="ar-stat-row-items">
             <div class="ar-stat-item">
-                <div class="ar-stat-item-left">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round">
-                        <path d="M12 22C12 22 12 12 12 12M12 12C12 12 7 15 7 15M12 12L17 15"/>
-                        <circle cx="12" cy="7" r="3"/>
-                    </svg>
-                    Pending
-                </div>
+                <div class="ar-stat-item-left">Pending</div>
                 <span class="ar-stat-count" id="insightPendingCount"><?= (int)$total_requests ?></span>
             </div>
             <div class="ar-stat-item">
-                <div class="ar-stat-item-left">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                    Completed
-                </div>
-                <span class="ar-stat-count" id="insightCompletedCount">0</span>
+                <div class="ar-stat-item-left">Completed</div>
+                <span class="ar-stat-count" id="insightCompletedCount"><?= (int)$completed_total ?></span>
             </div>
         </div>
     </div>
@@ -755,14 +872,6 @@ document.addEventListener('DOMContentLoaded', function(){
             <?= insightFilterButton() ?>
         </div>
         <div class="ar-empty-mini">
-            <div class="ar-empty-doc-bg" style="width:64px;height:78px">
-                <div class="ar-empty-doc-top" style="height:18px"></div>
-                <div class="ar-empty-doc-lines">
-                    <div class="ar-empty-doc-line" style="width:80%"></div>
-                    <div class="ar-empty-doc-line" style="width:65%"></div>
-                    <div class="ar-empty-doc-line" style="width:75%"></div>
-                </div>
-            </div>
             <p id="insightPendingText"><?= $total_requests ? $total_requests . ' pending approval(s)' : "You don't have any pending approvals!" ?></p>
         </div>
     </div>
@@ -773,15 +882,9 @@ document.addEventListener('DOMContentLoaded', function(){
             <?= insightFilterButton() ?>
         </div>
         <div class="ar-empty-mini">
-            <div class="ar-empty-doc-bg" style="width:64px;height:78px">
-                <div class="ar-empty-doc-top" style="height:18px"></div>
-                <div class="ar-empty-doc-lines">
-                    <div class="ar-empty-doc-line" style="width:80%"></div>
-                    <div class="ar-empty-doc-line" style="width:65%"></div>
-                    <div class="ar-empty-doc-line" style="width:75%"></div>
-                </div>
-            </div>
-            <p id="insightStatsText">You don't have any Approval Request Stats!</p>
+            <p id="insightStatsText">
+                Approved: <?= (int)$approved_total ?> | Rejected: <?= (int)$rejected_total ?>
+            </p>
         </div>
     </div>
 
@@ -796,27 +899,37 @@ document.addEventListener('DOMContentLoaded', function(){
         <div class="ar-toolbar">
             <div class="ar-search">
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" placeholder="Search">
+                <input type="text" placeholder="Search" oninput="filterCards(this.value)">
             </div>
             <label class="ar-select-all">
-                <input type="checkbox"> Select All
+                <input type="checkbox" onchange="toggleSelectAll(this)"> Select All
             </label>
-            <select class="ar-type-filter"><option>All</option><option>Attendance</option><option>Leave</option></select>
+            <select class="ar-type-filter" onchange="filterCards(document.getElementById('insightSearch')?.value || '')">
+                <option>All</option>
+                <option>Attendance</option>
+                <option>Leave</option>
+            </select>
         </div>
-        <div class="ar-empty" style="min-height:220px">
-            <svg class="ar-empty-robot-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="20" y="40" width="60" height="45" rx="6" fill="#D1D5DB"/>
-                <rect x="30" y="25" width="40" height="20" rx="4" fill="#9CA3AF"/>
-                <circle cx="40" cy="55" r="5" fill="#E5E7EB"/>
-                <circle cx="60" cy="55" r="5" fill="#E5E7EB"/>
-                <path d="M42 66 Q50 72 58 66" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" fill="none"/>
-                <rect x="10" y="50" width="8" height="20" rx="3" fill="#9CA3AF"/>
-                <rect x="82" y="50" width="8" height="20" rx="3" fill="#9CA3AF"/>
-                <rect x="30" y="85" width="12" height="10" rx="2" fill="#9CA3AF"/>
-                <rect x="58" y="85" width="12" height="10" rx="2" fill="#9CA3AF"/>
-            </svg>
-            <p style="font-size:14px;font-weight:600;color:#374151">No Pending Approvals</p>
-        </div>
+
+        <?php if (empty($pending_requests)): ?>
+            <div class="ar-empty" style="min-height:220px">
+                <p style="font-size:14px;font-weight:600;color:#374151">No Pending Approvals</p>
+            </div>
+        <?php else: ?>
+            <?php foreach ($pending_requests as $req): ?>
+                <?php $rid = (int)$req['id']; ?>
+                <div class="ar-req-card" data-type="<?= esc($req['type']) ?>" data-name="<?= esc(strtolower($req['emp_name'] . ' ' . $req['emp_code'])) ?>">
+                    <input type="checkbox" class="req-chk" onclick="event.stopPropagation()">
+                    <div class="ar-req-av"><?= initials($req['emp_name']) ?></div>
+                    <div class="ar-req-body">
+                        <div class="ar-req-name"><?= esc($req['emp_name']) ?> - <?= esc($req['emp_code']) ?></div>
+                        <div class="ar-req-stage"><?= esc($req['stage']) ?></div>
+                        <div class="ar-req-date"><?= esc($req['date']) ?></div>
+                    </div>
+                    <span class="ar-type-badge <?= esc($req['type']) ?>"><?= esc($req['type']) ?></span>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -827,31 +940,54 @@ document.addEventListener('DOMContentLoaded', function(){
         <div class="ar-left-head">Pending Approvals</div>
         <div class="ar-total-row">Total Requests - <?= (int)$total_requests ?></div>
     </div>
+
     <div class="ar-mid">
         <div class="ar-toolbar">
             <div class="ar-search">
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" placeholder="Search">
+                <input type="text" id="pendingSearch" placeholder="Search" oninput="filterCards(this.value)">
             </div>
             <label class="ar-select-all">
-                <input type="checkbox"> Select All
+                <input type="checkbox" onchange="toggleSelectAll(this)"> Select All
             </label>
-            <select class="ar-type-filter"><option>All</option><option>Attendance</option><option>Leave</option></select>
+            <select class="ar-type-filter" id="pendingTypeFilter" onchange="filterCards(document.getElementById('pendingSearch').value)">
+                <option value="All">All</option>
+                <option value="Attendance">Attendance</option>
+                <option value="Leave">Leave</option>
+            </select>
         </div>
-        <div class="ar-empty" style="min-height:280px">
-            <svg class="ar-empty-robot-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="20" y="40" width="60" height="45" rx="6" fill="#D1D5DB"/>
-                <rect x="30" y="25" width="40" height="20" rx="4" fill="#9CA3AF"/>
-                <circle cx="40" cy="55" r="5" fill="#E5E7EB"/>
-                <circle cx="60" cy="55" r="5" fill="#E5E7EB"/>
-                <path d="M42 66 Q50 72 58 66" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" fill="none"/>
-                <rect x="10" y="50" width="8" height="20" rx="3" fill="#9CA3AF"/>
-                <rect x="82" y="50" width="8" height="20" rx="3" fill="#9CA3AF"/>
-                <rect x="30" y="85" width="12" height="10" rx="2" fill="#9CA3AF"/>
-                <rect x="58" y="85" width="12" height="10" rx="2" fill="#9CA3AF"/>
-            </svg>
-            <p style="font-size:14px;font-weight:600;color:#374151">No Pending Approvals</p>
-        </div>
+
+        <?php if (empty($pending_requests)): ?>
+            <div class="ar-empty" style="min-height:280px">
+                <p style="font-size:14px;font-weight:600;color:#374151">No Pending Approvals</p>
+            </div>
+        <?php else: ?>
+            <?php foreach ($pending_requests as $req): ?>
+                <?php $rid = (int)$req['id']; ?>
+                <div class="ar-req-card" data-type="<?= esc($req['type']) ?>" data-name="<?= esc(strtolower($req['emp_name'] . ' ' . $req['emp_code'])) ?>">
+                    <input type="checkbox" class="req-chk" onclick="event.stopPropagation()">
+                    <div class="ar-req-av"><?= initials($req['emp_name']) ?></div>
+                    <div class="ar-req-body">
+                        <div class="ar-req-name"><?= esc($req['emp_name']) ?> - <?= esc($req['emp_code']) ?></div>
+                        <div class="ar-req-stage"><?= esc($req['stage']) ?></div>
+                        <div class="ar-req-date"><?= esc($req['date']) ?></div>
+                        <div class="ar-req-btns">
+                            <form method="POST" style="display:inline">
+                                <input type="hidden" name="action" value="reject">
+                                <input type="hidden" name="req_id" value="<?= $rid ?>">
+                                <button type="submit" class="ar-btn-reject">Reject</button>
+                            </form>
+                            <form method="POST" style="display:inline">
+                                <input type="hidden" name="action" value="approve">
+                                <input type="hidden" name="req_id" value="<?= $rid ?>">
+                                <button type="submit" class="ar-btn-approve">Approve</button>
+                            </form>
+                        </div>
+                    </div>
+                    <span class="ar-type-badge <?= esc($req['type']) ?>"><?= esc($req['type']) ?></span>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -862,64 +998,54 @@ document.addEventListener('DOMContentLoaded', function(){
         <h3>Completed Approvals</h3>
         <p>Select an employee or date range to view completed requests.</p>
     </div>
-    <div class="ar-comp-toolbar">
+
+    <form method="GET" class="ar-comp-toolbar">
+        <input type="hidden" name="tab" value="completed">
+
         <div class="ar-comp-search">
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="compSearch" placeholder="Search by name or #code">
+            <input type="text" name="search" value="<?= esc($search_q) ?>" placeholder="Search by name or #code">
         </div>
-        <button class="ar-comp-date-btn" onclick="toggleDatePicker()">
-            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            Select Date
-        </button>
-        <button class="ar-comp-filter-btn">
-            <svg viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-            Filter
-        </button>
-        <select class="ar-comp-select">
-            <option>All</option>
-            <option>Attendance</option>
-            <option>Leave</option>
+
+        <select class="ar-comp-select" name="filter">
+            <option value="All" <?= $filter_type === 'All' ? 'selected' : '' ?>>All</option>
+            <option value="Attendance" <?= $filter_type === 'Attendance' ? 'selected' : '' ?>>Attendance</option>
+            <option value="Leave" <?= $filter_type === 'Leave' ? 'selected' : '' ?>>Leave</option>
         </select>
-        <button class="ar-comp-search-btn" onclick="searchCompleted()">Search</button>
-    </div>
 
-    <div class="ar-empty" id="compEmptyState" style="min-height:320px">
-        <svg viewBox="0 0 260 200" width="220" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="60" y="30" width="140" height="110" rx="6" fill="#F3F4F6"/>
-            <rect x="60" y="30" width="140" height="18" rx="6" fill="#D1D5DB"/>
-            <circle cx="70" cy="39" r="3" fill="#EF4444"/>
-            <circle cx="80" cy="39" r="3" fill="#F59E0B"/>
-            <circle cx="90" cy="39" r="3" fill="#10B981"/>
-            <circle cx="90" cy="70" r="12" fill="#F59E0B"/>
-            <rect x="108" y="65" width="50" height="5" rx="2.5" fill="#D1D5DB"/>
-            <rect x="108" y="75" width="40" height="5" rx="2.5" fill="#E5E7EB"/>
-            <circle cx="90" cy="112" r="12" fill="#2563EB"/>
-            <line x1="90" y1="107" x2="90" y2="117" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
-            <line x1="85" y1="112" x2="95" y2="112" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
-            <rect x="108" y="107" width="50" height="5" rx="2.5" fill="#D1D5DB"/>
-            <rect x="108" y="117" width="40" height="5" rx="2.5" fill="#E5E7EB"/>
-            <circle cx="200" cy="90" r="14" fill="#111827"/>
-            <rect x="185" y="104" width="30" height="45" rx="4" fill="#374151"/>
-            <circle cx="208" cy="138" r="8" fill="#10B981"/>
-            <circle cx="208" cy="138" r="4" fill="#065F46"/>
-        </svg>
-        <p style="font-size:13.5px;font-weight:600;color:#374151">Search based on dates to view completed approvals</p>
-    </div>
+        <button class="ar-comp-search-btn" type="submit">Search</button>
+    </form>
 
-    <div id="compResults" style="display:none;overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-            <thead>
-                <tr style="background:#FAFAFA">
-                    <th style="padding:11px 16px;text-align:left;font-weight:600;color:#6B7280;font-size:11px;letter-spacing:.4px;border-bottom:1px solid #E5E7EB">EMPLOYEE</th>
-                    <th style="padding:11px 16px;text-align:left;font-weight:600;color:#6B7280;font-size:11px;letter-spacing:.4px;border-bottom:1px solid #E5E7EB">TYPE</th>
-                    <th style="padding:11px 16px;text-align:left;font-weight:600;color:#6B7280;font-size:11px;letter-spacing:.4px;border-bottom:1px solid #E5E7EB">DATE</th>
-                    <th style="padding:11px 16px;text-align:left;font-weight:600;color:#6B7280;font-size:11px;letter-spacing:.4px;border-bottom:1px solid #E5E7EB">STAGE</th>
-                    <th style="padding:11px 16px;text-align:center;font-weight:600;color:#6B7280;font-size:11px;letter-spacing:.4px;border-bottom:1px solid #E5E7EB">STATUS</th>
-                </tr>
-            </thead>
-            <tbody id="compTableBody"></tbody>
-        </table>
-    </div>
+    <?php if (empty($pending_requests)): ?>
+        <div class="ar-empty" id="compEmptyState" style="min-height:320px">
+            <p style="font-size:13.5px;font-weight:600;color:#374151">No completed approvals found</p>
+        </div>
+    <?php else: ?>
+        <div id="compResults" style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead>
+                    <tr style="background:#FAFAFA">
+                        <th style="padding:11px 16px;text-align:left;font-weight:600;color:#6B7280;font-size:11px;letter-spacing:.4px;border-bottom:1px solid #E5E7EB">EMPLOYEE</th>
+                        <th style="padding:11px 16px;text-align:left;font-weight:600;color:#6B7280;font-size:11px;letter-spacing:.4px;border-bottom:1px solid #E5E7EB">TYPE</th>
+                        <th style="padding:11px 16px;text-align:left;font-weight:600;color:#6B7280;font-size:11px;letter-spacing:.4px;border-bottom:1px solid #E5E7EB">DATE</th>
+                        <th style="padding:11px 16px;text-align:left;font-weight:600;color:#6B7280;font-size:11px;letter-spacing:.4px;border-bottom:1px solid #E5E7EB">STAGE</th>
+                        <th style="padding:11px 16px;text-align:center;font-weight:600;color:#6B7280;font-size:11px;letter-spacing:.4px;border-bottom:1px solid #E5E7EB">STATUS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($pending_requests as $req): ?>
+                    <tr style="border-bottom:1px solid #F3F4F6">
+                        <td style="padding:11px 16px;font-weight:500"><?= esc($req['emp_name']) ?> - <?= esc($req['emp_code']) ?></td>
+                        <td style="padding:11px 16px;color:#6B7280"><?= esc($req['type']) ?></td>
+                        <td style="padding:11px 16px;color:#6B7280"><?= esc($req['action_at']) ?></td>
+                        <td style="padding:11px 16px;color:#6B7280"><?= esc($req['stage']) ?></td>
+                        <td style="padding:11px 16px;text-align:center"><?= esc(ucfirst($req['status'])) ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
 </div>
 
 <?php elseif ($active_tab === 'all_requests'): ?>
@@ -952,9 +1078,11 @@ document.addEventListener('DOMContentLoaded', function(){
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="text" id="allSearch" placeholder="Search" oninput="filterAllReqs(this.value)">
             </div>
+
             <label class="ar-select-all">
                 <input type="checkbox" id="selectAllChk" onchange="toggleSelectAll(this)"> Select All
             </label>
+
             <select class="ar-type-filter" id="typeFilterSel" onchange="filterAllReqs(document.getElementById('allSearch').value)">
                 <option value="All" <?= $filter_type==='All'?'selected':'' ?>>All</option>
                 <option value="Attendance" <?= $filter_type==='Attendance'?'selected':'' ?>>Attendance</option>
@@ -983,17 +1111,15 @@ document.addEventListener('DOMContentLoaded', function(){
                 <div class="ar-req-stage"><?= esc($req['stage'] ?? '') ?></div>
                 <div class="ar-req-date"><?= esc($req['date'] ?? '') ?></div>
                 <div class="ar-req-btns">
-                    <form method="POST" style="display:inline" onsubmit="event.stopPropagation()">
+                    <form method="POST" style="display:inline" onclick="event.stopPropagation()">
                         <input type="hidden" name="action" value="reject">
                         <input type="hidden" name="req_id" value="<?= $rid ?>">
-                        <button type="submit" class="ar-btn-reject"
-                            onclick="handleAction(event,'reject',<?= $rid ?>)">Reject</button>
+                        <button type="submit" class="ar-btn-reject">Reject</button>
                     </form>
-                    <form method="POST" style="display:inline" onsubmit="event.stopPropagation()">
+                    <form method="POST" style="display:inline" onclick="event.stopPropagation()">
                         <input type="hidden" name="action" value="approve">
                         <input type="hidden" name="req_id" value="<?= $rid ?>">
-                        <button type="submit" class="ar-btn-approve"
-                            onclick="handleAction(event,'approve',<?= $rid ?>)">Approve</button>
+                        <button type="submit" class="ar-btn-approve">Approve</button>
                     </form>
                     <button class="ar-btn-detail" onclick="event.stopPropagation();selectReq(<?= $rid ?>)">Detailed View</button>
                 </div>
@@ -1159,15 +1285,13 @@ function selectReq(id) {
             <form method="POST" style="flex:1">
                 <input type="hidden" name="action" value="reject">
                 <input type="hidden" name="req_id" value="${escHtml(req.id || '')}">
-                <button type="submit" class="ar-btn-reject" style="width:100%;padding:8px"
-                    onclick="handleAction(event,'reject',${Number(req.id || 0)})">Reject</button>
+                <button type="submit" class="ar-btn-reject" style="width:100%;padding:8px">Reject</button>
             </form>
 
             <form method="POST" style="flex:1">
                 <input type="hidden" name="action" value="approve">
                 <input type="hidden" name="req_id" value="${escHtml(req.id || '')}">
-                <button type="submit" class="ar-btn-approve" style="width:100%;padding:8px"
-                    onclick="handleAction(event,'approve',${Number(req.id || 0)})">Approve</button>
+                <button type="submit" class="ar-btn-approve" style="width:100%;padding:8px">Approve</button>
             </form>
         </div>
     `;
@@ -1199,6 +1323,15 @@ function setFilter(type) {
     history.replaceState(null, '', url.toString());
 }
 
+function filterCards(q) {
+    q = String(q || '').toLowerCase().trim();
+
+    document.querySelectorAll('.ar-req-card').forEach(function(card) {
+        var nameMatch = !q || (card.dataset.name || '').includes(q);
+        card.style.display = nameMatch ? '' : 'none';
+    });
+}
+
 function filterAllReqs(q) {
     q = String(q || '').toLowerCase().trim();
 
@@ -1222,73 +1355,6 @@ function toggleSelectAll(chk) {
     });
 }
 
-function handleAction(event, action, reqId) {
-    event.preventDefault();
-
-    var card = document.getElementById('reqCard-' + reqId);
-
-    if (action === 'approve') {
-        arToast('✅', 'Request approved successfully!');
-    } else {
-        arToast('✕', 'Request rejected.');
-    }
-
-    if (card) {
-        card.style.opacity = '.4';
-        card.style.pointerEvents = 'none';
-    }
-}
-
-function toggleDatePicker() {
-    openCustomDateFilter();
-}
-
-function searchCompleted() {
-    var q = (document.getElementById('compSearch') || {}).value || '';
-
-    if (!q) {
-        arToast('⚠', 'Please enter a name or select a date range.');
-        return;
-    }
-
-    var emptyState  = document.getElementById('compEmptyState');
-    var resultsWrap = document.getElementById('compResults');
-    var tbody       = document.getElementById('compTableBody');
-
-    if (emptyState)  emptyState.style.display  = 'none';
-    if (resultsWrap) resultsWrap.style.display  = 'block';
-
-    var mockData = [
-        ['Rajib Das – 1002',      'Attendance', '05 Apr 2026', 'Stage_1', 'Approved'],
-        ['Sunita Paul – 1003',    'Leave',      '02 Apr 2026', 'Stage_1', 'Rejected'],
-        ['Kavya Nair – 1010',     'Attendance', '28 Mar 2026', 'Stage_1', 'Approved'],
-    ].filter(function(r){ return r[0].toLowerCase().includes(q.toLowerCase()); });
-
-    if (tbody) {
-        if (mockData.length === 0) {
-            if (emptyState) { emptyState.style.display='flex'; resultsWrap.style.display='none'; }
-            arToast('🔍','No completed approvals found for "'+q+'"');
-            return;
-        }
-
-        tbody.innerHTML = mockData.map(function(r){
-            var statusBg  = r[4]==='Approved'?'#D1FAE5':'#FEE2E2';
-            var statusCol = r[4]==='Approved'?'#065F46':'#991B1B';
-            return '<tr style="border-bottom:1px solid #F3F4F6">'
-                + '<td style="padding:11px 16px;font-weight:500">'+escHtml(r[0])+'</td>'
-                + '<td style="padding:11px 16px;color:#6B7280">'+escHtml(r[1])+'</td>'
-                + '<td style="padding:11px 16px;color:#6B7280">'+escHtml(r[2])+'</td>'
-                + '<td style="padding:11px 16px;color:#6B7280">'+escHtml(r[3])+'</td>'
-                + '<td style="padding:11px 16px;text-align:center">'
-                + '<span style="display:inline-flex;align-items:center;justify-content:center;border-radius:20px;font-size:11.5px;font-weight:600;padding:3px 10px;background:'+statusBg+';color:'+statusCol+'">'+escHtml(r[4])+'</span>'
-                + '</td></tr>';
-        }).join('');
-    }
-
-    arToast('🔍', mockData.length + ' completed approval(s) found.');
-}
-
-/* Insights working filter */
 function toggleInsightFilter(btn) {
     document.querySelectorAll('.ar-filter-wrap').forEach(function(wrap) {
         if (wrap !== btn.closest('.ar-filter-wrap')) {
@@ -1306,7 +1372,7 @@ function applyInsightFilter(type, label) {
         if (labelEl) labelEl.textContent = label;
     });
 
-    loadInsightData(type);
+    arToast('✅', 'Filter applied: ' + label);
 }
 
 function openCustomDateFilter() {
@@ -1340,41 +1406,7 @@ function applyCustomDateFilter() {
     });
 
     closeCustomDateFilter();
-    loadInsightData('custom', from, to);
-}
-
-function loadInsightData(type, from = '', to = '') {
-    var total = <?= (int)$total_requests ?>;
-    var pending = <?= (int)$total_requests ?>;
-    var completed = 0;
-
-    var totalBig = document.getElementById('insightTotalBig');
-    var pendingCount = document.getElementById('insightPendingCount');
-    var completedCount = document.getElementById('insightCompletedCount');
-    var pendingText = document.getElementById('insightPendingText');
-    var totalRow = document.getElementById('insightTotalRow');
-
-    if (totalBig) totalBig.textContent = total;
-    if (pendingCount) pendingCount.textContent = pending;
-    if (completedCount) completedCount.textContent = completed;
-    if (pendingText) pendingText.textContent = pending ? pending + ' pending approval(s)' : "You don't have any pending approvals!";
-    if (totalRow) totalRow.textContent = 'Total Requests - ' + total;
-
-    if (type === 'custom') {
-        arToast('📅', 'Filter applied: ' + from + ' to ' + to);
-    } else {
-        var labels = {
-            this_month: 'This Month',
-            last_month: 'Last Month',
-            this_year: 'This Year'
-        };
-        arToast('✅', 'Filter applied: ' + (labels[type] || 'This Month'));
-    }
-
-    /*
-    For real DB filter, create get_approval_insights.php
-    and replace above values using fetch().
-    */
+    arToast('📅', 'Filter applied: ' + from + ' to ' + to);
 }
 
 document.addEventListener('click', function(e) {
@@ -1388,6 +1420,12 @@ document.addEventListener('click', function(e) {
         closeCustomDateFilter();
     }
 });
+
+<?php if ($toast_msg): ?>
+document.addEventListener('DOMContentLoaded', function(){
+    arToast(<?= json_encode($toast_icon) ?>, <?= json_encode($toast_msg) ?>);
+});
+<?php endif; ?>
 </script>
 
 <?php
