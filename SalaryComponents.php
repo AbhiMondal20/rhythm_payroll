@@ -1,86 +1,230 @@
 <?php
 require_once 'includes/config.php';
+require_once 'includes/db_client.php';
+
 $page_title = 'Salary Components';
 
-/* ─────────────────────────────────────────
-   DATA
-───────────────────────────────────────── */
-$earnings = [
-    ['code'=>'ALL12','name'=>'Allowances',               'expr'=>'ALL12'],
-    ['code'=>'ARR',  'name'=>'Arrears',                  'expr'=>'ARR'],
-    ['code'=>'BAS',  'name'=>'Basic',                    'expr'=>'BAS * (PAID_DAYS / TOTALDAYS)'],
-    ['code'=>'BON',  'name'=>'Bonus',                    'expr'=>'BON'],
-    ['code'=>'CEA',  'name'=>'Children Eduction Allowance','expr'=>'CEA * (PAID_DAYS / TOTALDAYS)'],
-    ['code'=>'CF',   'name'=>'Consultant Fee',           'expr'=>'CF * (PAID_DAYS / TOTALDAYS)'],
-    ['code'=>'CONV', 'name'=>'Conveyance',               'expr'=>'CONV * (PAID_DAYS / TOTALDAYS)'],
-    ['code'=>'DA',   'name'=>'Dearness Allowance',       'expr'=>'DA * (PAID_DAYS / TOTALDAYS)'],
-    ['code'=>'HRA',  'name'=>'House Rent Allowance',     'expr'=>'HRA * (PAID_DAYS / TOTALDAYS)'],
-    ['code'=>'LTA',  'name'=>'Leave Travel Allowance',   'expr'=>'LTA * (PAID_DAYS / TOTALDAYS)'],
-    ['code'=>'MED',  'name'=>'Medical Allowance',        'expr'=>'MED * (PAID_DAYS / TOTALDAYS)'],
-    ['code'=>'NPA',  'name'=>'Night Shift Allowance',    'expr'=>'NPA'],
-    ['code'=>'OT',   'name'=>'Overtime',                 'expr'=>'OT'],
-    ['code'=>'SA',   'name'=>'Special Allowance',        'expr'=>'SA * (PAID_DAYS / TOTALDAYS)'],
-    ['code'=>'VPA',  'name'=>'Variable Pay',             'expr'=>'VPA'],
-    ['code'=>'WA',   'name'=>'Washing Allowance',        'expr'=>'WA * (PAID_DAYS / TOTALDAYS)'],
-];
-
-$deductions = [
-    ['code'=>'ADD',       'name'=>'Advance Deduction',       'expr'=>'ADD'],
-    ['code'=>'LNA',       'name'=>'Loans & Advances',        'expr'=>'LNA'],
-    ['code'=>'LND',       'name'=>'Loan Deduction',          'expr'=>'LND'],
-    ['code'=>'MOBD',      'name'=>'Mobile Deductions',       'expr'=>'MOBD'],
-    ['code'=>'PNL',       'name'=>'Penalties',               'expr'=>'PNL'],
-    ['code'=>'PSF1',      'name'=>'PSF1',                    'expr'=>'(GRSAL)*(PAID_DAYS / TOTALDAYS)*0.01'],
-    ['code'=>'TDS',       'name'=>'TDS',                     'expr'=>'TDS'],
-    ['code'=>'TDS1',      'name'=>'TDS1',                    'expr'=>'(GRSAL + ALL) * (PAID_DAYS / TOTALDAYS) * 0.01'],
-    ['code'=>'ESIEMPDED', 'name'=>'ESI Employee Deduction',  'expr'=>'ESIEMPDED'],
-    ['code'=>'PFEMPDED',  'name'=>'PF Employee Deduction',   'expr'=>'PFEMPDED'],
-    ['code'=>'PT',        'name'=>'Professional Tax',        'expr'=>'PT'],
-];
-
-$employer = [
-    ['code'=>'ESIEMPLRDED',       'name'=>'ESI Employer Deduction',   'expr'=>'ESIEMPLRDED'],
-    ['code'=>'PFADMCHGSEDLIAC21', 'name'=>'PF Admin Charges AC22',    'expr'=>'PFADMCHGSEDLIAC21'],
-    ['code'=>'PFADMCHGSEPFAC01',  'name'=>'PF Admin Charges AC02',    'expr'=>'PFADMCHGSEPFAC01'],
-    ['code'=>'PFEDLIAC21',        'name'=>'PF EDLI AC21',             'expr'=>'PFEDLIAC21'],
-    ['code'=>'PFEMPLRDED',        'name'=>'PF Employer Deduction',    'expr'=>'PFEMPLRDED'],
-    ['code'=>'PFPENSIONFUND',     'name'=>'PF Pension Fund',          'expr'=>'PFPENSIONFUND'],
-];
+function esc($v){ return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8'); }
 
 $categories = [
-    'Earning'  => ['Allowances','Basic','HRA','Bonus','Special Pay','Overtime'],
-    'Deduction'=> ['Tax Deductions','Loan Deductions','Other Deductions'],
-    'Employer' => ['PF Contributions','ESI Contributions','Admin Charges'],
+    'Earning'  => ['Allowances','Basic','HRA','Bonus','Special Pay','Overtime','Variable Pay'],
+    'Deduction'=> ['Tax Deductions','Loan Deductions','PF Deductions','ESI Deductions','Other Deductions'],
+    'Employer' => ['PF Contributions','ESI Contributions','Admin Charges','Pension Fund'],
 ];
 
 /* ── mode & tab ── */
-$active_tab = $_GET['tab']  ?? 'earnings'; // earnings | deductions | employer
-$mode       = $_GET['mode'] ?? 'list';     // list | add | edit
+$active_tab = $_GET['tab']  ?? 'earnings';
+$mode       = $_GET['mode'] ?? 'list';
 $edit_code  = $_GET['code'] ?? '';
+
+$save_ok = false;
+$save_msg = '';
+$save_error = '';
+
+/* ─────────────────────────────────────────
+   POST: ADD / SAVE / DELETE
+───────────────────────────────────────── */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $act = $_POST['_action'] ?? '';
+
+    if ($act === 'add') {
+        $salary_type = trim($_POST['salary_type'] ?? 'Earning');
+
+        if ($salary_type === 'Employer Contribution') {
+            $salary_type = 'Employer';
+        }
+
+        $component_category = trim($_POST['component_category'] ?? '');
+        $code = strtoupper(trim($_POST['code'] ?? ''));
+        $component_name = trim($_POST['component_name'] ?? '');
+        $expression = trim($_POST['expression'] ?? '');
+
+        if ($code === '' || $component_name === '') {
+            $save_error = 'Please fill in all required fields.';
+            $mode = 'add';
+        } else {
+            $stmt = $conn->prepare("
+                INSERT INTO salary_components
+                (salary_type, component_category, code, component_name, expression, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 'active', NOW(), NOW())
+            ");
+
+            if ($stmt) {
+                $stmt->bind_param("sssss", $salary_type, $component_category, $code, $component_name, $expression);
+
+                if ($stmt->execute()) {
+                    $save_ok = true;
+                    $save_msg = 'Salary component added!';
+                    $mode = 'list';
+
+                    if ($salary_type === 'Deduction') {
+                        $active_tab = 'deductions';
+                    } elseif ($salary_type === 'Employer') {
+                        $active_tab = 'employer';
+                    } else {
+                        $active_tab = 'earnings';
+                    }
+                } else {
+                    $save_error = 'Save failed: ' . $stmt->error;
+                    $mode = 'add';
+                }
+            } else {
+                $save_error = 'Prepare failed: ' . $conn->error;
+                $mode = 'add';
+            }
+        }
+    }
+
+    if ($act === 'save') {
+        $original_code = trim($_POST['original_code'] ?? '');
+        $salary_type = trim($_POST['salary_type'] ?? 'Earning');
+
+        if ($salary_type === 'Employer Contribution') {
+            $salary_type = 'Employer';
+        }
+
+        $component_category = trim($_POST['component_category'] ?? '');
+        $code = strtoupper(trim($_POST['code'] ?? ''));
+        $component_name = trim($_POST['component_name'] ?? '');
+        $expression = trim($_POST['expression'] ?? '');
+
+        if ($original_code === '' || $code === '' || $component_name === '') {
+            $save_error = 'Please fill in all required fields.';
+            $mode = 'edit';
+            $edit_code = $original_code;
+        } else {
+            $stmt = $conn->prepare("
+                UPDATE salary_components
+                SET salary_type = ?,
+                    component_category = ?,
+                    code = ?,
+                    component_name = ?,
+                    expression = ?,
+                    updated_at = NOW()
+                WHERE code = ?
+            ");
+
+            if ($stmt) {
+                $stmt->bind_param("ssssss", $salary_type, $component_category, $code, $component_name, $expression, $original_code);
+
+                if ($stmt->execute()) {
+                    $save_ok = true;
+                    $save_msg = 'Salary component updated!';
+                    $mode = 'list';
+
+                    if ($salary_type === 'Deduction') {
+                        $active_tab = 'deductions';
+                    } elseif ($salary_type === 'Employer') {
+                        $active_tab = 'employer';
+                    } else {
+                        $active_tab = 'earnings';
+                    }
+                } else {
+                    $save_error = 'Update failed: ' . $stmt->error;
+                    $mode = 'edit';
+                    $edit_code = $original_code;
+                }
+            } else {
+                $save_error = 'Prepare failed: ' . $conn->error;
+                $mode = 'edit';
+                $edit_code = $original_code;
+            }
+        }
+    }
+
+    if ($act === 'delete') {
+        $code = trim($_POST['code'] ?? '');
+
+        if ($code !== '') {
+            $stmt = $conn->prepare("
+                UPDATE salary_components
+                SET status = 'inactive', updated_at = NOW()
+                WHERE code = ?
+            ");
+
+            if ($stmt) {
+                $stmt->bind_param("s", $code);
+
+                if ($stmt->execute()) {
+                    $save_ok = true;
+                    $save_msg = 'Salary component deleted!';
+                    $mode = 'list';
+                } else {
+                    $save_error = 'Delete failed: ' . $stmt->error;
+                }
+            } else {
+                $save_error = 'Prepare failed: ' . $conn->error;
+            }
+        }
+    }
+}
+
+/* ─────────────────────────────────────────
+   FETCH DATA FROM DB
+───────────────────────────────────────── */
+$earnings = [];
+$deductions = [];
+$employer = [];
+
+$res = $conn->query("
+    SELECT id, salary_type, component_category, code, component_name, expression
+    FROM salary_components
+    WHERE status = 'active'
+    ORDER BY salary_type ASC, component_name ASC
+");
+
+if ($res) {
+    while ($row = $res->fetch_assoc()) {
+        $item = [
+            'id'       => (int)$row['id'],
+            'type'     => $row['salary_type'],
+            'category' => $row['component_category'],
+            'code'     => $row['code'],
+            'name'     => $row['component_name'],
+            'expr'     => $row['expression'],
+        ];
+
+        if ($row['salary_type'] === 'Deduction') {
+            $deductions[] = $item;
+        } elseif ($row['salary_type'] === 'Employer') {
+            $employer[] = $item;
+        } else {
+            $earnings[] = $item;
+        }
+    }
+}
 
 /* find edit record */
 $edit_rec = null;
+
 if ($mode === 'edit' && $edit_code !== '') {
-    $all = array_merge($earnings, $deductions, $employer);
-    foreach ($all as $r) {
-        if ($r['code'] === $edit_code) { $edit_rec = $r; break; }
+    $stmt = $conn->prepare("
+        SELECT id, salary_type, component_category, code, component_name, expression
+        FROM salary_components
+        WHERE code = ?
+        AND status = 'active'
+        LIMIT 1
+    ");
+
+    if ($stmt) {
+        $stmt->bind_param("s", $edit_code);
+        $stmt->execute();
+        $editRes = $stmt->get_result();
+
+        if ($editRes && $editRes->num_rows > 0) {
+            $r = $editRes->fetch_assoc();
+
+            $edit_rec = [
+                'id'       => (int)$r['id'],
+                'type'     => $r['salary_type'],
+                'category' => $r['component_category'],
+                'code'     => $r['code'],
+                'name'     => $r['component_name'],
+                'expr'     => $r['expression'],
+            ];
+        }
     }
-    // determine type
-    foreach ($earnings   as $r) if ($r['code']==$edit_code) $edit_rec['type']='Earning';
-    foreach ($deductions as $r) if ($r['code']==$edit_code) $edit_rec['type']='Deduction';
-    foreach ($employer   as $r) if ($r['code']==$edit_code) $edit_rec['type']='Employer';
 }
-
-/* POST */
-$save_ok=false; $save_msg='';
-if ($_SERVER['REQUEST_METHOD']==='POST') {
-    $act=$_POST['_action']??'';
-    if ($act==='add')    { $save_ok=true; $save_msg='Salary component added!'; }
-    if ($act==='save')   { $save_ok=true; $save_msg='Salary component updated!'; }
-    if ($act==='delete') { $save_ok=true; $save_msg='Salary component deleted!'; }
-}
-
-function esc($v){ return htmlspecialchars($v??'',ENT_QUOTES,'UTF-8'); }
 
 ob_start();
 ?>
@@ -277,12 +421,21 @@ ob_start();
 </style>
 
 <?php if($save_ok): ?>
-<script>document.addEventListener('DOMContentLoaded',function(){ scToast('✅','<?= esc($save_msg) ?>'); });</script>
+<script>
+document.addEventListener('DOMContentLoaded',function(){ 
+    scToast('✅','<?= esc($save_msg) ?>'); 
+});
+</script>
 <?php endif; ?>
 
-<!-- ════════════════════════════════════════
-     CONFIG TAB BAR
-════════════════════════════════════════ -->
+<?php if($save_error): ?>
+<script>
+document.addEventListener('DOMContentLoaded',function(){ 
+    scToast('⚠️','<?= esc($save_error) ?>'); 
+});
+</script>
+<?php endif; ?>
+
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
     <h1 class="page-title">Configuration</h1>
 </div>
@@ -290,11 +443,10 @@ ob_start();
 <div class="section-card" style="padding:0;overflow:hidden">
     <div class="cfg-tabs">
         <?php foreach(['AccountInfo'=>'Account Info','Organization'=>'Organization','Payroll'=>'Payroll','Attendance'=>'Attendance','Leave'=>'Leave','Training'=>'Training','Others'=>'Others'] as $k=>$l): ?>
-        <a href="configuration#<?= $k ?>" class="cfg-tab <?= $k==='Payroll'?'active':'' ?>"><?= $l ?></a>
+        <a href="configuration#<?= esc($k) ?>" class="cfg-tab <?= $k==='Payroll'?'active':'' ?>"><?= esc($l) ?></a>
         <?php endforeach; ?>
     </div>
     
-    <!-- ── TOP BAR ── -->
     <div class="sc-topbar">
         <div class="sc-bc">
             <a href="configuration#Payroll">Payroll</a>
@@ -309,15 +461,12 @@ ob_start();
         <?php endif; ?>
     </div>
 
-    <?php /* ══════════════════════════
-        LIST VIEW
-    ══════════════════════════ */ if($mode==='list'): ?>
+    <?php if($mode==='list'): ?>
 
-    <!-- Type tabs + search row -->
     <div style="display:flex;align-items:center;justify-content:space-between;padding:0 24px 0 0;border-bottom:1px solid #E5E7EB;flex-wrap:wrap;gap:0">
         <div class="sc-tabs">
             <?php foreach(['earnings'=>'Earnings','deductions'=>'Deductions','employer'=>'Employer Contribution'] as $tk=>$tl): ?>
-            <a href="?tab=<?= $tk ?>&mode=list" class="sc-tab <?= $active_tab===$tk?'active':'' ?>"><?= $tl ?></a>
+            <a href="?tab=<?= esc($tk) ?>&mode=list" class="sc-tab <?= $active_tab===$tk?'active':'' ?>"><?= esc($tl) ?></a>
             <?php endforeach; ?>
         </div>
         <div class="sc-search" style="margin:8px 0">
@@ -326,7 +475,6 @@ ob_start();
         </div>
     </div>
 
-    <!-- Table -->
     <?php
     $rows = match($active_tab) {
         'deductions' => $deductions,
@@ -334,6 +482,7 @@ ob_start();
         default      => $earnings,
     };
     ?>
+
     <div class="sc-table-wrap">
     <table class="sc-table" id="scTable">
         <thead>
@@ -345,28 +494,35 @@ ob_start();
             </tr>
         </thead>
         <tbody id="scTableBody">
-        <?php foreach($rows as $row): ?>
-        <tr data-search="<?= strtolower(esc($row['code'])) ?> <?= strtolower(esc($row['name'])) ?> <?= strtolower(esc($row['expr'])) ?>">
-            <td><span class="sc-code"><?= esc($row['code']) ?></span></td>
-            <td><?= esc($row['name']) ?></td>
-            <td><span class="sc-expr"><?= esc($row['expr']) ?></span></td>
-            <td>
-                <a href="?mode=edit&code=<?= urlencode($row['code']) ?>&tab=<?= esc($active_tab) ?>" class="sc-edit-btn" title="Edit">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                </a>
-            </td>
-        </tr>
-        <?php endforeach; ?>
+        <?php if(empty($rows)): ?>
+            <tr>
+                <td colspan="4" style="text-align:center;color:#9CA3AF;padding:40px 18px">
+                    No salary components found.
+                </td>
+            </tr>
+        <?php else: ?>
+            <?php foreach($rows as $row): ?>
+            <tr data-search="<?= esc(strtolower($row['code'].' '.$row['name'].' '.$row['expr'])) ?>">
+                <td><span class="sc-code"><?= esc($row['code']) ?></span></td>
+                <td><?= esc($row['name']) ?></td>
+                <td><span class="sc-expr"><?= esc($row['expr']) ?></span></td>
+                <td>
+                    <a href="?mode=edit&code=<?= urlencode($row['code']) ?>&tab=<?= esc($active_tab) ?>" class="sc-edit-btn" title="Edit">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </a>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+        <?php endif; ?>
         </tbody>
     </table>
     </div>
+
     <div style="padding:10px 18px;border-top:1px solid #F3F4F6">
         <span style="font-size:12px;color:#9CA3AF"><?= count($rows) ?> components</span>
     </div>
 
-    <?php /* ══════════════════════════
-        ADD VIEW
-    ══════════════════════════ */ elseif($mode==='add'): ?>
+    <?php elseif($mode==='add'): ?>
 
     <div class="sc-form-wrap">
         <div class="sc-form-title">NEW SALARY COMPONENT</div>
@@ -380,18 +536,15 @@ ob_start();
                 <select name="salary_type" id="addSalaryType" onchange="updateCategories()">
                     <option value="Earning">Earning</option>
                     <option value="Deduction">Deduction</option>
-                    <option value="Employer">Employer Contribution</option>
+                    <option value="Employer Contribution">Employer Contribution</option>
                 </select>
             </div>
             <div class="sc-fg">
                 <label>Component Category</label>
                 <select name="component_category" id="addCategory">
-                    <option>Allowances</option>
-                    <option>Basic</option>
-                    <option>HRA</option>
-                    <option>Bonus</option>
-                    <option>Special Pay</option>
-                    <option>Overtime</option>
+                    <?php foreach($categories['Earning'] as $cat): ?>
+                    <option><?= esc($cat) ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
         </div>
@@ -418,7 +571,6 @@ ob_start();
             </div>
         </div>
 
-        <!-- Statutory Considerations -->
         <div>
             <div class="sc-stat-head" id="statHead" onclick="toggleStat()">
                 <span>Statutory Considerations</span>
@@ -443,114 +595,107 @@ ob_start();
         </form>
     </div>
 
-    <?php /* ══════════════════════════
-        EDIT VIEW
-    ══════════════════════════ */ elseif($mode==='edit' && $edit_rec): ?>
+    <?php elseif($mode==='edit' && $edit_rec): ?>
 
     <div class="sc-form-wrap">
         <div class="sc-form-title"><?= esc(strtoupper($edit_rec['name'])) ?></div>
 
         <form method="POST" id="editScForm" novalidate>
-        <input type="hidden" name="_action" value="save">
-        <input type="hidden" name="original_code" value="<?= esc($edit_rec['code']) ?>">
+            <input type="hidden" name="_action" value="save">
+            <input type="hidden" name="original_code" value="<?= esc($edit_rec['code']) ?>">
 
-        <div class="sc-row c2">
-            <div class="sc-fg">
-                <label>Salary Type</label>
-                <select name="salary_type" onchange="updateCategories(this)">
-                    <option <?= ($edit_rec['type']??'')==='Earning'  ?'selected':'' ?>>Earning</option>
-                    <option <?= ($edit_rec['type']??'')==='Deduction'?'selected':'' ?>>Deduction</option>
-                    <option <?= ($edit_rec['type']??'')==='Employer' ?'selected':'' ?>>Employer Contribution</option>
-                </select>
-            </div>
-            <div class="sc-fg">
-                <label>Component Category</label>
-                <select name="component_category">
-                    <option selected>Allowances</option>
-                    <option>Basic</option>
-                    <option>HRA</option>
-                    <option>Bonus</option>
-                    <option>Special Pay</option>
-                    <option>Overtime</option>
-                    <option>Tax Deductions</option>
-                    <option>Loan Deductions</option>
-                    <option>PF Contributions</option>
-                    <option>ESI Contributions</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="sc-row c2">
-            <div class="sc-fg">
-                <label>Code</label>
-                <input type="text" name="code"
-                    value="<?= esc($edit_rec['code']) ?>"
-                    oninput="this.value=this.value.toUpperCase().replace(/\s/g,'')" required>
-            </div>
-            <div class="sc-fg">
-                <label>Salary Component Name</label>
-                <input type="text" name="component_name"
-                    value="<?= esc($edit_rec['name']) ?>" required>
-            </div>
-        </div>
-
-        <div class="sc-row c1">
-            <div class="sc-fg">
-                <label>Expression</label>
-                <input type="text" name="expression"
-                    value="<?= esc($edit_rec['expr']) ?>"
-                    style="font-family:'Courier New',monospace">
-            </div>
-        </div>
-
-        <!-- Statutory Considerations — expanded in edit mode -->
-        <div>
-            <div class="sc-stat-head open" id="statHead" onclick="toggleStat()">
-                <span>Statutory Considerations</span>
-                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
-            <div class="sc-stat-body open" id="statBody">
-                <div class="sc-stat-item">PF (Provident Fund)</div>
-                <div class="sc-stat-item">ESI (Employee State Insurance)</div>
-                <div class="sc-stat-item">TDS (Tax Deducted at Source)</div>
-                <div class="sc-stat-item">CTC (Cost To Company)</div>
-                <div class="sc-stat-item">PT (Professional Tax)</div>
-                <div class="sc-stat-note">
-                    Note: Choose these under <a href="SalaryComponentsCategory">Salary Component Category</a>
+            <div class="sc-row c2">
+                <div class="sc-fg">
+                    <label>Salary Type</label>
+                    <select name="salary_type" id="editSalaryType" onchange="updateCategories(this)">
+                        <option value="Earning" <?= ($edit_rec['type']??'')==='Earning'?'selected':'' ?>>Earning</option>
+                        <option value="Deduction" <?= ($edit_rec['type']??'')==='Deduction'?'selected':'' ?>>Deduction</option>
+                        <option value="Employer Contribution" <?= ($edit_rec['type']??'')==='Employer'?'selected':'' ?>>Employer Contribution</option>
+                    </select>
+                </div>
+                <div class="sc-fg">
+                    <label>Component Category</label>
+                    <select name="component_category" id="editCategory">
+                        <?php
+                        $catKey = $edit_rec['type'] === 'Employer' ? 'Employer' : $edit_rec['type'];
+                        $catList = $categories[$catKey] ?? $categories['Earning'];
+                        foreach($catList as $cat):
+                        ?>
+                        <option value="<?= esc($cat) ?>" <?= ($edit_rec['category'] ?? '') === $cat ? 'selected' : '' ?>>
+                            <?= esc($cat) ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
             </div>
-        </div>
+
+            <div class="sc-row c2">
+                <div class="sc-fg">
+                    <label>Code</label>
+                    <input type="text" name="code"
+                        value="<?= esc($edit_rec['code']) ?>"
+                        oninput="this.value=this.value.toUpperCase().replace(/\s/g,'')" required>
+                </div>
+                <div class="sc-fg">
+                    <label>Salary Component Name</label>
+                    <input type="text" name="component_name"
+                        value="<?= esc($edit_rec['name']) ?>" required>
+                </div>
+            </div>
+
+            <div class="sc-row c1">
+                <div class="sc-fg">
+                    <label>Expression</label>
+                    <input type="text" name="expression"
+                        value="<?= esc($edit_rec['expr']) ?>"
+                        style="font-family:'Courier New',monospace">
+                </div>
+            </div>
+
+            <div>
+                <div class="sc-stat-head open" id="statHead" onclick="toggleStat()">
+                    <span>Statutory Considerations</span>
+                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="sc-stat-body open" id="statBody">
+                    <div class="sc-stat-item">PF (Provident Fund)</div>
+                    <div class="sc-stat-item">ESI (Employee State Insurance)</div>
+                    <div class="sc-stat-item">TDS (Tax Deducted at Source)</div>
+                    <div class="sc-stat-item">CTC (Cost To Company)</div>
+                    <div class="sc-stat-item">PT (Professional Tax)</div>
+                    <div class="sc-stat-note">
+                        Note: Choose these under <a href="SalaryComponentsCategory">Salary Component Category</a>
+                    </div>
+                </div>
+            </div>
+        </form>
 
         <div class="sc-form-actions">
-            <form method="POST" style="display:inline" id="deleteForm">
+            <form method="POST" id="deleteForm" style="display:inline">
                 <input type="hidden" name="_action" value="delete">
                 <input type="hidden" name="code" value="<?= esc($edit_rec['code']) ?>">
                 <button type="submit" class="sc-delete-btn" onclick="return confirmDelete('<?= esc($edit_rec['name']) ?>')">Delete</button>
             </form>
+
             <a href="?tab=<?= esc($active_tab) ?>&mode=list" class="sc-cancel-btn">Cancel</a>
+
             <button type="submit" form="editScForm" class="sc-save-btn" onclick="return validateScForm()">Save</button>
         </div>
-        </form>
     </div>
 
-    <?php else: /* edit_code not found */ ?>
+    <?php else: ?>
     <div style="padding:40px 24px;text-align:center;color:#9CA3AF;font-size:13.5px">
         Component not found. <a href="?tab=<?= esc($active_tab) ?>&mode=list" style="color:#2563EB">← Back to list</a>
     </div>
     <?php endif; ?>
 
-</div><!-- end .section-card -->
+</div>
 
-<!-- ── Toast ── -->
 <div class="sc-toast" id="scToastEl">
     <span id="scToastIcon">✅</span><span id="scToastMsg">Done!</span>
 </div>
 
-<!-- ════════════════════════════════════════
-     JAVASCRIPT
-════════════════════════════════════════ -->
 <script>
-/* ── Toast ── */
 function scToast(icon, msg) {
     var t=document.getElementById('scToastEl');
     document.getElementById('scToastIcon').textContent=icon;
@@ -560,7 +705,6 @@ function scToast(icon, msg) {
     t._t=setTimeout(function(){ t.classList.remove('show'); },3200);
 }
 
-/* ── Table search ── */
 function filterScTable(q) {
     q=q.toLowerCase().trim();
     document.querySelectorAll('#scTableBody tr').forEach(function(r){
@@ -568,7 +712,6 @@ function filterScTable(q) {
     });
 }
 
-/* ── Statutory accordion ── */
 function toggleStat() {
     var head=document.getElementById('statHead');
     var body=document.getElementById('statBody');
@@ -577,26 +720,29 @@ function toggleStat() {
     body.classList.toggle('open');
 }
 
-/* ── Category options per type ── */
 var catOptions = {
-    'Earning':   ['Allowances','Basic','HRA','Bonus','Special Pay','Overtime','Variable Pay'],
+    'Earning': ['Allowances','Basic','HRA','Bonus','Special Pay','Overtime','Variable Pay'],
     'Deduction': ['Tax Deductions','Loan Deductions','PF Deductions','ESI Deductions','Other Deductions'],
-    'Employer Contribution': ['PF Contributions','ESI Contributions','Admin Charges','Pension Fund'],
+    'Employer Contribution': ['PF Contributions','ESI Contributions','Admin Charges','Pension Fund']
 };
 
 function updateCategories(selEl) {
-    var type = (selEl||document.getElementById('addSalaryType'))?.value || 'Earning';
-    var catSel = document.getElementById('addCategory') || document.querySelector('select[name="component_category"]');
+    var type = (selEl || document.getElementById('addSalaryType'))?.value || 'Earning';
+    var catSel = document.getElementById('addCategory') || document.getElementById('editCategory') || document.querySelector('select[name="component_category"]');
     if (!catSel) return;
+
     var opts = catOptions[type] || catOptions['Earning'];
-    catSel.innerHTML = opts.map(function(o){ return '<option>'+o+'</option>'; }).join('');
+    catSel.innerHTML = opts.map(function(o){
+        return '<option>'+o+'</option>';
+    }).join('');
 }
 
-/* ── Validate form ── */
 function validateScForm() {
     var form = document.getElementById('addScForm') || document.getElementById('editScForm');
     if (!form) return true;
+
     var ok = true;
+
     form.querySelectorAll('[required]').forEach(function(el) {
         if (!el.value.trim()) {
             el.style.borderBottomColor='#DC2626';
@@ -605,13 +751,20 @@ function validateScForm() {
             el.style.borderBottomColor='';
         }
     });
-    if (!ok) { scToast('⚠','Please fill in all required fields.'); }
+
+    if (!ok) {
+        scToast('⚠','Please fill in all required fields.');
+    }
+
     return ok;
 }
 
-/* ── Confirm delete ── */
 function confirmDelete(name) {
-    return confirm('Delete "' + name + '"? This cannot be undone.');
+    if (!confirm('Delete "' + name + '"? This cannot be undone.')) {
+        return false;
+    }
+    scToast('🗑️','Deleting component...');
+    return true;
 }
 </script>
 

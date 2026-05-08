@@ -257,9 +257,6 @@ ob_start();
 ?>
 
 <link rel="stylesheet" href="includes/assets/style.css">
-
-
-
 <style>
 
     

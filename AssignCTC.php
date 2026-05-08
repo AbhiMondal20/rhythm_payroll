@@ -1,64 +1,226 @@
 <?php
 require_once 'includes/config.php';
+require_once 'includes/db_client.php';
 $page_title = 'Update CTC';
 
-/* ─────────────────────────────────────────
-   DUMMY DATA
-───────────────────────────────────────── */
-$templates = [
-    ['id'=>1,'name'=>'Default'],
-    ['id'=>2,'name'=>'Senior Staff'],
-    ['id'=>3,'name'=>'Contract'],
-    ['id'=>4,'name'=>'Part-Time'],
-];
-
-$all_employees = [
-    ['id'=>1,  'code'=>'1006','name'=>'Sumi Das',             'ctc_monthly'=>18000, 'template_id'=>1],
-    ['id'=>2,  'code'=>'1008','name'=>'Shubhankar Naha',      'ctc_monthly'=>21000, 'template_id'=>1],
-    ['id'=>3,  'code'=>'1009','name'=>'Biswajit Dutta',       'ctc_monthly'=>19500, 'template_id'=>1],
-    ['id'=>4,  'code'=>'1011','name'=>'Sujata Roy',           'ctc_monthly'=>17000, 'template_id'=>2],
-    ['id'=>5,  'code'=>'1013','name'=>'Priyanka Chakraborty', 'ctc_monthly'=>23000, 'template_id'=>2],
-    ['id'=>6,  'code'=>'1015','name'=>'Babli Mallik',         'ctc_monthly'=>15500, 'template_id'=>1],
-    ['id'=>7,  'code'=>'1017','name'=>'Dibakar Sarkar',       'ctc_monthly'=>20000, 'template_id'=>1],
-    ['id'=>8,  'code'=>'1018','name'=>'Lal Bahadur Pradhan',  'ctc_monthly'=>16000, 'template_id'=>1],
-    ['id'=>9,  'code'=>'1020','name'=>'Anita Sharma',         'ctc_monthly'=>22000, 'template_id'=>2],
-    ['id'=>10, 'code'=>'1022','name'=>'Rahul Verma',          'ctc_monthly'=>28000, 'template_id'=>2],
-    ['id'=>11, 'code'=>'1024','name'=>'Kavita Singh',         'ctc_monthly'=>19000, 'template_id'=>1],
-    ['id'=>12, 'code'=>'1104','name'=>'Abhijit Kumar Mondal', 'ctc_monthly'=>22000, 'template_id'=>1],
-];
-
-/* ── POST: update CTC ── */
-$save_ok  = false;
-$save_msg = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['_action'] ?? '') === 'update_ctc') {
-    // TODO: validate & update in DB
-    $save_ok  = true;
-    $save_msg = 'CTC updated successfully!';
+function esc($v){ 
+    return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8'); 
 }
 
-/* ── Search result (GET) ── */
-$search_q      = trim($_GET['q'] ?? '');
+
+/* ─────────────────────────────────────────
+   FETCH CTC TEMPLATES
+───────────────────────────────────────── */
+$templates = [];
+
+$resTpl = $conn->query("
+    SELECT id, name 
+    FROM ctc_templates 
+    WHERE status='active' 
+    ORDER BY id ASC
+");
+
+if ($resTpl) {
+    while ($row = $resTpl->fetch_assoc()) {
+        $templates[] = [
+            'id' => (int)$row['id'],
+            'name' => $row['name']
+        ];
+    }
+}
+
+/* ─────────────────────────────────────────
+   POST: UPDATE CTC
+───────────────────────────────────────── */
+$save_ok  = false;
+$save_msg = '';
+$save_error = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['_action'] ?? '') === 'update_ctc') {
+
+    $row_sel = $_POST['row_sel'] ?? [];
+
+    if (empty($row_sel)) {
+        $save_error = 'Please select at least one employee.';
+    } else {
+
+        $updated = 0;
+
+        foreach ($row_sel as $emp_id) {
+
+            $emp_id = (int)$emp_id;
+            $new_ctc = trim($_POST['new_ctc_' . $emp_id] ?? '');
+            $tpl_id  = (int)($_POST['tpl_' . $emp_id] ?? 0);
+
+            if ($emp_id <= 0) {
+                continue;
+            }
+
+            if ($new_ctc === '' && $tpl_id <= 0) {
+                continue;
+            }
+
+            if ($new_ctc !== '' && (float)$new_ctc < 0) {
+                continue;
+            }
+
+            if ($new_ctc !== '' && $tpl_id > 0) {
+
+                $stmt = $conn->prepare("
+                    UPDATE employees 
+                    SET ctc_monthly = ?, ctc_template_id = ?, updated_at = NOW()
+                    WHERE id = ?
+                ");
+
+                if ($stmt) {
+                    $new_ctc_val = (float)$new_ctc;
+                    $stmt->bind_param("dii", $new_ctc_val, $tpl_id, $emp_id);
+                    if ($stmt->execute()) $updated++;
+                }
+
+            } elseif ($new_ctc !== '') {
+
+                $stmt = $conn->prepare("
+                    UPDATE employees 
+                    SET ctc_monthly = ?, updated_at = NOW()
+                    WHERE id = ?
+                ");
+
+                if ($stmt) {
+                    $new_ctc_val = (float)$new_ctc;
+                    $stmt->bind_param("di", $new_ctc_val, $emp_id);
+                    if ($stmt->execute()) $updated++;
+                }
+
+            } elseif ($tpl_id > 0) {
+
+                $stmt = $conn->prepare("
+                    UPDATE employees 
+                    SET ctc_template_id = ?, updated_at = NOW()
+                    WHERE id = ?
+                ");
+
+                if ($stmt) {
+                    $stmt->bind_param("ii", $tpl_id, $emp_id);
+                    if ($stmt->execute()) $updated++;
+                }
+            }
+        }
+
+        if ($updated > 0) {
+            $save_ok = true;
+            $save_msg = $updated . ' employee CTC updated successfully!';
+        } else {
+            $save_error = 'No CTC data updated. Please enter new CTC and select employee.';
+        }
+    }
+}
+
+/* ─────────────────────────────────────────
+   GET SEARCH + FILTER
+───────────────────────────────────────── */
+$search_q = trim($_GET['q'] ?? '');
+$filter_dept = trim($_GET['department'] ?? '');
+$filter_tpl  = (int)($_GET['template_id'] ?? 0);
+
+$all_employees = [];
+
+$sql = "
+    SELECT 
+        e.id,
+        e.employee_code AS code,
+        e.employee_name AS name,
+        e.department,
+        e.ctc_monthly,
+        e.ctc_template_id AS template_id
+    FROM employees e
+    WHERE e.status='active'
+";
+
+$params = [];
+$types = '';
+
+if ($filter_dept !== '') {
+    $sql .= " AND e.department = ?";
+    $params[] = $filter_dept;
+    $types .= 's';
+}
+
+if ($filter_tpl > 0) {
+    $sql .= " AND e.ctc_template_id = ?";
+    $params[] = $filter_tpl;
+    $types .= 'i';
+}
+
+$sql .= " ORDER BY e.employee_name ASC";
+
+if (!empty($params)) {
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param($types, ...$params);
+    $stmt->execute();
+    $resEmp = $stmt->get_result();
+} else {
+    $resEmp = $conn->query($sql);
+}
+
+if ($resEmp) {
+    while ($row = $resEmp->fetch_assoc()) {
+        $all_employees[] = [
+            'id' => (int)$row['id'],
+            'code' => $row['code'],
+            'name' => $row['name'],
+            'department' => $row['department'],
+            'ctc_monthly' => (float)$row['ctc_monthly'],
+            'template_id' => (int)$row['template_id'],
+        ];
+    }
+}
+
+/* Search result */
 $searched_emps = [];
+
 if ($search_q !== '') {
     $ql = strtolower($search_q);
+
     foreach ($all_employees as $e) {
-        if (str_contains(strtolower($e['name']), $ql) ||
-            str_contains(strtolower($e['code']), $ql)  ||
-            str_contains(strtolower($e['name'].' - '.$e['code']), $ql)) {
+        if (
+            str_contains(strtolower($e['name']), $ql) ||
+            str_contains(strtolower($e['code']), $ql) ||
+            str_contains(strtolower($e['name'].' - '.$e['code']), $ql)
+        ) {
             $searched_emps[] = $e;
         }
     }
 }
 
-/* ── Selected employees (checkbox ticked) ── */
+/* Selected employees */
 $selected_ids = array_map('intval', $_GET['sel'] ?? []);
+
 $table_emps = [];
+
 foreach ($all_employees as $e) {
-    if (in_array($e['id'], $selected_ids, true)) $table_emps[] = $e;
+    if (in_array((int)$e['id'], $selected_ids, true)) {
+        $table_emps[] = $e;
+    }
 }
 
-function esc($v){ return htmlspecialchars($v ?? '', ENT_QUOTES, 'UTF-8'); }
-// function fmt_inr($n){ return '₹ ' . number_format($n); }
+/* Departments for filter */
+$departments = [];
+
+$resDept = $conn->query("
+    SELECT DISTINCT department 
+    FROM employees 
+    WHERE status='active' 
+    AND department IS NOT NULL 
+    AND department <> ''
+    ORDER BY department ASC
+");
+
+if ($resDept) {
+    while ($d = $resDept->fetch_assoc()) {
+        $departments[] = $d['department'];
+    }
+}
 
 ob_start();
 ?>
@@ -277,12 +439,21 @@ ob_start();
 </style>
 
 <?php if($save_ok): ?>
-<script>document.addEventListener('DOMContentLoaded',function(){ ucToast('✅','<?= esc($save_msg) ?>'); });</script>
+<script>
+document.addEventListener('DOMContentLoaded',function(){ 
+    ucToast('✅','<?= esc($save_msg) ?>'); 
+});
+</script>
 <?php endif; ?>
 
-<!-- ════════════════════════════════════════
-     CONFIG TAB BAR
-════════════════════════════════════════ -->
+<?php if($save_error): ?>
+<script>
+document.addEventListener('DOMContentLoaded',function(){ 
+    ucToast('⚠️','<?= esc($save_error) ?>'); 
+});
+</script>
+<?php endif; ?>
+
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
     <h1 class="page-title">Configuration</h1>
 </div>
@@ -291,11 +462,10 @@ ob_start();
     <div class="cfg-tabs">
         <?php $cfg_tabs=['AccountInfo'=>'Account Info','Organization'=>'Organization','Payroll'=>'Payroll','Attendance'=>'Attendance','Leave'=>'Leave','Training'=>'Training','Others'=>'Others'];
         foreach($cfg_tabs as $k=>$l): ?>
-        <a href="configuration#<?= $k ?>" class="cfg-tab <?= $k==='Payroll'?'active':'' ?>"><?= $l ?></a>
+        <a href="configuration#<?= esc($k) ?>" class="cfg-tab <?= $k==='Payroll'?'active':'' ?>"><?= esc($l) ?></a>
         <?php endforeach; ?>
     </div>
 
-    <!-- Breadcrumb -->
     <div style="padding:14px 24px;border-bottom:1px solid #E5E7EB">
         <div class="uc-bc">
             <a href="configuration#Payroll">Payroll</a>
@@ -303,10 +473,8 @@ ob_start();
             <span class="cur">Update CTC</span>
         </div>
 
-        <!-- Page title -->
         <div class="uc-title">UPDATE CTC</div>
 
-        <!-- Search + Filter + Get Details -->
         <form method="GET" id="ucSearchForm" autocomplete="off">
         <div class="uc-search-row">
             <div class="uc-search-wrap">
@@ -317,27 +485,33 @@ ob_start();
                     oninput="liveSearch(this.value)">
             </div>
 
-            <!-- Filter button -->
             <div style="position:relative">
                 <button type="button" class="uc-filter-btn" onclick="toggleFilter(event)">
                     <svg viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                     Filter
                 </button>
+
                 <div class="uc-filter-popup" id="ucFilterPopup">
                     <div class="uc-filter-label">DEPARTMENT</div>
-                    <select class="uc-filter-sel" id="filterDept">
+                    <select class="uc-filter-sel" id="filterDept" name="department">
                         <option value="">All Departments</option>
-                        <option>Medical</option><option>Nursing</option>
-                        <option>Administration</option><option>Lab Tech</option>
-                        <option>Accounts</option><option>Reception</option>
-                    </select>
-                    <div class="uc-filter-label" style="margin-top:10px">CTC TEMPLATE</div>
-                    <select class="uc-filter-sel" id="filterTpl">
-                        <option value="">All Templates</option>
-                        <?php foreach($templates as $t): ?>
-                        <option><?= esc($t['name']) ?></option>
+                        <?php foreach($departments as $dept): ?>
+                        <option value="<?= esc($dept) ?>" <?= $filter_dept===$dept?'selected':'' ?>>
+                            <?= esc($dept) ?>
+                        </option>
                         <?php endforeach; ?>
                     </select>
+
+                    <div class="uc-filter-label" style="margin-top:10px">CTC TEMPLATE</div>
+                    <select class="uc-filter-sel" id="filterTpl" name="template_id">
+                        <option value="">All Templates</option>
+                        <?php foreach($templates as $t): ?>
+                        <option value="<?= (int)$t['id'] ?>" <?= $filter_tpl===(int)$t['id']?'selected':'' ?>>
+                            <?= esc($t['name']) ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+
                     <div class="uc-filter-actions">
                         <button type="button" class="btn" onclick="clearFilter()" style="font-size:12px">Clear</button>
                         <button type="button" class="btn btn-primary" onclick="applyFilter()" style="font-size:12px">Apply</button>
@@ -348,12 +522,10 @@ ob_start();
             <button type="submit" class="uc-get-btn">Get Details</button>
         </div>
 
-        <!-- Live-search results list -->
         <div id="ucResultsList" style="display:none;max-width:420px;margin-bottom:6px">
             <div class="uc-results" id="ucResultsInner"></div>
         </div>
 
-        <!-- Hidden: track selected IDs via checkboxes -->
         <div id="ucSelectedInputs">
             <?php foreach($selected_ids as $sid): ?>
             <input type="hidden" name="sel[]" value="<?= (int)$sid ?>">
@@ -361,38 +533,39 @@ ob_start();
         </div>
         </form>
 
-        <!-- Note -->
         <p class="uc-note">
             Note : To check the assigned CTC of an employee search using the <span>employee name or code</span>
         </p>
 
-        <!-- Selected employee chips -->
         <?php if(!empty($searched_emps) || !empty($table_emps)): ?>
         <div class="uc-selected-chips" id="ucChips">
             <?php
-            // show searched employees as chips (matching screenshot)
             $chip_emps = !empty($searched_emps) ? $searched_emps : $table_emps;
             foreach($chip_emps as $e):
-                $checked = in_array($e['id'], $selected_ids, true);
+                $checked = in_array((int)$e['id'], $selected_ids, true);
             ?>
-            <div class="uc-chip" id="chip-<?= $e['id'] ?>">
+            <div class="uc-chip" id="chip-<?= (int)$e['id'] ?>">
                 <input type="checkbox"
                     <?= $checked ? 'checked' : '' ?>
-                    onchange="toggleChip(<?= $e['id'] ?>, this)">
+                    onchange="toggleChip(<?= (int)$e['id'] ?>, this)">
                 <span class="uc-chip-name">
                     <?= esc($e['name']) ?> -<br><?= esc($e['code']) ?>
                 </span>
             </div>
             <?php endforeach; ?>
         </div>
+        <?php else: ?>
+        <div class="uc-selected-chips" id="ucChips"></div>
         <?php endif; ?>
 
-        <!-- CTC Update Table -->
         <form method="POST" id="ucUpdateForm" novalidate>
         <input type="hidden" name="_action" value="update_ctc">
-        <?php foreach($selected_ids as $sid): ?>
-        <input type="hidden" name="sel_ids[]" value="<?= (int)$sid ?>">
-        <?php endforeach; ?>
+
+        <div id="ucPostSelectedInputs">
+            <?php foreach($selected_ids as $sid): ?>
+            <input type="hidden" name="sel_ids[]" value="<?= (int)$sid ?>">
+            <?php endforeach; ?>
+        </div>
 
         <div class="uc-table-wrap">
         <table class="uc-table" id="ucTable">
@@ -419,9 +592,9 @@ ob_start();
                 $display_emps = !empty($table_emps) ? $table_emps : $searched_emps;
                 foreach($display_emps as $e):
             ?>
-            <tr id="row-<?= $e['id'] ?>">
+            <tr id="row-<?= (int)$e['id'] ?>">
                 <td style="text-align:center">
-                    <input type="checkbox" name="row_sel[]" value="<?= $e['id'] ?>"
+                    <input type="checkbox" name="row_sel[]" value="<?= (int)$e['id'] ?>"
                         class="uc-row-chk"
                         style="width:15px;height:15px;accent-color:#2563EB;cursor:pointer">
                 </td>
@@ -429,10 +602,10 @@ ob_start();
                     <?= esc($e['name']) ?> - #<?= esc($e['code']) ?>
                 </td>
                 <td>
-                    <select name="tpl_<?= $e['id'] ?>" class="uc-tpl-sel">
+                    <select name="tpl_<?= (int)$e['id'] ?>" class="uc-tpl-sel">
                         <option value=""></option>
                         <?php foreach($templates as $t): ?>
-                        <option value="<?= $t['id'] ?>" <?= $t['id']===$e['template_id']?'selected':'' ?>>
+                        <option value="<?= (int)$t['id'] ?>" <?= (int)$t['id']===(int)$e['template_id']?'selected':'' ?>>
                             <?= esc($t['name']) ?>
                         </option>
                         <?php endforeach; ?>
@@ -447,7 +620,7 @@ ob_start();
                 <td>
                     <div class="uc-new-ctc-wrap">
                         <span>₹</span>
-                        <input type="number" name="new_ctc_<?= $e['id'] ?>" class="uc-new-ctc"
+                        <input type="number" name="new_ctc_<?= (int)$e['id'] ?>" class="uc-new-ctc"
                             placeholder="Add the new CTC here" min="0">
                     </div>
                 </td>
@@ -457,7 +630,6 @@ ob_start();
         </table>
         </div>
 
-        <!-- Actions -->
         <div class="uc-actions">
             <a href="configuration#Payroll" class="uc-cancel-btn">Cancel</a>
             <button type="submit" class="uc-update-btn"
@@ -468,25 +640,26 @@ ob_start();
     </div>
 </div>
 
-<!-- ── Toast ── -->
 <div class="uc-toast" id="ucToastEl">
     <span id="ucToastIcon">✅</span><span id="ucToastMsg">Done!</span>
 </div>
 
-<!-- ════════════════════════════════════════
-     JAVASCRIPT
-════════════════════════════════════════ -->
 <script>
 var allEmployees = <?= json_encode(array_map(function($e){
-    return ['id'=>$e['id'],'code'=>$e['code'],'name'=>$e['name'],
-            'ctc_monthly'=>$e['ctc_monthly'],'template_id'=>$e['template_id']];
+    return [
+        'id'=>(int)$e['id'],
+        'code'=>$e['code'],
+        'name'=>$e['name'],
+        'department'=>$e['department'],
+        'ctc_monthly'=>(float)$e['ctc_monthly'],
+        'template_id'=>(int)$e['template_id']
+    ];
 }, $all_employees)) ?>;
 
 var selectedIds = <?= json_encode($selected_ids) ?>;
 
 var templates = <?= json_encode($templates) ?>;
 
-/* ── Toast ── */
 function ucToast(icon, msg) {
     var t=document.getElementById('ucToastEl');
     document.getElementById('ucToastIcon').textContent=icon;
@@ -496,50 +669,74 @@ function ucToast(icon, msg) {
     t._t=setTimeout(function(){ t.classList.remove('show'); },3200);
 }
 
-/* ── Live search ── */
+function renderSelectedInputs() {
+    var wrap = document.getElementById('ucSelectedInputs');
+    var postWrap = document.getElementById('ucPostSelectedInputs');
+
+    if (wrap) {
+        wrap.innerHTML = selectedIds.map(function(id){
+            return '<input type="hidden" name="sel[]" value="'+id+'">';
+        }).join('');
+    }
+
+    if (postWrap) {
+        postWrap.innerHTML = selectedIds.map(function(id){
+            return '<input type="hidden" name="sel_ids[]" value="'+id+'">';
+        }).join('');
+    }
+}
+
 function liveSearch(q) {
     q = q.trim().toLowerCase();
     var resultsList = document.getElementById('ucResultsList');
     var inner = document.getElementById('ucResultsInner');
-    if (!q) { resultsList.style.display='none'; return; }
+
+    if (!q) {
+        resultsList.style.display='none';
+        return;
+    }
 
     var matches = allEmployees.filter(function(e){
         return e.name.toLowerCase().includes(q) || e.code.toLowerCase().includes(q);
     }).slice(0, 8);
 
-    if (matches.length === 0) { resultsList.style.display='none'; return; }
+    if (matches.length === 0) {
+        resultsList.style.display='none';
+        return;
+    }
 
     inner.innerHTML = matches.map(function(e){
         var checked = selectedIds.includes(e.id);
         return '<div class="uc-result-item '+(checked?'selected':'')+'" id="res-'+e.id+'" onclick="toggleResult('+e.id+')">'
             + '<input type="checkbox" '+(checked?'checked':'')+' onclick="event.stopPropagation();toggleResult('+e.id+')">'
-            + '<span>' + e.name + ' - #' + e.code + '</span>'
+            + '<span>' + escapeHtml(e.name) + ' - #' + escapeHtml(e.code) + '</span>'
             + '</div>';
     }).join('');
+
     resultsList.style.display = 'block';
 }
 
 function toggleResult(empId) {
     var idx = selectedIds.indexOf(empId);
+
     if (idx > -1) {
         selectedIds.splice(idx, 1);
     } else {
         selectedIds.push(empId);
     }
-    // update checkbox state in result list
+
     var resItem = document.getElementById('res-'+empId);
     if (resItem) {
         resItem.classList.toggle('selected', selectedIds.includes(empId));
         var chk = resItem.querySelector('input[type=checkbox]');
         if(chk) chk.checked = selectedIds.includes(empId);
     }
-    // re-render chips
+
+    renderSelectedInputs();
     renderChips();
-    // re-render table rows
     renderTableRows();
 }
 
-/* ── Chip toggle ── */
 function toggleChip(empId, chk) {
     if (!chk.checked) {
         var idx = selectedIds.indexOf(empId);
@@ -547,6 +744,8 @@ function toggleChip(empId, chk) {
     } else {
         if (!selectedIds.includes(empId)) selectedIds.push(empId);
     }
+
+    renderSelectedInputs();
     renderChips();
     renderTableRows();
 }
@@ -554,110 +753,153 @@ function toggleChip(empId, chk) {
 function renderChips() {
     var chipsDiv = document.getElementById('ucChips');
     if (!chipsDiv) return;
-    var emps = allEmployees.filter(function(e){ return selectedIds.includes(e.id); });
-    if (emps.length === 0) { chipsDiv.innerHTML=''; return; }
+
+    var emps = allEmployees.filter(function(e){
+        return selectedIds.includes(e.id);
+    });
+
+    if (emps.length === 0) {
+        chipsDiv.innerHTML='';
+        return;
+    }
+
     chipsDiv.innerHTML = emps.map(function(e){
         return '<div class="uc-chip" id="chip-'+e.id+'">'
             + '<input type="checkbox" checked onchange="toggleChip('+e.id+',this)">'
-            + '<span class="uc-chip-name">'+e.name+' -<br>'+e.code+'</span>'
+            + '<span class="uc-chip-name">'+escapeHtml(e.name)+' -<br>'+escapeHtml(e.code)+'</span>'
             + '</div>';
     }).join('');
 }
 
-/* ── Render table rows dynamically ── */
 function renderTableRows() {
     var tbody = document.getElementById('ucTableBody');
     if (!tbody) return;
-    var emps = allEmployees.filter(function(e){ return selectedIds.includes(e.id); });
+
+    var emps = allEmployees.filter(function(e){
+        return selectedIds.includes(e.id);
+    });
+
     if (emps.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="uc-table-empty">Search for an employee and click <strong>Get Details</strong> to load CTC data.</td></tr>';
         return;
     }
+
     var tplOpts = templates.map(function(t){
-        return '<option value="'+t.id+'">'+t.name+'</option>';
+        return '<option value="'+t.id+'">'+escapeHtml(t.name)+'</option>';
     }).join('');
 
     tbody.innerHTML = emps.map(function(e){
-        var monthly = e.ctc_monthly;
+        var monthly = Number(e.ctc_monthly || 0);
         var yearly  = monthly * 12;
-        var fmtN = function(n){ return '₹ ' + n.toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); };
+
         return '<tr id="row-'+e.id+'">'
             + '<td style="text-align:center"><input type="checkbox" name="row_sel[]" value="'+e.id+'" class="uc-row-chk" style="width:15px;height:15px;accent-color:#2563EB;cursor:pointer"></td>'
-            + '<td style="font-weight:500;color:#111827">'+e.name+' - #'+e.code+'</td>'
+            + '<td style="font-weight:500;color:#111827">'+escapeHtml(e.name)+' - #'+escapeHtml(e.code)+'</td>'
             + '<td><select name="tpl_'+e.id+'" class="uc-tpl-sel"><option value=""></option>'+tplOpts+'</select></td>'
             + '<td><span class="uc-curr-ctc">'+fmtN(monthly)+' ('+fmtN(yearly)+' yearly)</span></td>'
             + '<td><div class="uc-new-ctc-wrap"><span>₹</span><input type="number" name="new_ctc_'+e.id+'" class="uc-new-ctc" placeholder="Add the new CTC here" min="0"></div></td>'
             + '</tr>';
     }).join('');
 
-    // pre-select template
     emps.forEach(function(e){
         var sel = tbody.querySelector('select[name="tpl_'+e.id+'"]');
         if(sel) sel.value = e.template_id;
     });
 }
 
-/* ── Select all rows ── */
-function toggleAllRows(masterChk) {
-    document.querySelectorAll('.uc-row-chk').forEach(function(c){ c.checked=masterChk.checked; });
+function fmtN(n) {
+    return '₹ ' + Number(n).toLocaleString('en-IN', {maximumFractionDigits:0});
 }
 
-/* ── Filter popup ── */
+function toggleAllRows(masterChk) {
+    document.querySelectorAll('.uc-row-chk').forEach(function(c){
+        c.checked = masterChk.checked;
+    });
+}
+
 function toggleFilter(e) {
     e.stopPropagation();
     document.getElementById('ucFilterPopup').classList.toggle('open');
 }
+
 function applyFilter() {
     document.getElementById('ucFilterPopup').classList.remove('open');
-    ucToast('🔍','Filter applied!');
+    document.getElementById('ucSearchForm').submit();
 }
+
 function clearFilter() {
     document.getElementById('filterDept').value='';
     document.getElementById('filterTpl').value='';
     document.getElementById('ucFilterPopup').classList.remove('open');
-    ucToast('✓','Filters cleared');
+    document.getElementById('ucSearchForm').submit();
 }
+
 document.addEventListener('click',function(e){
     var popup=document.getElementById('ucFilterPopup');
-    if(popup&&!popup.closest('.uc-filter-popup')?.contains(e.target)&&!e.target.closest('.uc-filter-btn')){
+    if(popup && !popup.contains(e.target) && !e.target.closest('.uc-filter-btn')){
         popup.classList.remove('open');
     }
 });
 
-/* ── Close search results on click outside ── */
 document.addEventListener('click',function(e){
     var rl=document.getElementById('ucResultsList');
-    if(rl&&!document.getElementById('ucSearchForm')?.contains(e.target)){
+    var form=document.getElementById('ucSearchForm');
+    if(rl && form && !form.contains(e.target)){
         rl.style.display='none';
     }
 });
 
-/* ── Form validation ── */
 function validateUcForm() {
     var rows = document.querySelectorAll('.uc-row-chk:checked');
-    if (rows.length === 0 && selectedIds.length === 0) {
-        ucToast('⚠','Please select at least one employee to update.');
+
+    if (rows.length === 0) {
+        ucToast('⚠','Please select at least one employee row to update.');
         return false;
     }
+
     var hasNewCtc = false;
-    document.querySelectorAll('.uc-new-ctc').forEach(function(inp){
-        if(inp.value.trim()) hasNewCtc=true;
+
+    rows.forEach(function(chk){
+        var empId = chk.value;
+        var inp = document.querySelector('input[name="new_ctc_'+empId+'"]');
+        var tpl = document.querySelector('select[name="tpl_'+empId+'"]');
+
+        if ((inp && inp.value.trim()) || (tpl && tpl.value.trim())) {
+            hasNewCtc = true;
+        }
     });
+
     if (!hasNewCtc) {
-        ucToast('⚠','Please enter the new CTC for at least one employee.');
+        ucToast('⚠','Please enter new CTC or select CTC template.');
         return false;
     }
+
     return true;
 }
 
-/* ── New CTC yearly preview ── */
 document.addEventListener('input', function(e) {
     if (!e.target.classList.contains('uc-new-ctc')) return;
+
     var val = parseFloat(e.target.value);
-    if (isNaN(val) || val <= 0) { e.target.title=''; return; }
+
+    if (isNaN(val) || val <= 0) {
+        e.target.title='';
+        return;
+    }
+
     var yearly = val * 12;
     e.target.title = '₹ ' + yearly.toLocaleString('en-IN') + ' yearly';
 });
+
+function escapeHtml(text) {
+    return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+renderSelectedInputs();
 </script>
 
 <?php

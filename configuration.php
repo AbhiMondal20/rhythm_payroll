@@ -73,9 +73,9 @@ $config_data = [
             ['icon'=>'assign',      'title'=>'Assign CTC and Templates',   'desc'=>'Add/Update the CTC of Employee(s). Also, assign them a suitable Template.',                  'href'=>'AssignCTC'],
             ['icon'=>'salary',      'title'=>'Salary Components',          'desc'=>'Create & Manage Components like Earnings, Deduction, Contribution, Etc. that appear in the CTC.','href'=>'SalaryComponents'],
             ['icon'=>'salcat',      'title'=>'Salary Component Category',  'desc'=>'Statutory Configuration of the Salary components.',                                           'href'=>'SalaryComponentsCategory'],
-            ['icon'=>'variable',    'title'=>'Payroll Variables',          'desc'=>'Mathematical expression to calculate salary.',                                                 'href'=>'payroll-variables'],
-            ['icon'=>'statutory',   'title'=>'Statutory Configuration',    'desc'=>'Configure ESI, EPF Percentages and Tax declaration details.',                                 'href'=>'statutory'],
-            ['icon'=>'rounding',    'title'=>'Rounding Rule',              'desc'=>'Create rules to round off numbers.',                                                          'href'=>'rounding-rule'],
+            ['icon'=>'variable',    'title'=>'Payroll Variables',          'desc'=>'Mathematical expression to calculate salary.',                                                 'href'=>'PayrollVariables'],
+            ['icon'=>'statutory',   'title'=>'Statutory Configuration',    'desc'=>'Configure ESI, EPF Percentages and Tax declaration details.',                                 'href'=>'Statutory'],
+            ['icon'=>'rounding',    'title'=>'Rounding Rule',              'desc'=>'Create rules to round off numbers.',                                                          'href'=>'RoundingRule'],
         ],
     ],
 

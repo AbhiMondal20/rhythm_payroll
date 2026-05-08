@@ -1,80 +1,190 @@
 <?php
 require_once 'includes/config.php';
+require_once 'includes/db_client.php';
 $page_title = 'Organization Management';
 
-/* ─────────────────────────────────────────
-   MOCK DATA  (replace with real DB queries)
-───────────────────────────────────────── */
-$organizations = [
-    [
-        'id'           => 1,
-        'code'         => 'RKIVF',
-        'name'         => 'Ramkrishna IVF Centre',
-        'address1'     => 'Ramkrishna IVF Centre, Pakurtala More',
-        'address2'     => '',
-        'city'         => 'Siliguri',
-        'state'        => 'West Bengal',
-        'country'      => 'India',
-        'pincode'      => '734001',
-        'phone'        => '+91 93750 17xxx',
-        'email'        => 'info@ramkrishnaivf.in',
-        'website'      => 'https://ramkrishnaivf.in',
-        'gstin'        => '19AABCR1234F1Z5',
-        'pan'          => 'AABCR1234F',
-        'logo'         => '',
-        'active'       => true,
-    ],
+function esc($v) {
+    return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
+}
+
+function postv($key, $default = '') {
+    return trim((string)($_POST[$key] ?? $default));
+}
+
+$mode = $_GET['mode'] ?? 'view';
+$selected_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+
+$toast_msg  = $_SESSION['toast_msg'] ?? '';
+$toast_icon = $_SESSION['toast_icon'] ?? '✅';
+unset($_SESSION['toast_msg'], $_SESSION['toast_icon']);
+
+$fields = [
+    'client_code', 'client_name', 'logo', 'phone', 'email', 'website', 'address', 'status',
+    'pan', 'tan', 'gstin', 'pf_no', 'esi_no', 'pt_no', 'lwf_no', 'factory_no', 'incorporation_no', 'cin',
+    'mail_from_name', 'mail_from_email', 'mail_host', 'mail_port', 'mail_encryption', 'mail_username', 'mail_password', 'mail_signature',
+    'date_format', 'time_format', 'currency', 'timezone', 'week_start', 'financial_year', 'payroll_cycle', 'payslip_format'
 ];
 
-/* ─────────────────────────────────────────
-   SELECTED ORG
-───────────────────────────────────────── */
-$selected_id  = isset($_GET['id']) ? (int)$_GET['id'] : ($organizations[0]['id'] ?? null);
-$selected_org = null;
-foreach ($organizations as $org) {
-    if ($org['id'] === $selected_id) { $selected_org = $org; break; }
-}
-if (!$selected_org && !empty($organizations)) {
-    $selected_org = $organizations[0];
-    $selected_id  = $selected_org['id'];
-}
-
-/* ─────────────────────────────────────────
-   MODES
-───────────────────────────────────────── */
-$mode = $_GET['mode'] ?? 'view';   // view | edit | add
-
-/* ─────────────────────────────────────────
-   POST — save
-───────────────────────────────────────── */
-$save_success = false;
-$save_error   = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['form_action'] ?? '';
-    if ($action === 'save_org' || $action === 'add_org') {
-        // TODO: validate + DB insert/update
-        $save_success = true;
-        $mode = 'view';
+
+    if ($action === 'add_org' || $action === 'save_org') {
+        $data = [];
+        foreach ($fields as $f) {
+            $data[$f] = postv($f);
+        }
+
+        if ($data['client_code'] === '' || $data['client_name'] === '') {
+            $_SESSION['toast_icon'] = '⚠';
+            $_SESSION['toast_msg'] = 'Client Code and Company Name are required.';
+            header("Location: " . $_SERVER['HTTP_REFERER']);
+            exit;
+        }
+
+        if ($data['status'] === '') {
+            $data['status'] = 'active';
+        }
+
+        if ($action === 'add_org') {
+            $sql = "INSERT INTO companies
+            (`client_code`, `client_name`, `logo`, `phone`, `email`, `website`, `address`, `status`,
+            `pan`, `tan`, `gstin`, `pf_no`, `esi_no`, `pt_no`, `lwf_no`, `factory_no`, `incorporation_no`, `cin`,
+            `mail_from_name`, `mail_from_email`, `mail_host`, `mail_port`, `mail_encryption`, `mail_username`, `mail_password`, `mail_signature`,
+            `date_format`, `time_format`, `currency`, `timezone`, `week_start`, `financial_year`, `payroll_cycle`, `payslip_format`)
+            VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param(
+                str_repeat('s', 34),
+                $data['client_code'], $data['client_name'], $data['logo'], $data['phone'], $data['email'], $data['website'], $data['address'], $data['status'],
+                $data['pan'], $data['tan'], $data['gstin'], $data['pf_no'], $data['esi_no'], $data['pt_no'], $data['lwf_no'], $data['factory_no'], $data['incorporation_no'], $data['cin'],
+                $data['mail_from_name'], $data['mail_from_email'], $data['mail_host'], $data['mail_port'], $data['mail_encryption'], $data['mail_username'], $data['mail_password'], $data['mail_signature'],
+                $data['date_format'], $data['time_format'], $data['currency'], $data['timezone'], $data['week_start'], $data['financial_year'], $data['payroll_cycle'], $data['payslip_format']
+            );
+
+            if ($stmt->execute()) {
+                $_SESSION['toast_icon'] = '✅';
+                $_SESSION['toast_msg'] = 'Company added successfully!';
+                header("Location: ?id=" . $stmt->insert_id . "&mode=view");
+                exit;
+            } else {
+                $_SESSION['toast_icon'] = '❌';
+                $_SESSION['toast_msg'] = 'Save failed: ' . $stmt->error;
+                header("Location: ?mode=add");
+                exit;
+            }
+        }
+
+        if ($action === 'save_org') {
+            $org_id = (int)($_POST['org_id'] ?? 0);
+
+            $sql = "UPDATE companies SET
+            `client_code`=?, `client_name`=?, `logo`=?, `phone`=?, `email`=?, `website`=?, `address`=?, `status`=?,
+            `pan`=?, `tan`=?, `gstin`=?, `pf_no`=?, `esi_no`=?, `pt_no`=?, `lwf_no`=?, `factory_no`=?, `incorporation_no`=?, `cin`=?,
+            `mail_from_name`=?, `mail_from_email`=?, `mail_host`=?, `mail_port`=?, `mail_encryption`=?, `mail_username`=?, `mail_password`=?, `mail_signature`=?,
+            `date_format`=?, `time_format`=?, `currency`=?, `timezone`=?, `week_start`=?, `financial_year`=?, `payroll_cycle`=?, `payslip_format`=?
+            WHERE `id`=?";
+
+            $stmt = $conn->prepare($sql);
+            $types = str_repeat('s', 34) . 'i';
+
+            $stmt->bind_param(
+                $types,
+                $data['client_code'], $data['client_name'], $data['logo'], $data['phone'], $data['email'], $data['website'], $data['address'], $data['status'],
+                $data['pan'], $data['tan'], $data['gstin'], $data['pf_no'], $data['esi_no'], $data['pt_no'], $data['lwf_no'], $data['factory_no'], $data['incorporation_no'], $data['cin'],
+                $data['mail_from_name'], $data['mail_from_email'], $data['mail_host'], $data['mail_port'], $data['mail_encryption'], $data['mail_username'], $data['mail_password'], $data['mail_signature'],
+                $data['date_format'], $data['time_format'], $data['currency'], $data['timezone'], $data['week_start'], $data['financial_year'], $data['payroll_cycle'], $data['payslip_format'],
+                $org_id
+            );
+
+            if ($stmt->execute()) {
+                $_SESSION['toast_icon'] = '✅';
+                $_SESSION['toast_msg'] = 'Company updated successfully!';
+            } else {
+                $_SESSION['toast_icon'] = '❌';
+                $_SESSION['toast_msg'] = 'Update failed: ' . $stmt->error;
+            }
+
+            header("Location: ?id=" . $org_id . "&mode=view");
+            exit;
+        }
     }
+
     if ($action === 'delete_org') {
-        // TODO: DB delete
-        $save_success = true;
-        $mode = 'view';
+        $org_id = (int)($_POST['org_id'] ?? 0);
+
+        $stmt = $conn->prepare("DELETE FROM companies WHERE id=?");
+        $stmt->bind_param("i", $org_id);
+
+        if ($stmt->execute()) {
+            $_SESSION['toast_icon'] = '✅';
+            $_SESSION['toast_msg'] = 'Company deleted successfully!';
+        } else {
+            $_SESSION['toast_icon'] = '❌';
+            $_SESSION['toast_msg'] = 'Delete failed: ' . $stmt->error;
+        }
+
+        header("Location: ?mode=view");
+        exit;
     }
 }
 
-function esc($v) { return htmlspecialchars($v ?? '', ENT_QUOTES, 'UTF-8'); }
-function sel($v,$o){ return $v===$o?'selected':''; }
-function val_or_dash($v){ return $v!==''?esc($v):''; }
+$organizations = [];
+$res = $conn->query("SELECT * FROM companies ORDER BY id DESC");
+if ($res) {
+    while ($row = $res->fetch_assoc()) {
+        $organizations[] = $row;
+    }
+}
+
+if ($selected_id <= 0 && !empty($organizations)) {
+    $selected_id = (int)$organizations[0]['id'];
+}
+
+$selected_org = null;
+if ($selected_id > 0) {
+    $stmt = $conn->prepare("SELECT * FROM companies WHERE id=? LIMIT 1");
+    $stmt->bind_param("i", $selected_id);
+    $stmt->execute();
+    $selected_org = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+}
+
+function fieldVal($org, $key) {
+    return $org[$key] ?? '';
+}
 
 ob_start();
 ?>
+
 <link rel="stylesheet" href="includes/assets/style.css">
 
 <style>
+
+
 /* ═══════════════════════════════════════════
    ORGANIZATION MANAGEMENT PAGE
 ═══════════════════════════════════════════ */
+
+
+    /* ── Config tab bar (reuse from config page) ── */
+.cfg-tabs {
+    display:flex;align-items:center;border-bottom:1px solid #E5E7EB;
+    background:#fff;overflow-x:auto;scrollbar-width:none;
+}
+.cfg-tabs::-webkit-scrollbar { display:none; }
+.cfg-tab {
+    padding:14px 20px;font-size:13.5px;font-weight:500;color:#6B7280;
+    cursor:pointer;border:none;background:transparent;
+    border-bottom:2.5px solid transparent;white-space:nowrap;
+    transition:color .15s,border-color .15s;text-decoration:none;
+    display:block;margin-bottom:-1px;
+}
+.cfg-tab:hover  { color:#111827; }
+.cfg-tab.active { color:#2563EB;border-bottom-color:#2563EB;font-weight:600; }
+
+
 
 /* ── Page header row ── */
 .om-header {
@@ -367,7 +477,7 @@ ob_start();
 }
 @keyframes popIn { from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)} }
 
-/* toast */
+
 .om-toast {
     position: fixed;
     bottom: 24px;
@@ -379,7 +489,7 @@ ob_start();
     border-radius: 10px;
     font-size: 13px;
     font-weight: 500;
-    z-index: 999;
+    z-index: 99999;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -388,336 +498,372 @@ ob_start();
     white-space: nowrap;
 }
 .om-toast.show { transform: translateX(-50%) translateY(0); }
-
-/* responsive */
-@media (max-width: 860px) {
-    .om-layout { grid-template-columns: 1fr; }
-    .om-list-panel { border-right: none; border-bottom: 1px solid #E5E7EB; }
-}
-@media (max-width: 560px) {
-    .om-fields { grid-template-columns: 1fr; }
-    .om-field:nth-child(even) { padding-left: 0; border-left: none; }
-    .om-field { border-bottom: 1px solid #F3F4F6; }
-}
 </style>
 
-<?php if ($save_success): ?>
-<script>document.addEventListener('DOMContentLoaded',function(){ omToast('✅','Organization saved successfully!'); });</script>
-<?php endif; ?>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+    <h1 class="page-title">Configuration</h1>
+</div>
 
-<!-- ── Page header ── -->
-<div class="om-header">
-    <div class="om-header-left">
-        <a class="om-back-btn" style="text-decoration: none;" href="configuration#Organization" title="Back">
-            <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-        </a>
-        <div>
-            <div class="om-title">Organization Management</div>
-            <div class="om-subtitle">List of Organizations</div>
+<div class="section-card" style="padding:0;overflow:hidden">
+
+    <div class="cfg-tabs">
+        <?php foreach(['AccountInfo'=>'Account Info','Organization'=>'Organization','Payroll'=>'Payroll','Attendance'=>'Attendance','Leave'=>'Leave','Training'=>'Training','Others'=>'Others'] as $k=>$l): ?>
+            <a href="configuration#<?= $k ?>" class="cfg-tab <?= $k==='Organization'?'active':'' ?>"><?= $l ?></a>
+        <?php endforeach; ?>
+    </div>
+
+    <div class="om-header" style="padding:10px 32px;overflow:hidden; border-bottom:1px solid #E5E7EB">
+        <div style="padding:14px 20px;">
+            <div class="ctc-bc">
+                <a href="configuration#Organization">Organization</a>
+                <span class="sep">›</span>
+                <span class="cur">Details</span>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <?php if ($mode === 'view' && $selected_org): ?>
+                <a href="?id=<?= (int)$selected_id ?>&mode=edit" class="btn" style="text-decoration:none;">Edit Details</a>
+            <?php endif; ?>
+
+            <a href="?mode=add" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Add Organization
+            </a>
         </div>
     </div>
 
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <?php if ($mode === 'view' && $selected_org): ?>
-        <a href="?id=<?= $selected_id ?>&mode=edit" class="btn" style="text-decoration: none;">Edit Details</a>
-        <?php endif; ?>
-        <a href="?mode=add" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:6px; text-decoration:none;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add Organization
-        </a>
+    <div class="om-layout">
+
+        <div class="om-list-panel">
+            <div class="om-search-wrap">
+                <svg viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input type="text" id="omSearchInput" placeholder="Search items" oninput="omSearch(this.value)">
+            </div>
+
+            <div id="omOrgList">
+                <?php foreach ($organizations as $org): ?>
+                    <a href="?id=<?= (int)$org['id'] ?>&mode=view"
+                       class="om-list-item <?= $selected_id == $org['id'] && $mode !== 'add' ? 'active' : '' ?>"
+                       data-name="<?= strtolower(esc(($org['client_name'] ?? '') . ' ' . ($org['client_code'] ?? '') . ' ' . ($org['email'] ?? '') . ' ' . ($org['phone'] ?? ''))) ?>">
+                        <div>
+                            <div class="om-list-item-name"><?= esc($org['client_name']) ?></div>
+                            <div class="om-list-item-code"><?= esc($org['client_code']) ?></div>
+                        </div>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+
+            <div id="omNoResults" style="display:none;padding:20px 16px;font-size:13px;color:#9CA3AF;text-align:center">
+                No organisations found
+            </div>
+        </div>
+
+        <div class="om-detail-panel">
+
+            <?php if ($mode === 'view' && $selected_org): ?>
+
+                <div class="om-detail-label">Organization Details</div>
+
+                <div class="om-info-card">
+                    <div class="om-info-card-head">Company Information</div>
+                    <div class="om-info-card-body">
+                        <div class="om-fields">
+                            <?php
+                            $view_fields = [
+                                ['client_code', 'Client Code'],
+                                ['client_name', 'Company Name'],
+                                ['phone', 'Phone Number'],
+                                ['email', 'Email Address'],
+                                ['website', 'Website'],
+                                ['address', 'Address'],
+                                ['pan', 'PAN'],
+                                ['tan', 'TAN'],
+                                ['gstin', 'GSTIN'],
+                                ['pf_no', 'PF No'],
+                                ['esi_no', 'ESI No'],
+                                ['pt_no', 'PT No'],
+                                ['lwf_no', 'LWF No'],
+                                ['factory_no', 'Factory No'],
+                                ['incorporation_no', 'Incorporation No'],
+                                ['cin', 'CIN'],
+                                ['date_format', 'Date Format'],
+                                ['time_format', 'Time Format'],
+                                ['currency', 'Currency'],
+                                ['timezone', 'Timezone'],
+                                ['week_start', 'Week Start'],
+                                ['financial_year', 'Financial Year'],
+                                ['payroll_cycle', 'Payroll Cycle'],
+                                ['payslip_format', 'Payslip Format'],
+                            ];
+
+                            foreach ($view_fields as [$key, $label]):
+                                $value = fieldVal($selected_org, $key);
+                            ?>
+                                <div class="om-field">
+                                    <div class="om-field-label"><?= esc($label) ?></div>
+                                    <div class="om-field-val <?= $value === '' ? 'empty' : '' ?>">
+                                        <?= $value !== '' ? esc($value) : '&nbsp;' ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+
+                            <div class="om-field">
+                                <div class="om-field-label">Status</div>
+                                <div class="om-field-val">
+                                    <?php $active = strtolower((string)$selected_org['status']) === 'active' || $selected_org['status'] == '1'; ?>
+                                    <span class="om-status" style="background:<?= $active ? '#D1FAE5' : '#FEE2E2' ?>;color:<?= $active ? '#065F46' : '#991B1B' ?>">
+                                        ● <?= $active ? 'Active' : 'Inactive' ?>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="om-info-card">
+                    <div class="om-info-card-head">Mail Settings</div>
+                    <div class="om-info-card-body">
+                        <div class="om-fields">
+                            <?php
+                            $mail_fields = [
+                                ['mail_from_name', 'Mail From Name'],
+                                ['mail_from_email', 'Mail From Email'],
+                                ['mail_host', 'Mail Host'],
+                                ['mail_port', 'Mail Port'],
+                                ['mail_encryption', 'Mail Encryption'],
+                                ['mail_username', 'Mail Username'],
+                                ['mail_signature', 'Mail Signature'],
+                            ];
+
+                            foreach ($mail_fields as [$key, $label]):
+                                $value = fieldVal($selected_org, $key);
+                            ?>
+                                <div class="om-field">
+                                    <div class="om-field-label"><?= esc($label) ?></div>
+                                    <div class="om-field-val <?= $value === '' ? 'empty' : '' ?>">
+                                        <?= $value !== '' ? nl2br(esc($value)) : '&nbsp;' ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+
+                            <div class="om-field">
+                                <div class="om-field-label">Mail Password</div>
+                                <div class="om-field-val">
+                                    <?= !empty($selected_org['mail_password']) ? '••••••••' : '&nbsp;' ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:flex;justify-content:flex-end;margin-top:4px">
+                    <button class="btn" style="color:#DC2626;border-color:#FEE2E2;background:#FFF5F5;font-size:12.5px"
+                            onclick="document.getElementById('delConfirm').classList.add('open')">
+                        Delete Organization
+                    </button>
+                </div>
+
+            <?php elseif (($mode === 'edit' && $selected_org) || $mode === 'add'): ?>
+
+                <?php
+                $is_edit = $mode === 'edit';
+                $form_org = $is_edit ? $selected_org : [];
+                ?>
+
+                <div class="om-detail-label"><?= $is_edit ? 'Edit Organization Details' : 'Add New Organization' ?></div>
+
+                <form method="POST" id="<?= $is_edit ? 'editOrgForm' : 'addOrgForm' ?>" novalidate>
+                    <input type="hidden" name="form_action" value="<?= $is_edit ? 'save_org' : 'add_org' ?>">
+                    <?php if ($is_edit): ?>
+                        <input type="hidden" name="org_id" value="<?= (int)$selected_org['id'] ?>">
+                    <?php endif; ?>
+
+                    <div class="om-info-card">
+                        <div class="om-info-card-head">Company Information</div>
+                        <div class="om-info-card-body">
+                            <div class="om-fields">
+                                <?php
+                                $input_fields = [
+                                    ['client_code', 'Client Code', 'text', true],
+                                    ['client_name', 'Company Name', 'text', true],
+                                    ['logo', 'Logo URL', 'text', false],
+                                    ['phone', 'Phone Number', 'text', false],
+                                    ['email', 'Email Address', 'email', false],
+                                    ['website', 'Website', 'url', false],
+                                    ['address', 'Address', 'text', false],
+                                    ['pan', 'PAN', 'text', false],
+                                    ['tan', 'TAN', 'text', false],
+                                    ['gstin', 'GSTIN', 'text', false],
+                                    ['pf_no', 'PF No', 'text', false],
+                                    ['esi_no', 'ESI No', 'text', false],
+                                    ['pt_no', 'PT No', 'text', false],
+                                    ['lwf_no', 'LWF No', 'text', false],
+                                    ['factory_no', 'Factory No', 'text', false],
+                                    ['incorporation_no', 'Incorporation No', 'text', false],
+                                    ['cin', 'CIN', 'text', false],
+                                ];
+
+                                foreach ($input_fields as [$key, $label, $type, $required]):
+                                ?>
+                                    <div class="om-field">
+                                        <div class="om-field-label <?= $required ? 'req' : '' ?>"><?= esc($label) ?></div>
+                                        <input type="<?= esc($type) ?>" name="<?= esc($key) ?>"
+                                               value="<?= esc(fieldVal($form_org, $key)) ?>"
+                                               <?= $required ? 'required' : '' ?>>
+                                    </div>
+                                <?php endforeach; ?>
+
+                                <div class="om-field">
+                                    <div class="om-field-label">Status</div>
+                                    <?php $st = fieldVal($form_org, 'status') ?: 'active'; ?>
+                                    <select name="status">
+                                        <option value="active" <?= strtolower($st) === 'active' || $st == '1' ? 'selected' : '' ?>>Active</option>
+                                        <option value="inactive" <?= strtolower($st) === 'inactive' || $st == '0' ? 'selected' : '' ?>>Inactive</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="om-info-card">
+                        <div class="om-info-card-head">Mail Settings</div>
+                        <div class="om-info-card-body">
+                            <div class="om-fields">
+                                <?php
+                                $mail_inputs = [
+                                    ['mail_from_name', 'Mail From Name', 'text'],
+                                    ['mail_from_email', 'Mail From Email', 'email'],
+                                    ['mail_host', 'Mail Host', 'text'],
+                                    ['mail_port', 'Mail Port', 'text'],
+                                    ['mail_encryption', 'Mail Encryption', 'text'],
+                                    ['mail_username', 'Mail Username', 'text'],
+                                    ['mail_password', 'Mail Password', 'password'],
+                                    ['mail_signature', 'Mail Signature', 'text'],
+                                ];
+
+                                foreach ($mail_inputs as [$key, $label, $type]):
+                                ?>
+                                    <div class="om-field">
+                                        <div class="om-field-label"><?= esc($label) ?></div>
+                                        <input type="<?= esc($type) ?>" name="<?= esc($key) ?>"
+                                               value="<?= esc(fieldVal($form_org, $key)) ?>">
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="om-info-card">
+                        <div class="om-info-card-head">Payroll Settings</div>
+                        <div class="om-info-card-body">
+                            <div class="om-fields">
+                                <?php
+                                $setting_inputs = [
+                                    ['date_format', 'Date Format', 'text', 'd-m-Y'],
+                                    ['time_format', 'Time Format', 'text', 'h:i A'],
+                                    ['currency', 'Currency', 'text', 'INR'],
+                                    ['timezone', 'Timezone', 'text', 'Asia/Kolkata'],
+                                    ['week_start', 'Week Start', 'text', 'Monday'],
+                                    ['financial_year', 'Financial Year', 'text', 'April-March'],
+                                    ['payroll_cycle', 'Payroll Cycle', 'text', 'Monthly'],
+                                    ['payslip_format', 'Payslip Format', 'text', 'Standard'],
+                                ];
+
+                                foreach ($setting_inputs as [$key, $label, $type, $placeholder]):
+                                ?>
+                                    <div class="om-field">
+                                        <div class="om-field-label"><?= esc($label) ?></div>
+                                        <input type="<?= esc($type) ?>" name="<?= esc($key) ?>"
+                                               value="<?= esc(fieldVal($form_org, $key)) ?>"
+                                               placeholder="<?= esc($placeholder) ?>">
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="om-action-bar">
+                        <a href="<?= $is_edit ? '?id=' . (int)$selected_id . '&mode=view' : '?mode=view' ?>" class="btn" style="text-decoration:none;">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            <?= $is_edit ? 'Save Changes' : 'Save Organization' ?>
+                        </button>
+                    </div>
+                </form>
+
+            <?php else: ?>
+
+                <div class="om-empty">
+                    Select an organization from the list to view details
+                </div>
+
+            <?php endif; ?>
+
+        </div>
     </div>
 </div>
 
-<!-- ── Main card ── -->
-<div class="section-card" style="padding:0;overflow:hidden">
-<div class="om-layout">
-
-    <!-- ════════════════════════════
-         LEFT  — ORG LIST
-    ════════════════════════════ -->
-    <div class="om-list-panel">
-
-        <!-- Search -->
-        <div class="om-search-wrap">
-            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="omSearchInput" placeholder="Search items"
-                oninput="omSearch(this.value)">
-        </div>
-
-        <!-- List -->
-        <div id="omOrgList">
-            <?php foreach ($organizations as $org): ?>
-            <a href="?id=<?= $org['id'] ?>&mode=view"
-               class="om-list-item <?= $selected_id===$org['id']&&$mode!=='add' ? 'active' : '' ?>"
-               data-name="<?= strtolower(esc($org['name'])) ?> <?= strtolower(esc($org['code'])) ?>">
-                <div>
-                    <div class="om-list-item-name"><?= esc($org['name']) ?></div>
-                    <div class="om-list-item-code"><?= esc($org['code']) ?></div>
-                </div>
-            </a>
-            <?php endforeach; ?>
-        </div>
-
-        <!-- Empty search result -->
-        <div id="omNoResults" style="display:none;padding:20px 16px;font-size:13px;color:#9CA3AF;text-align:center">
-            No organisations found
-        </div>
-
-    </div>
-
-    <!-- ════════════════════════════
-         RIGHT  — DETAIL / FORM
-    ════════════════════════════ -->
-    <div class="om-detail-panel">
-
-        <?php if ($mode === 'view' && $selected_org): ?>
-        <!-- ─────────────────────
-             VIEW MODE
-        ───────────────────────── -->
-        <div class="om-detail-label">Organization Details</div>
-
-        <!-- Company Information -->
-        <div class="om-info-card">
-            <div class="om-info-card-head">Company Information</div>
-            <div class="om-info-card-body">
-                <div class="om-fields">
-                    <?php
-                    $view_fields = [
-                        ['code',     'Code Name'],
-                        ['name',     'Company Name'],
-                        ['address1', 'Address 1'],
-                        ['address2', 'Address 2'],
-                        ['city',     'City'],
-                        ['state',    'State'],
-                        ['country',  'Country'],
-                        ['pincode',  'Pincode'],
-                        ['phone',    'Phone Number'],
-                        ['email',    'Email Address'],
-                        ['website',  'Website'],
-                        ['gstin',    'GSTIN'],
-                        ['pan',      'PAN'],
-                    ];
-                    foreach ($view_fields as [$fkey, $flabel]):
-                        $fval = $selected_org[$fkey] ?? '';
-                    ?>
-                    <div class="om-field">
-                        <div class="om-field-label"><?= esc($flabel) ?></div>
-                        <div class="om-field-val <?= $fval===''?'empty':'' ?>">
-                            <?= $fval!=='' ? esc($fval) : '&nbsp;' ?>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-
-                    <!-- Status -->
-                    <div class="om-field">
-                        <div class="om-field-label">Status</div>
-                        <div class="om-field-val">
-                            <span class="om-status" style="background:<?= $selected_org['active']?'#D1FAE5':'#FEE2E2' ?>;color:<?= $selected_org['active']?'#065F46':'#991B1B' ?>">
-                                ● <?= $selected_org['active']?'Active':'Inactive' ?>
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Danger zone -->
-        <div style="display:flex;justify-content:flex-end;margin-top:4px">
-            <button class="btn" style="color:#DC2626;border-color:#FEE2E2;background:#FFF5F5;font-size:12.5px"
-                onclick="document.getElementById('delConfirm').classList.add('open')">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;vertical-align:middle"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                Delete Organization
-            </button>
-        </div>
-
-        <?php elseif ($mode === 'edit' && $selected_org): ?>
-        <!-- ─────────────────────
-             EDIT MODE
-        ───────────────────────── -->
-        <div class="om-detail-label">Edit Organization Details</div>
-
-        <form method="POST" id="editOrgForm" novalidate>
-        <input type="hidden" name="form_action" value="save_org">
-        <input type="hidden" name="org_id" value="<?= (int)$selected_org['id'] ?>">
-
-        <div class="om-info-card">
-            <div class="om-info-card-head">Company Information</div>
-            <div class="om-info-card-body">
-                <div class="om-fields">
-                    <?php
-                    $edit_fields = [
-                        ['code',     'Code Name',     'text',  true,  false, 'e.g. RKIVF'],
-                        ['name',     'Company Name',  'text',  true,  false, 'e.g. Ramkrishna IVF Centre'],
-                        ['address1', 'Address 1',     'text',  false, false, ''],
-                        ['address2', 'Address 2',     'text',  false, false, ''],
-                        ['city',     'City',          'text',  false, false, ''],
-                        ['state',    'State',         'text',  false, false, ''],
-                        ['country',  'Country',       'text',  false, false, ''],
-                        ['pincode',  'Pincode',       'text',  false, false, ''],
-                        ['phone',    'Phone Number',  'tel',   false, false, ''],
-                        ['email',    'Email Address', 'email', false, false, ''],
-                        ['website',  'Website',       'url',   false, false, ''],
-                        ['gstin',    'GSTIN',         'text',  false, false, ''],
-                        ['pan',      'PAN',           'text',  false, false, ''],
-                    ];
-                    foreach ($edit_fields as [$fkey,$flabel,$ftype,$req,$full,$ph]):
-                        $fval = $selected_org[$fkey] ?? '';
-                    ?>
-                    <div class="om-field <?= $full?'full':'' ?>">
-                        <div class="om-field-label <?= $req?'req':'' ?>"><?= esc($flabel) ?></div>
-                        <input type="<?= $ftype ?>" name="<?= $fkey ?>"
-                            value="<?= esc($fval) ?>"
-                            placeholder="<?= esc($ph) ?>"
-                            <?= $req?'required':'' ?>>
-                    </div>
-                    <?php endforeach; ?>
-
-                    <!-- Status -->
-                    <div class="om-field">
-                        <div class="om-field-label">Status</div>
-                        <select name="active">
-                            <option value="1" <?= $selected_org['active']?'selected':'' ?>>Active</option>
-                            <option value="0" <?= !$selected_org['active']?'selected':'' ?>>Inactive</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="om-action-bar">
-            <a href="?id=<?= $selected_id ?>&mode=view" class="btn" style="text-decoration: none;">Cancel</a>
-            <button type="submit" class="btn btn-primary">Save Changes</button>
-        </div>
-        </form>
-
-        <?php elseif ($mode === 'add'): ?>
-        <!-- ─────────────────────
-             ADD MODE
-        ───────────────────────── -->
-        <div class="om-detail-label">Add New Organization</div>
-
-        <form method="POST" id="addOrgForm" novalidate>
-        <input type="hidden" name="form_action" value="add_org">
-
-        <div class="om-info-card">
-            <div class="om-info-card-head">Company Information</div>
-            <div class="om-info-card-body">
-                <div class="om-fields">
-                    <?php
-                    $add_fields = [
-                        ['code',     'Code Name',     'text',  true,  false, 'e.g. RKIVF'],
-                        ['name',     'Company Name',  'text',  true,  false, 'e.g. Ramkrishna IVF Centre'],
-                        ['address1', 'Address 1',     'text',  false, false, 'Street address'],
-                        ['address2', 'Address 2',     'text',  false, false, 'Area / Landmark'],
-                        ['city',     'City',          'text',  false, false, 'e.g. Siliguri'],
-                        ['state',    'State',         'text',  false, false, 'e.g. West Bengal'],
-                        ['country',  'Country',       'text',  false, false, 'e.g. India'],
-                        ['pincode',  'Pincode',       'text',  false, false, 'e.g. 734001'],
-                        ['phone',    'Phone Number',  'tel',   false, false, '+91 XXXXX XXXXX'],
-                        ['email',    'Email Address', 'email', false, false, 'info@company.com'],
-                        ['website',  'Website',       'url',   false, false, 'https://'],
-                        ['gstin',    'GSTIN',         'text',  false, false, '22AAAAA0000A1Z5'],
-                        ['pan',      'PAN',           'text',  false, false, 'ABCDE1234F'],
-                    ];
-                    foreach ($add_fields as [$fkey,$flabel,$ftype,$req,$full,$ph]):
-                    ?>
-                    <div class="om-field <?= $full?'full':'' ?>">
-                        <div class="om-field-label <?= $req?'req':'' ?>"><?= esc($flabel) ?></div>
-                        <input type="<?= $ftype ?>" name="<?= $fkey ?>"
-                            placeholder="<?= esc($ph) ?>"
-                            <?= $req?'required':'' ?>>
-                    </div>
-                    <?php endforeach; ?>
-
-                    <div class="om-field">
-                        <div class="om-field-label">Status</div>
-                        <select name="active">
-                            <option value="1" selected>Active</option>
-                            <option value="0">Inactive</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="om-action-bar">
-            <a href="?mode=view" class="btn">Cancel</a>
-            <button type="submit" class="btn btn-primary">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;vertical-align:middle"><polyline points="20 6 9 17 4 12"/></svg>
-                Save Organization
-            </button>
-        </div>
-        </form>
-
-        <?php else: ?>
-        <!-- No selection -->
-        <div class="om-empty">
-            <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            Select an organization from the list to view details
-        </div>
-        <?php endif; ?>
-
-    </div><!-- end detail panel -->
-
-</div><!-- end om-layout -->
-</div><!-- end section-card -->
-
-
-<!-- ── Delete Confirm Modal ── -->
 <div class="del-confirm" id="delConfirm" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="del-box">
         <div style="width:56px;height:56px;background:#FEE2E2;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:24px">🗑</div>
         <h3 style="font-size:16px;font-weight:700;color:#111827;margin-bottom:8px">Delete Organization?</h3>
         <p style="font-size:13px;color:#6B7280;line-height:1.6;margin-bottom:20px">
-            This will permanently delete <strong><?= esc($selected_org['name'] ?? '') ?></strong> and all associated data. This action cannot be undone.
+            This will permanently delete <strong><?= esc($selected_org['client_name'] ?? '') ?></strong>. This action cannot be undone.
         </p>
         <div style="display:flex;gap:8px;justify-content:center">
             <button class="btn" onclick="document.getElementById('delConfirm').classList.remove('open')" style="min-width:100px">Cancel</button>
             <form method="POST" style="display:inline">
                 <input type="hidden" name="form_action" value="delete_org">
-                <input type="hidden" name="org_id" value="<?= (int)($selected_org['id']??0) ?>">
+                <input type="hidden" name="org_id" value="<?= (int)($selected_org['id'] ?? 0) ?>">
                 <button type="submit" class="btn" style="background:#DC2626;color:#fff;border-color:#DC2626;min-width:100px">Delete</button>
             </form>
         </div>
     </div>
 </div>
 
-<!-- ── Toast ── -->
 <div class="om-toast" id="omToastEl">
     <span id="omToastIcon">✅</span>
     <span id="omToastMsg">Done!</span>
 </div>
 
 <script>
-/* ── Search ── */
 function omSearch(q) {
     q = q.toLowerCase().trim();
-    const items   = document.querySelectorAll('.om-list-item');
-    let   visible = 0;
+    const items = document.querySelectorAll('.om-list-item');
+    let visible = 0;
+
     items.forEach(function(item) {
-        const match = !q || (item.dataset.name||'').includes(q);
+        const match = !q || (item.dataset.name || '').includes(q);
         item.style.display = match ? '' : 'none';
         if (match) visible++;
     });
+
     const noRes = document.getElementById('omNoResults');
     if (noRes) noRes.style.display = visible === 0 ? 'block' : 'none';
 }
 
-/* ── Form validation ── */
 function validateOmForm(formId) {
     const form = document.getElementById(formId);
     if (!form) return true;
+
     let ok = true;
     form.querySelectorAll('[required]').forEach(function(el) {
         if (!el.value.trim()) {
             el.style.borderColor = '#DC2626';
-            el.style.boxShadow   = '0 0 0 3px rgba(220,38,38,.08)';
+            el.style.boxShadow = '0 0 0 3px rgba(220,38,38,.08)';
             ok = false;
         } else {
             el.style.borderColor = '';
-            el.style.boxShadow   = '';
+            el.style.boxShadow = '';
         }
     });
+
     return ok;
 }
 
@@ -730,17 +876,26 @@ document.querySelectorAll('#editOrgForm, #addOrgForm').forEach(function(form) {
     });
 });
 
-/* ── Toast ── */
 function omToast(icon, msg) {
-    const t  = document.getElementById('omToastEl');
+    const t = document.getElementById('omToastEl');
     const ti = document.getElementById('omToastIcon');
     const tm = document.getElementById('omToastMsg');
+
     ti.textContent = icon;
     tm.textContent = msg;
+
     t.classList.add('show');
     clearTimeout(t._t);
-    t._t = setTimeout(function(){ t.classList.remove('show'); }, 3200);
+    t._t = setTimeout(function() {
+        t.classList.remove('show');
+    }, 3200);
 }
+
+<?php if ($toast_msg): ?>
+document.addEventListener('DOMContentLoaded', function() {
+    omToast(<?= json_encode($toast_icon) ?>, <?= json_encode($toast_msg) ?>);
+});
+<?php endif; ?>
 </script>
 
 <?php
