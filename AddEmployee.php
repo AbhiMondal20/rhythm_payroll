@@ -1,5 +1,6 @@
 <?php
 session_start();
+
 if (!isset($_SESSION['login'])) {
     header('Location: login');
     exit();
@@ -7,6 +8,10 @@ if (!isset($_SESSION['login'])) {
 
 require_once 'includes/db_client.php';
 require_once 'includes/config.php';
+
+if (!isset($conn) || !($conn instanceof mysqli)) {
+    die("Database connection not found.");
+}
 
 $is_edit    = isset($_GET['isEditEmployee']) && $_GET['isEditEmployee'] === 'true';
 $is_add     = !$is_edit;
@@ -34,6 +39,23 @@ function initials_name($name) {
     if ($name === '') return 'NA';
     $p = preg_split('/\s+/', $name);
     return strtoupper(substr($p[0] ?? '', 0, 1) . substr($p[1] ?? '', 0, 1));
+}
+
+function run_stmt(mysqli $conn, string $sql, string $types = '', array $params = []) {
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        throw new Exception($conn->error);
+    }
+
+    if ($types !== '' && !empty($params)) {
+        $stmt->bind_param($types, ...$params);
+    }
+
+    if (!$stmt->execute()) {
+        throw new Exception($stmt->error);
+    }
+
+    return $stmt;
 }
 
 $toast_msg  = $_SESSION['toast_msg'] ?? '';
@@ -107,33 +129,26 @@ if ($resMgr) {
     }
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $form_action = $_POST['form_action'] ?? 'save_employee';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === 'delete_employee') {
+    $del_id = (int)($_POST['emp_id'] ?? 0);
 
-    if ($form_action === 'delete_employee') {
-        $del_id = (int)($_POST['emp_id'] ?? 0);
-
-        if ($del_id > 0) {
-            $stmt = $conn->prepare("DELETE FROM employee_profiles WHERE employee_id=?");
-            $stmt->bind_param("i", $del_id);
-            $stmt->execute();
-
-            $stmt = $conn->prepare("DELETE FROM employees WHERE id=?");
-            $stmt->bind_param("i", $del_id);
-
-            if ($stmt->execute()) {
-                $_SESSION['toast_icon'] = '✅';
-                $_SESSION['toast_msg']  = 'Employee deleted successfully.';
-                header("Location: employees");
-                exit;
-            } else {
-                $_SESSION['toast_icon'] = '❌';
-                $_SESSION['toast_msg']  = 'Delete failed: ' . $stmt->error;
-                header("Location: AddEmployee?isEditEmployee=true&id=" . $del_id);
-                exit;
-            }
+    if ($del_id > 0) {
+        try {
+            run_stmt($conn, "DELETE FROM employees WHERE id=?", "i", [$del_id]);
+            $_SESSION['toast_icon'] = '✅';
+            $_SESSION['toast_msg']  = 'Employee deleted successfully.';
+            header("Location: employees");
+            exit;
+        } catch (Exception $e) {
+            $_SESSION['toast_icon'] = '❌';
+            $_SESSION['toast_msg']  = 'Delete failed: ' . $e->getMessage();
+            header("Location: AddEmployee?isEditEmployee=true&id=" . $del_id);
+            exit;
         }
     }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') !== 'delete_employee') {
 
     $required = ['first_name', 'last_name', 'dept', 'desig', 'join', 'salary'];
     $errors = [];
@@ -163,254 +178,142 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $employee_code = 'EMP-' . date('YmdHis');
     }
 
-    $title       = clean_post('title');
-    $department  = clean_post('dept');
-    $designation = clean_post('desig');
-    $salary      = (float)clean_post('salary', 0);
     $status      = clean_post('status_final', clean_post('status', 'Active'));
-
     $list_status = strtolower($status) === 'active' ? 'active' : 'inactive';
 
-    if ($is_edit && $emp_id > 0) {
-        $stmt = $conn->prepare("
-            UPDATE employees
-            SET employee_code=?, employee_name=?, department=?, ctc_monthly=?, status=?
-            WHERE id=?
-        ");
-        $stmt->bind_param("sssdsi", $employee_code, $full_name, $department, $salary, $list_status, $emp_id);
-
-        if (!$stmt->execute()) {
-            $_SESSION['toast_icon'] = '❌';
-            $_SESSION['toast_msg'] = 'Employee update failed: ' . $stmt->error;
-            header("Location: AddEmployee?isEditEmployee=true&id=" . $emp_id);
-            exit;
-        }
-
-        $employee_id = $emp_id;
-    } else {
-        $stmt = $conn->prepare("
-            INSERT INTO employees
-            (employee_code, employee_name, department, ctc_monthly, ctc_template_id, status)
-            VALUES (?, ?, ?, ?, NULL, ?)
-        ");
-        $stmt->bind_param("sssds", $employee_code, $full_name, $department, $salary, $list_status);
-
-        if (!$stmt->execute()) {
-            $_SESSION['toast_icon'] = '❌';
-            $_SESSION['toast_msg'] = 'Employee save failed: ' . $stmt->error;
-            header("Location: AddEmployee?isAddEmployee=true");
-            exit;
-        }
-
-        $employee_id = $stmt->insert_id;
-    }
-
-    $profile_data = [
-        'employee_id' => $employee_id,
-        'title' => $title,
-        'first_name' => $first_name,
-        'middle_name' => $middle_name,
-        'last_name' => $last_name,
-        'dob' => date_or_null($_POST['dob'] ?? ''),
-        'gender' => clean_post('gender'),
-        'blood' => clean_post('blood'),
-        'marital' => clean_post('marital'),
-        'nationality' => clean_post('nationality', 'Indian'),
-        'phone2' => clean_post('phone2'),
-        'personal_email' => clean_post('email'),
-        'official_email' => clean_post('off_email'),
-        'address' => clean_post('address'),
-        'aadhaar' => clean_post('aadhaar'),
-        'pan' => strtoupper(clean_post('pan')),
-        'uan' => clean_post('uan'),
-        'esi_no' => clean_post('esi_no'),
-        'designation' => $designation,
-        'emp_type' => clean_post('emp_type', 'Permanent'),
-        'manager' => clean_post('manager') !== '' ? (int)clean_post('manager') : null,
-        'grade' => clean_post('grade'),
-        'location' => clean_post('location'),
-        'join_date' => date_or_null($_POST['join'] ?? ''),
-        'probation' => clean_post('probation'),
-        'notice' => clean_post('notice'),
-        'confirm_date' => date_or_null($_POST['confirm_date'] ?? ''),
-        'contract_end' => date_or_null($_POST['contract_end'] ?? ''),
-        'shift' => clean_post('shift'),
-        'qualification' => clean_post('qualification'),
-        'specialisation' => clean_post('specialisation'),
-        'reg_no' => clean_post('reg_no'),
-        'basic_pct' => (float)clean_post('basic_pct', 60),
-        'hra_pct' => (float)clean_post('hra_pct', 40),
-        'acc_name' => clean_post('acc_name'),
-        'acc_no' => clean_post('acc_no'),
-        'bank' => clean_post('bank'),
-        'ifsc' => strtoupper(clean_post('ifsc')),
-        'branch' => clean_post('branch'),
-        'pay_mode' => clean_post('pay_mode', 'NEFT'),
-        'nom_name' => clean_post('nom_name'),
-        'nom_rel' => clean_post('nom_rel'),
-        'emg_name' => clean_post('emg_name'),
-        'emg_rel' => clean_post('emg_rel'),
-        'emg_phone' => clean_post('emg_phone'),
-        'notes' => clean_post('notes'),
+    $data = [
+        'employee_code'   => $employee_code,
+        'employee_name'   => $full_name,
+        'title'           => clean_post('title'),
+        'first_name'      => $first_name,
+        'middle_name'     => $middle_name,
+        'last_name'       => $last_name,
+        'dob'             => date_or_null($_POST['dob'] ?? ''),
+        'gender'          => clean_post('gender'),
+        'blood'           => clean_post('blood'),
+        'marital'         => clean_post('marital'),
+        'nationality'     => clean_post('nationality', 'Indian'),
+        'phone'           => clean_post('phone'),
+        'phone2'          => clean_post('phone2'),
+        'personal_email'  => clean_post('email'),
+        'official_email'  => clean_post('off_email'),
+        'address'         => clean_post('address'),
+        'aadhaar'         => clean_post('aadhaar'),
+        'pan'             => strtoupper(clean_post('pan')),
+        'uan'             => clean_post('uan'),
+        'esi_no'          => clean_post('esi_no'),
+        'department'      => clean_post('dept'),
+        'designation'     => clean_post('desig'),
+        'emp_type'        => clean_post('emp_type', 'Permanent'),
+        'manager'         => clean_post('manager') !== '' ? (int)clean_post('manager') : null,
+        'grade'           => clean_post('grade'),
+        'location'        => clean_post('location'),
+        'join_date'       => date_or_null($_POST['join'] ?? ''),
+        'probation'       => clean_post('probation'),
+        'notice'          => clean_post('notice'),
+        'confirm_date'    => date_or_null($_POST['confirm_date'] ?? ''),
+        'contract_end'    => date_or_null($_POST['contract_end'] ?? ''),
+        'shift'           => clean_post('shift'),
+        'qualification'   => clean_post('qualification'),
+        'specialisation'  => clean_post('specialisation'),
+        'reg_no'          => clean_post('reg_no'),
+        'ctc_monthly'     => (float)clean_post('salary', 0),
+        'basic_pct'       => (float)clean_post('basic_pct', 60),
+        'hra_pct'         => (float)clean_post('hra_pct', 40),
+        'acc_name'        => clean_post('acc_name'),
+        'acc_no'          => clean_post('acc_no'),
+        'bank'            => clean_post('bank'),
+        'ifsc'            => strtoupper(clean_post('ifsc')),
+        'branch'          => clean_post('branch'),
+        'pay_mode'        => clean_post('pay_mode', 'NEFT'),
+        'nom_name'        => clean_post('nom_name'),
+        'nom_rel'         => clean_post('nom_rel'),
+        'emg_name'        => clean_post('emg_name'),
+        'emg_rel'         => clean_post('emg_rel'),
+        'emg_phone'       => clean_post('emg_phone'),
+        'notes'           => clean_post('notes'),
+        'status'          => $list_status,
     ];
 
-    $check = $conn->prepare("SELECT id FROM employee_profiles WHERE employee_id=? LIMIT 1");
-    $check->bind_param("i", $employee_id);
-    $check->execute();
-    $exists = $check->get_result()->fetch_assoc();
+    try {
+        if ($is_edit && $emp_id > 0) {
+            $set = [];
+            $params = [];
+            $types = '';
 
-    if ($exists) {
-        $sql = "
-            UPDATE employee_profiles SET
-            title=?, first_name=?, middle_name=?, last_name=?, dob=?, gender=?, blood=?, marital=?, nationality=?,
-            phone2=?, personal_email=?, official_email=?, address=?, aadhaar=?, pan=?, uan=?, esi_no=?,
-            designation=?, emp_type=?, manager=?, grade=?, location=?, join_date=?, probation=?, notice=?,
-            confirm_date=?, contract_end=?, shift=?, qualification=?, specialisation=?, reg_no=?,
-            basic_pct=?, hra_pct=?, acc_name=?, acc_no=?, bank=?, ifsc=?, branch=?, pay_mode=?,
-            nom_name=?, nom_rel=?, emg_name=?, emg_rel=?, emg_phone=?, notes=?
-            WHERE employee_id=?
-        ";
+            foreach ($data as $col => $val) {
+                $set[] = "$col=?";
+                $params[] = $val;
 
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param(
-            "sssssssssssssssssssisssssssssssddsssssssssssssi",
-            $profile_data['title'],
-            $profile_data['first_name'],
-            $profile_data['middle_name'],
-            $profile_data['last_name'],
-            $profile_data['dob'],
-            $profile_data['gender'],
-            $profile_data['blood'],
-            $profile_data['marital'],
-            $profile_data['nationality'],
-            $profile_data['phone2'],
-            $profile_data['personal_email'],
-            $profile_data['official_email'],
-            $profile_data['address'],
-            $profile_data['aadhaar'],
-            $profile_data['pan'],
-            $profile_data['uan'],
-            $profile_data['esi_no'],
-            $profile_data['designation'],
-            $profile_data['emp_type'],
-            $profile_data['manager'],
-            $profile_data['grade'],
-            $profile_data['location'],
-            $profile_data['join_date'],
-            $profile_data['probation'],
-            $profile_data['notice'],
-            $profile_data['confirm_date'],
-            $profile_data['contract_end'],
-            $profile_data['shift'],
-            $profile_data['qualification'],
-            $profile_data['specialisation'],
-            $profile_data['reg_no'],
-            $profile_data['basic_pct'],
-            $profile_data['hra_pct'],
-            $profile_data['acc_name'],
-            $profile_data['acc_no'],
-            $profile_data['bank'],
-            $profile_data['ifsc'],
-            $profile_data['branch'],
-            $profile_data['pay_mode'],
-            $profile_data['nom_name'],
-            $profile_data['nom_rel'],
-            $profile_data['emg_name'],
-            $profile_data['emg_rel'],
-            $profile_data['emg_phone'],
-            $profile_data['notes'],
-            $employee_id
-        );
-    } else {
-        $sql = "
-            INSERT INTO employee_profiles
-            (employee_id, title, first_name, middle_name, last_name, dob, gender, blood, marital, nationality,
-            phone2, personal_email, official_email, address, aadhaar, pan, uan, esi_no,
-            designation, emp_type, manager, grade, location, join_date, probation, notice,
-            confirm_date, contract_end, shift, qualification, specialisation, reg_no,
-            basic_pct, hra_pct, acc_name, acc_no, bank, ifsc, branch, pay_mode,
-            nom_name, nom_rel, emg_name, emg_rel, emg_phone, notes)
-            VALUES
-            (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ";
+                if (in_array($col, ['manager'], true)) {
+                    $types .= 'i';
+                } elseif (in_array($col, ['ctc_monthly','basic_pct','hra_pct'], true)) {
+                    $types .= 'd';
+                } else {
+                    $types .= 's';
+                }
+            }
 
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param(
-            "issssssssssssssssssissssssssssssddssssssssssss",
-            $profile_data['employee_id'],
-            $profile_data['title'],
-            $profile_data['first_name'],
-            $profile_data['middle_name'],
-            $profile_data['last_name'],
-            $profile_data['dob'],
-            $profile_data['gender'],
-            $profile_data['blood'],
-            $profile_data['marital'],
-            $profile_data['nationality'],
-            $profile_data['phone2'],
-            $profile_data['personal_email'],
-            $profile_data['official_email'],
-            $profile_data['address'],
-            $profile_data['aadhaar'],
-            $profile_data['pan'],
-            $profile_data['uan'],
-            $profile_data['esi_no'],
-            $profile_data['designation'],
-            $profile_data['emp_type'],
-            $profile_data['manager'],
-            $profile_data['grade'],
-            $profile_data['location'],
-            $profile_data['join_date'],
-            $profile_data['probation'],
-            $profile_data['notice'],
-            $profile_data['confirm_date'],
-            $profile_data['contract_end'],
-            $profile_data['shift'],
-            $profile_data['qualification'],
-            $profile_data['specialisation'],
-            $profile_data['reg_no'],
-            $profile_data['basic_pct'],
-            $profile_data['hra_pct'],
-            $profile_data['acc_name'],
-            $profile_data['acc_no'],
-            $profile_data['bank'],
-            $profile_data['ifsc'],
-            $profile_data['branch'],
-            $profile_data['pay_mode'],
-            $profile_data['nom_name'],
-            $profile_data['nom_rel'],
-            $profile_data['emg_name'],
-            $profile_data['emg_rel'],
-            $profile_data['emg_phone'],
-            $profile_data['notes']
-        );
-    }
+            $params[] = $emp_id;
+            $types .= 'i';
 
-    if ($stmt->execute()) {
+            $sql = "UPDATE employees SET " . implode(", ", $set) . ", updated_at=NOW() WHERE id=?";
+            run_stmt($conn, $sql, $types, $params);
+
+            $employee_id = $emp_id;
+            $_SESSION['toast_msg'] = 'Employee record updated successfully!';
+        } else {
+            $cols = array_keys($data);
+            $placeholders = implode(',', array_fill(0, count($cols), '?'));
+
+            $params = [];
+            $types = '';
+
+            foreach ($data as $col => $val) {
+                $params[] = $val;
+
+                if (in_array($col, ['manager'], true)) {
+                    $types .= 'i';
+                } elseif (in_array($col, ['ctc_monthly','basic_pct','hra_pct'], true)) {
+                    $types .= 'd';
+                } else {
+                    $types .= 's';
+                }
+            }
+
+            $sql = "
+                INSERT INTO employees
+                (" . implode(',', $cols) . ", ctc_template_id, created_at, updated_at)
+                VALUES
+                ($placeholders, NULL, NOW(), NOW())
+            ";
+
+            $stmt = run_stmt($conn, $sql, $types, $params);
+            $employee_id = $stmt->insert_id;
+
+            $_SESSION['toast_msg'] = 'Employee record created successfully!';
+        }
+
         $_SESSION['toast_icon'] = '✅';
-        $_SESSION['toast_msg'] = $is_edit ? 'Employee record updated successfully!' : 'Employee record created successfully!';
         header("Location: AddEmployee?isEditEmployee=true&id=" . $employee_id);
         exit;
-    }
 
-    $_SESSION['toast_icon'] = '❌';
-    $_SESSION['toast_msg'] = 'Profile save failed: ' . $stmt->error;
-    header("Location: " . $_SERVER['REQUEST_URI']);
-    exit;
+    } catch (Exception $e) {
+        $_SESSION['toast_icon'] = '❌';
+        $_SESSION['toast_msg'] = 'Save failed: ' . $e->getMessage();
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit;
+    }
 }
 
 if ($is_edit) {
     $edit_id = (int)($_GET['id'] ?? 0);
 
-    $stmt = $conn->prepare("
-        SELECT e.*
-        FROM employees e
-        WHERE e.id = ?
-        LIMIT 1
-    ");
+    $stmt = $conn->prepare("SELECT * FROM employees WHERE id=? LIMIT 1");
     $stmt->bind_param("i", $edit_id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
 
     if (!$row) {
         $_SESSION['toast_icon'] = '❌';
@@ -447,7 +350,7 @@ if ($is_edit) {
         'manager' => $row['manager'],
         'grade' => $row['grade'],
         'location' => $row['location'],
-        'status' => ucfirst($row['status']),
+        'status' => strtolower($row['status']) === 'active' ? 'Active' : 'Inactive',
         'join' => $row['join_date'],
         'probation' => $row['probation'],
         'notice' => $row['notice'],

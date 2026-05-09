@@ -18,6 +18,9 @@ Rounding rule - Completed
 Department - Completed 
 Approvals - Completed
 Employee - Completed
+AddEmployee - Working
+Designation - Completed
+
 
 
 
