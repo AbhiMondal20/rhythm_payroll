@@ -495,6 +495,22 @@ table.rr-table tbody td {
 .toast-alert.success{background:#16a34a}
 .toast-alert.error{background:#dc2626}
 @keyframes toastIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+
+.cfg-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cfg-page-head h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+}
+
 </style>
 
 <?php if ($toast): ?>
@@ -511,6 +527,10 @@ setTimeout(() => {
 </script>
 <?php endif; ?>
 
+<div class="cfg-page-head">
+    <h1 class="page-title">Configuration</h1>
+</div>
+
 <div class="section-card" style="padding:0;overflow:hidden">
 <div class="rr-wrapper">
 
@@ -526,7 +546,7 @@ setTimeout(() => {
 
     <div class="pv-topbar rr-list-topbar">
       <nav class="pv-breadcrumb">
-        <a href="payroll.php">Payroll</a>
+        <a href="configuration#Payroll">Payroll</a>
         <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
         <span>Rounding Rules</span>
       </nav>

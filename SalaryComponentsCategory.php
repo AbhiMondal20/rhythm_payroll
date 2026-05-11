@@ -470,7 +470,7 @@ table.scc-table tbody td:not(:first-child) {
 
         <div class="scc-top-bar">
             <nav class="scc-breadcrumb">
-                <a href="payroll">Payroll</a>
+                <a href="configuration#Payroll">Payroll</a>
                 <span class="sep"><i class="fa-solid fa-chevron-right" style="font-size:10px"></i></span>
                 <span>Salary Components Category</span>
             </nav>

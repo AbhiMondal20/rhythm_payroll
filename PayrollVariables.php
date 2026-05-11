@@ -491,7 +491,7 @@ if ($active_id > 0) {
     <!-- Top bar -->
     <div class="pv-topbar" style="padding:10px 32px;overflow:hidden">
         <nav class="pv-breadcrumb">
-        <a href="payroll.php">Payroll</a>
+        <a href="configuration#Payroll">Payroll</a>
         <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
         <span>Payroll Variables</span>
         </nav>

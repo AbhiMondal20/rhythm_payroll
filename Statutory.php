@@ -658,7 +658,7 @@ document.addEventListener('DOMContentLoaded', function(){
         <div class="sc-inner">
 
             <nav class="sc-breadcrumb">
-                <a href="payroll_config.php">Payroll</a>
+                <a href="configuration#Payroll">Payroll</a>
                 <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
                 <span>Statutory Components ( Tax Configuration )</span>
             </nav>

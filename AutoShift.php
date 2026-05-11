@@ -1115,9 +1115,32 @@ tr.inline-edit-row td {
     color: #9ca3af;
     font-size: 13.5px
 }
+
+
+.cfg-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cfg-page-head h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+}
+
+
 </style>
 
 <div class="toast-container" id="toastContainer"></div>
+
+
+<div class="cfg-page-head">
+    <h1 class="page-title">Configuration</h1>
+</div>
 
 <div class="section-card" style="padding:0;overflow:hidden">
     <div class="asc-wrapper">
@@ -1135,7 +1158,7 @@ tr.inline-edit-row td {
             <!-- Top bar -->
             <div class="asc-topbar">
                 <nav class="asc-breadcrumb">
-                    <a href="attendance_config">Attendance</a>
+                    <a href="configuration#Attendance">Attendance</a>
                     <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
                     <span>Auto Shift Configuration</span>
                 </nav>

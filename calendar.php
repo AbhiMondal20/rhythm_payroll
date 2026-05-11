@@ -180,9 +180,25 @@ if ($active_id > 0) {
 ?>
 
 <link rel="stylesheet" href="includes/assets/style.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
 <style>
+
+  .cfg-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cfg-page-head h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+}
+
+
 /* ── Config nav tabs ── */
 .cfg-tabs {
   display: flex;
@@ -721,6 +737,11 @@ setTimeout(() => {
 </script>
 <?php endif; ?>
 
+
+<div class="cfg-page-head">
+    <h1 class="page-title">Configuration</h1>
+</div>
+
 <div class="section-card" style="padding:0;overflow:hidden">
 <div class="cal-wrapper">
 
@@ -736,7 +757,7 @@ setTimeout(() => {
 
     <div class="cal-topbar">
       <nav class="cal-breadcrumb">
-        <a href="org_masters.php">Organization Masters</a>
+        <a href="configuration#Organization">Organization Masters</a>
         <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
         <span>Calendar</span>
       </nav>

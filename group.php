@@ -109,7 +109,6 @@ if ($active_id > 0) {
 ?>
 
 <link rel="stylesheet" href="includes/assets/style.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
 <style>
 .cfg-tabs{display:flex;align-items:center;border-bottom:1px solid #e5e7eb;background:#fff;overflow-x:auto;scrollbar-width:none}
@@ -168,6 +167,22 @@ if ($active_id > 0) {
 .toast-box{position:fixed;top:18px;right:18px;z-index:99999;min-width:280px;padding:13px 16px;border-radius:8px;color:#fff;font-size:13.5px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.18);display:flex;gap:10px;align-items:center}
 .toast-box.success{background:#16a34a}
 .toast-box.error{background:#dc2626}
+
+.cfg-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cfg-page-head h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+}
+
 </style>
 
 <?php if ($toast_msg): ?>
@@ -182,6 +197,10 @@ setTimeout(() => {
 }, 3500);
 </script>
 <?php endif; ?>
+
+<div class="cfg-page-head">
+    <h1 class="page-title">Configuration</h1>
+</div>
 
 <div class="section-card" style="padding:0;overflow:hidden">
 <div class="grp-wrapper">
@@ -198,7 +217,7 @@ setTimeout(() => {
 
     <div class="grp-topbar">
       <nav class="grp-breadcrumb">
-        <a href="org_masters.php">Organization Masters</a>
+        <a href="configuration#Organization">Organization Masters</a>
         <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
         <span>Groups</span>
       </nav>

@@ -176,6 +176,23 @@ if ($active_id > 0) {
 .toast-box.success{background:#16a34a}
 .toast-box.error{background:#dc2626}
 @keyframes slideIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+.cfg-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cfg-page-head h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+}
+
+
+
 </style>
 
 <?php if ($toast_msg): ?>
@@ -190,6 +207,9 @@ setTimeout(() => {
 }, 3500);
 </script>
 <?php endif; ?>
+<div class="cfg-page-head">
+    <h1 class="page-title">Configuration</h1>
+</div>
 
 <div class="section-card" style="padding:0;overflow:hidden">
 <div class="desig-wrapper">
@@ -206,7 +226,7 @@ setTimeout(() => {
 
     <div class="desig-topbar">
       <nav class="desig-breadcrumb">
-        <a href="org_masters.php">Organization Masters</a>
+        <a href="configuration#Organization">Organization Masters</a>
         <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
         <span>Designation</span>
       </nav>

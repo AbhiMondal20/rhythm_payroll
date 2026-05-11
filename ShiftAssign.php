@@ -302,6 +302,21 @@ ob_start();
 .cfg-tab:hover{color:#111827}
 .cfg-tab.active{color:#2563eb;border-bottom-color:#2563eb;font-weight:600}
 
+.cfg-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cfg-page-head h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+}
+
 /* ── Page ── */
 .as-wrapper{font-family:'Segoe UI',sans-serif;color:#1e2d3d;padding:0 0 40px}
 .as-inner{padding:20px 28px}
@@ -419,6 +434,12 @@ table.as-emp-table tbody td{padding:10px 14px;font-size:13px;color:#374151}
 
 <div class="toast-container" id="toastContainer"></div>
 
+
+<div class="cfg-page-head">
+    <h1 class="page-title">Configuration</h1>
+</div>
+
+
 <div class="section-card" style="padding:0;overflow:hidden">
 <div class="as-wrapper">
 
@@ -433,7 +454,7 @@ table.as-emp-table tbody td{padding:10px 14px;font-size:13px;color:#374151}
 
     <div class="as-topbar">
       <nav class="as-breadcrumb">
-        <a href="attendance_config">Attendance</a>
+        <a href="configuration#Attendance">Attendance</a>
         <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
         <span>Assign Shift</span>
       </nav>

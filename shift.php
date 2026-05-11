@@ -231,7 +231,6 @@ foreach ($shifts as $s) {
 ?>
 
 <link rel="stylesheet" href="includes/assets/style.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
 <style>
 /* ── Config nav tabs ── */
@@ -269,6 +268,23 @@ foreach ($shifts as $s) {
   padding: 0 0 40px;
 }
 .sh-inner { padding: 20px 28px; }
+
+
+.cfg-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cfg-page-head h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+}
+
 
 /* ── Top bar ── */
 .sh-topbar {
@@ -582,6 +598,10 @@ setTimeout(() => {
 </script>
 <?php endif; ?>
 
+<div class="cfg-page-head">
+    <h1 class="page-title">Configuration</h1>
+</div>
+
 <div class="section-card" style="padding:0;overflow:hidden">
 <div class="sh-wrapper">
 
@@ -601,7 +621,8 @@ setTimeout(() => {
     <!-- Top bar -->
     <div class="sh-topbar">
       <nav class="sh-breadcrumb">
-        <a href="attendance_config.php">Attendance</a>
+        
+        <a href="configuration#Attendance">Attendance</a>
         <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
         <span>Shift Details</span>
       </nav>

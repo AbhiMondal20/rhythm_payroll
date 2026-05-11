@@ -112,6 +112,23 @@ if ($active_id > 0) {
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
 <style>
+
+  .cfg-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cfg-page-head h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+}
+
+
 .cfg-tabs{display:flex;align-items:center;border-bottom:1px solid #e5e7eb;background:#fff;overflow-x:auto;scrollbar-width:none}
 .cfg-tabs::-webkit-scrollbar{display:none}
 .cfg-tab{padding:14px 20px;font-size:13.5px;font-weight:500;color:#6b7280;cursor:pointer;border:none;background:transparent;border-bottom:2.5px solid transparent;white-space:nowrap;transition:color .15s,border-color .15s;text-decoration:none;display:block;margin-bottom:-1px}
@@ -183,6 +200,9 @@ setTimeout(() => {
 </script>
 <?php endif; ?>
 
+<div class="cfg-page-head">
+    <h1 class="page-title">Configuration</h1>
+</div>
 <div class="section-card" style="padding:0;overflow:hidden">
 <div class="cat-wrapper">
 
@@ -198,7 +218,7 @@ setTimeout(() => {
 
     <div class="cat-topbar">
       <nav class="cat-breadcrumb">
-        <a href="org_masters.php">Organization Masters</a>
+        <a href="configuration#Organization">Organization Masters</a>
         <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
         <span>Categories</span>
       </nav>

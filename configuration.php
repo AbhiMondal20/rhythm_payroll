@@ -98,11 +98,11 @@ $config_data = [
         'title' => 'Leave Configuration',
         'sub'   => 'You can manage your company leave policies, types and approval workflows here.',
         'cards' => [
-            ['icon'=>'leavetype',   'title'=>'Leave Type',         'desc'=>'Create and manage different types of leaves like Casual, Sick, Earned, etc.',             'href'=>'leave-type'],
-            ['icon'=>'leavepol',    'title'=>'Leave Policy',       'desc'=>'Define leave policies, accrual rules, and carryover settings for your organization.',      'href'=>'leave-policy'],
-            ['icon'=>'leaveassign', 'title'=>'Assign Leave Policy','desc'=>'Assign leave policies to employees based on their department, designation or category.',   'href'=>'assign-leave-policy'],
-            ['icon'=>'leavebal',    'title'=>'Leave Balance',       'desc'=>'View and manage employee leave balances. Set opening balances for each leave type.',       'href'=>'leave-balance'],
-            ['icon'=>'holiday',     'title'=>'Holiday Calendar',   'desc'=>'Map holidays to leave calendars for accurate leave day calculations.',                     'href'=>'holiday-calendar'],
+            ['icon'=>'leavetype',   'title'=>'Leave Type',         'desc'=>'Create and manage different types of leaves like Casual, Sick, Earned, etc.',             'href'=>'LeaveType'],
+            ['icon'=>'leavepol',    'title'=>'Leave Policy',       'desc'=>'Define leave policies, accrual rules, and carryover settings for your organization.',      'href'=>'LeavePolicy'],
+            ['icon'=>'leaveassign', 'title'=>'Assign Leave Policy','desc'=>'Assign leave policies to employees based on their department, designation or category.',   'href'=>'AssignLeavePolicy'],
+            ['icon'=>'leavebal',    'title'=>'Leave Balance',       'desc'=>'View and manage employee leave balances. Set opening balances for each leave type.',       'href'=>'LeaveBalance'],
+            ['icon'=>'holiday',     'title'=>'Holiday Calendar',   'desc'=>'Map holidays to leave calendars for accurate leave day calculations.',                     'href'=>'LeaveHolidayCalendar'],
         ],
     ],
 
@@ -119,18 +119,18 @@ $config_data = [
         'title' => 'Other Configuration',
         'sub'   => 'You can manage your company accounts info, activity, security options here.',
         'cards' => [
-            ['icon'=>'news',        'title'=>'NEWS / Announcement',  'desc'=>'Share updates, NEWS and announcements across Organization.',                                        'href'=>'news'],
-            ['icon'=>'approval',    'title'=>'Approval Rules',       'desc'=>'Define approval workflows for attendance, reimbursement, etc.',                                     'href'=>'approval-rules'],
-            ['icon'=>'reimburse',   'title'=>'Reimbursement Policy', 'desc'=>'Create reimbursement policies with amount limits, required fields.',                                'href'=>'reimbursement'],
-            ['icon'=>'teams',       'title'=>'Teams',                'desc'=>'Create and edit teams in your Organization.',                                                       'href'=>'teams'],
-            ['icon'=>'fields',      'title'=>'Additional Fields',    'desc'=>'Add other required fields related to Employees.',                                                   'href'=>'additional-fields'],
-            ['icon'=>'taxpro',      'title'=>'Tax Profiles*',        'desc'=>"Set up your Organisation's profile for ESI, PF, TDS and PT.",                                      'href'=>'tax-profiles'],
-            ['icon'=>'apprego',     'title'=>'App Registration',     'desc'=>"Register mobile app on employees' mobiles or on attendance device and configure settings.",        'href'=>'app-registration'],
-            ['icon'=>'face',        'title'=>'Face Enrolment',       'desc'=>'Upload images of Employees for facial recognition.',                                                'href'=>'face-enrolment'],
-            ['icon'=>'links',       'title'=>'Quick Links',          'desc'=>'Add links to pages that your employees can quickly access from their Dashboard.',                   'href'=>'quick-links'],
-            ['icon'=>'roles',       'title'=>'User Roles',           'desc'=>'Create custom roles and add permissions.',                                                          'href'=>'user-roles'],
-            ['icon'=>'dataauth',    'title'=>'Data Authorisation',   'desc'=>'Set Restrictions on users access to data.',                                                         'href'=>'data-auth'],
-            ['icon'=>'hrpolicy',    'title'=>'HR Policy',            'desc'=>'Select document and upload HR Policies, manage their active / inactive states.',                    'href'=>'hr-policy'],
+            ['icon'=>'news',        'title'=>'NEWS / Announcement',  'desc'=>'Share updates, NEWS and announcements across Organization.',                                        'href'=>'News'],
+            ['icon'=>'approval',    'title'=>'Approval Rules',       'desc'=>'Define approval workflows for attendance, reimbursement, etc.',                                     'href'=>'ApprovalRules'],
+            ['icon'=>'reimburse',   'title'=>'Reimbursement Policy', 'desc'=>'Create reimbursement policies with amount limits, required fields.',                                'href'=>'Reimbursement'],
+            ['icon'=>'teams',       'title'=>'Teams',                'desc'=>'Create and edit teams in your Organization.',                                                       'href'=>'Teams'],
+            ['icon'=>'fields',      'title'=>'Additional Fields',    'desc'=>'Add other required fields related to Employees.',                                                   'href'=>'AdditionalFields'],
+            ['icon'=>'taxpro',      'title'=>'Tax Profiles*',        'desc'=>"Set up your Organisation's profile for ESI, PF, TDS and PT.",                                      'href'=>'TaxProfiles'],
+            ['icon'=>'apprego',     'title'=>'App Registration',     'desc'=>"Register mobile app on employees' mobiles or on attendance device and configure settings.",        'href'=>'AppRegistration'],
+            ['icon'=>'face',        'title'=>'Face Enrolment',       'desc'=>'Upload images of Employees for facial recognition.',                                                'href'=>'FaceEnrolment'],
+            ['icon'=>'links',       'title'=>'Quick Links',          'desc'=>'Add links to pages that your employees can quickly access from their Dashboard.',                   'href'=>'QuickLinks'],
+            ['icon'=>'roles',       'title'=>'User Roles',           'desc'=>'Create custom roles and add permissions.',                                                          'href'=>'UserRoles'],
+            ['icon'=>'dataauth',    'title'=>'Data Authorisation',   'desc'=>'Set Restrictions on users access to data.',                                                         'href'=>'DataAuthorisation'],
+            ['icon'=>'hrpolicy',    'title'=>'HR Policy',            'desc'=>'Select document and upload HR Policies, manage their active / inactive states.',                    'href'=>'HRPolicy'],
         ],
     ],
 ];
@@ -526,7 +526,12 @@ function cfg_icon(string $key): string {
         'leavetype'   => '<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         'leavepol'    => '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
         'leaveassign' => '<svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
-        'leavebal'    => '<svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+        'leavebal'    => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 4h12"/>
+            <path d="M6 8h12"/>
+            <path d="M9 12c3 0 5-2 5-4s-2-4-5-4"/>
+            <path d="M9 12l6 8"/>
+        </svg>',
 
         /* others */
         'news'      => '<svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',

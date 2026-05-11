@@ -392,6 +392,10 @@ ob_start();
 
 <div class="toast-container" id="toastContainer"></div>
 
+<div class="cfg-page-head">
+    <h1 class="page-title">Configuration</h1>
+</div>
+
 <div class="section-card" style="padding:0;overflow:hidden">
 <div class="ads-wrapper">
 
@@ -405,7 +409,7 @@ ob_start();
   <div class="ads-inner">
 
     <nav class="ads-breadcrumb">
-      <a href="attendance_config">Attendance</a>
+      <a href="configuration#Attendance">Attendance</a>
       <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
       <span>Assign Day Status</span>
     </nav>
