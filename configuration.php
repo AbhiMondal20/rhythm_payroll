@@ -85,9 +85,9 @@ $config_data = [
         'sub'   => 'You can manage your company accounts info, activity, security options here.',
         'cards' => [
             ['icon'=>'shift',       'title'=>'Shift Configuration',       'desc'=>'View, edit, add shifts & set their details like timings and working hours.',                   'href'=>'shift'],
-            ['icon'=>'assignshift', 'title'=>'Assign Shift',              'desc'=>'Assign respective shifts to employees.',                                                       'href'=>'assign-shift'],
-            ['icon'=>'autoshift',   'title'=>'Auto Shift Configuration',  'desc'=>'Auto assign shifts to Employees based on their Check In & Out.',                              'href'=>'auto-shift'],
-            ['icon'=>'daystatus',   'title'=>'Assign Day Status',         'desc'=>'Manually assign status to employees with Present/ Absent for the day or half day.',           'href'=>'day-status'],
+            ['icon'=>'assignshift', 'title'=>'Assign Shift',              'desc'=>'Assign respective shifts to employees.',                                                       'href'=>'ShiftAssign'],
+            ['icon'=>'autoshift',   'title'=>'Auto Shift Configuration',  'desc'=>'Auto assign shifts to Employees based on their Check In & Out.',                              'href'=>'AutoShift'],
+            ['icon'=>'daystatus',   'title'=>'Assign Day Status',         'desc'=>'Manually assign status to employees with Present/ Absent for the day or half day.',           'href'=>'AssignDayStatus'],
             ['icon'=>'device',      'title'=>'Devices',                   'desc'=>'View, Edit and Add Biometric Devices.',                                                        'href'=>'devices'],
             ['icon'=>'holiday',     'title'=>'Holidays List',             'desc'=>"Create a custom list of Holidays and add to your Organization's Calendar.",                   'href'=>'holidays'],
         ],
