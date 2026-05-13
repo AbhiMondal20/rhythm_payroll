@@ -95,15 +95,15 @@ if ($res) {
 }
 
 if ($empCount === 0) {
-    $dummyEmployees = [
-        ['1001','Abhijit Kumar Mondal','Human Resource','HR Manager'],
-        ['1002','Priya Sharma','Finance','Accountant'],
-        ['1003','Rajesh Dey','Information Technology','IT Executive'],
-        ['1004','Sunita Pal','Administration','Admin Officer'],
-        ['1005','Mohan Das','LAB','Lab Technician'],
-        ['1006','Anita Roy','Accounts','Accounts Executive'],
-        ['1007','Suresh Ghosh','Management','Manager'],
-    ];
+    // $dummyEmployees = [
+    //     ['1001','Abhijit Kumar Mondal','Human Resource','HR Manager'],
+    //     ['1002','Priya Sharma','Finance','Accountant'],
+    //     ['1003','Rajesh Dey','Information Technology','IT Executive'],
+    //     ['1004','Sunita Pal','Administration','Admin Officer'],
+    //     ['1005','Mohan Das','LAB','Lab Technician'],
+    //     ['1006','Anita Roy','Accounts','Accounts Executive'],
+    //     ['1007','Suresh Ghosh','Management','Manager'],
+    // ];
 
     $stmt = $conn->prepare("
         INSERT INTO employees
@@ -290,9 +290,7 @@ $days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 
 ob_start();
 ?>
-
 <link rel="stylesheet" href="includes/assets/style.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
 <style>
 /* ── Config nav tabs ── */

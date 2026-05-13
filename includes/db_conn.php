@@ -17,4 +17,6 @@ if (!$master) {
 
 mysqli_set_charset($master, "utf8mb4");
 // echo "Connected successfully";
+
+
 ?>

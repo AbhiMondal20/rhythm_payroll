@@ -20,6 +20,10 @@ Approvals - Completed
 Employee - Completed
 AddEmployee - Working
 Designation - Completed
+Devices - Completed
+Holidays - Pending
+
+
 
 
 

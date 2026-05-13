@@ -201,6 +201,33 @@ if ($resStatus) {
     }
 }
 
+$organizations = [];
+$resOrg = $conn->query("
+    SELECT DISTINCT client_name
+    FROM companies
+    WHERE client_name IS NOT NULL AND client_name!=''
+    ORDER BY client_name ASC
+");
+if ($resOrg) {
+    while ($d = $resOrg->fetch_assoc()) {
+        $organizations[] = $d['client_name'];
+    }
+}
+
+$location_name = [];
+$resLoca = $conn->query("
+    SELECT DISTINCT location_name
+    FROM org_locations
+    WHERE location_name IS NOT NULL AND location_name!=''
+    ORDER BY location_name ASC
+");
+if ($resLoca) {
+    while ($d = $resLoca->fetch_assoc()) {
+        $location_name[] = $d['location_name'];
+    }
+}
+
+
 $departments = [];
 $resDept = $conn->query("
     SELECT DISTINCT department
@@ -211,6 +238,19 @@ $resDept = $conn->query("
 if ($resDept) {
     while ($d = $resDept->fetch_assoc()) {
         $departments[] = $d['department'];
+    }
+}
+
+$status = [];
+$resStatus = $conn->query("
+    SELECT DISTINCT status
+    FROM employees
+    WHERE status IS NOT NULL AND status!=''
+    ORDER BY status ASC
+");
+if ($resStatus) {
+    while ($d = $resStatus->fetch_assoc()) {
+        $status[] = $d['status'];
     }
 }
 
@@ -227,6 +267,34 @@ if ($resDes) {
     }
 }
 
+
+$groups = [];
+$resGroups = $conn->query("
+    SELECT DISTINCT group_name
+    FROM org_groups
+    WHERE group_name IS NOT NULL AND group_name!=''
+    ORDER BY group_name ASC
+");
+if ($resGroups) {
+    while ($d = $resGroups->fetch_assoc()) {
+        $groups[] = $d['group_name'];
+    }
+}
+
+$subgroups = [];
+$resSubGroups = $conn->query("
+    SELECT DISTINCT sub_group_name
+    FROM org_sub_groups
+    WHERE sub_group_name IS NOT NULL AND sub_group_name!=''
+    ORDER BY sub_group_name ASC
+");
+if ($resSubGroups) {
+    while ($d = $resSubGroups->fetch_assoc()) {
+        $subgroups[] = $d['sub_group_name'];
+    }
+}
+
+
 $today = date('Y-m-d');
 $selected_ids_post = array_map('intval', $_POST['emp_ids'] ?? []);
 
@@ -237,156 +305,737 @@ ob_start();
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
 <style>
-.cfg-tabs{display:flex;align-items:center;border-bottom:1px solid #e5e7eb;background:#fff;overflow-x:auto;scrollbar-width:none}
-.cfg-tabs::-webkit-scrollbar{display:none}
-.cfg-tab{padding:14px 20px;font-size:13.5px;font-weight:500;color:#6b7280;cursor:pointer;border:none;background:transparent;border-bottom:2.5px solid transparent;white-space:nowrap;transition:color .15s,border-color .15s;text-decoration:none;display:block;margin-bottom:-1px}
-.cfg-tab:hover{color:#111827}
-.cfg-tab.active{color:#2563eb;border-bottom-color:#2563eb;font-weight:600}
+.cfg-tabs {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #e5e7eb;
+    background: #fff;
+    overflow-x: auto;
+    scrollbar-width: none
+}
 
-.ads-wrapper{font-family:'Segoe UI',sans-serif;color:#1e2d3d;padding:0 0 40px}
-.ads-inner{padding:20px 28px}
-.ads-breadcrumb{display:flex;align-items:center;gap:8px;font-size:13.5px;color:#555;margin-bottom:22px}
-.ads-breadcrumb a{color:#1e2d3d;text-decoration:none;font-weight:600}
-.ads-breadcrumb a:hover{text-decoration:underline}
-.ads-breadcrumb .sep{color:#bbb;font-size:11px}
+.cfg-tabs::-webkit-scrollbar {
+    display: none
+}
 
-.ads-filter-bar{display:flex;align-items:center;gap:12px;margin-bottom:18px}
-.ads-search-wrap{position:relative;width:330px}
-.ads-search-wrap i{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:12px}
-.ads-search-input{width:100%;padding:8px 10px 8px 32px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;color:#1e2d3d;outline:none;box-sizing:border-box;background:#f9fafb;transition:border-color .15s}
-.ads-search-input:focus{border-color:#2563eb;background:#fff}
-.btn-filter{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;font-size:13px;color:#374151;cursor:pointer;font-weight:500;transition:background .14s}
-.btn-filter:hover{background:#f1f5f9}
+.cfg-tab {
+    padding: 14px 20px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #6b7280;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    border-bottom: 2.5px solid transparent;
+    white-space: nowrap;
+    transition: color .15s, border-color .15s;
+    text-decoration: none;
+    display: block;
+    margin-bottom: -1px
+}
 
-.ads-sel-header{display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer;user-select:none;width:fit-content}
-.ads-sel-label{font-size:13.5px;font-weight:500;color:#374151}
-.ads-sel-chevron{font-size:12px;color:#6b7280;transition:transform .2s}
-.ads-sel-chevron.open{transform:rotate(180deg)}
+.cfg-tab:hover {
+    color: #111827
+}
 
-.ads-emp-box{border:1px solid #e8ecf0;border-radius:8px;padding:14px 16px;margin-bottom:20px;background:#fff;display:none}
-.ads-emp-box.show{display:block}
-.ads-emp-item{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13.5px;color:#374151}
-.ads-emp-item input[type=checkbox]{width:16px;height:16px;accent-color:#2563eb;cursor:pointer;flex-shrink:0}
+.cfg-tab.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+    font-weight: 600
+}
 
-.ads-form-row{display:grid;grid-template-columns:1fr 1fr;gap:22px 36px;margin-bottom:28px;max-width:700px}
-.ads-field label{display:block;font-size:12.5px;color:#374151;margin-bottom:8px;font-weight:400}
-.ads-field label .req{color:#ef4444;margin-right:2px}
-.ads-date-wrap{position:relative}
-.ads-date-wrap input[type=date]{width:100%;border:none;border-bottom:1.5px solid #d1d5db;padding:8px 28px 8px 2px;font-size:13.5px;color:#1e2d3d;background:transparent;outline:none;box-sizing:border-box;transition:border-color .16s;cursor:pointer}
-.ads-date-wrap input[type=date]:focus{border-color:#2563eb}
-.ads-date-wrap i{position:absolute;right:4px;top:50%;transform:translateY(-50%);color:#2563eb;font-size:14px;pointer-events:none}
-.ads-select{width:100%;border:none;border-bottom:1.5px solid #d1d5db;padding:8px 22px 8px 2px;font-size:13.5px;color:#1e2d3d;background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 4px center;outline:none;box-sizing:border-box;transition:border-color .16s;appearance:none;cursor:pointer}
-.ads-select:focus{border-color:#2563eb}
+.ads-wrapper {
+    font-family: 'Segoe UI', sans-serif;
+    color: #1e2d3d;
+    padding: 0 0 40px
+}
 
-.ads-actions{display:flex;justify-content:flex-end;max-width:700px}
-.btn-assign{padding:9px 28px;background:#2563eb;border:none;border-radius:6px;font-size:13.5px;color:#fff;cursor:pointer;font-weight:600;transition:background .14s}
-.btn-assign:hover{background:#1d4ed8}
+.ads-inner {
+    padding: 20px 28px
+}
+
+.ads-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    color: #555;
+    margin-bottom: 22px
+}
+
+.ads-breadcrumb a {
+    color: #1e2d3d;
+    text-decoration: none;
+    font-weight: 600
+}
+
+.ads-breadcrumb a:hover {
+    text-decoration: underline
+}
+
+.ads-breadcrumb .sep {
+    color: #bbb;
+    font-size: 11px
+}
+
+.ads-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px
+}
+
+.ads-search-wrap {
+    position: relative;
+    width: 330px
+}
+
+.ads-search-wrap i {
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+    font-size: 12px
+}
+
+.ads-search-input {
+    width: 100%;
+    padding: 8px 10px 8px 32px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #1e2d3d;
+    outline: none;
+    box-sizing: border-box;
+    background: #f9fafb;
+    transition: border-color .15s
+}
+
+.ads-search-input:focus {
+    border-color: #2563eb;
+    background: #fff
+}
+
+.btn-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background .14s
+}
+
+.btn-filter:hover {
+    background: #f1f5f9
+}
+
+.ads-sel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    user-select: none;
+    width: fit-content
+}
+
+.ads-sel-label {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #374151
+}
+
+.ads-sel-chevron {
+    font-size: 12px;
+    color: #6b7280;
+    transition: transform .2s
+}
+
+.ads-sel-chevron.open {
+    transform: rotate(180deg)
+}
+
+.ads-emp-box {
+    border: 1px solid #e8ecf0;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    background: #fff;
+    display: none
+}
+
+.ads-emp-box.show {
+    display: block
+}
+
+.ads-emp-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 13.5px;
+    color: #374151
+}
+
+.ads-emp-item input[type=checkbox] {
+    width: 16px;
+    height: 16px;
+    accent-color: #2563eb;
+    cursor: pointer;
+    flex-shrink: 0
+}
+
+.ads-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px 36px;
+    margin-bottom: 28px;
+    max-width: 700px
+}
+
+.ads-field label {
+    display: block;
+    font-size: 12.5px;
+    color: #374151;
+    margin-bottom: 8px;
+    font-weight: 400
+}
+
+.ads-field label .req {
+    color: #ef4444;
+    margin-right: 2px
+}
+
+.ads-date-wrap {
+    position: relative
+}
+
+.ads-date-wrap input[type=date] {
+    width: 100%;
+    border: none;
+    border-bottom: 1.5px solid #d1d5db;
+    padding: 8px 28px 8px 2px;
+    font-size: 13.5px;
+    color: #1e2d3d;
+    background: transparent;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color .16s;
+    cursor: pointer
+}
+
+.ads-date-wrap input[type=date]:focus {
+    border-color: #2563eb
+}
+
+.ads-date-wrap i {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #2563eb;
+    font-size: 14px;
+    pointer-events: none
+}
+
+.ads-select {
+    width: 100%;
+    border: none;
+    border-bottom: 1.5px solid #d1d5db;
+    padding: 8px 22px 8px 2px;
+    font-size: 13.5px;
+    color: #1e2d3d;
+    background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 4px center;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color .16s;
+    appearance: none;
+    cursor: pointer
+}
+
+.ads-select:focus {
+    border-color: #2563eb
+}
+
+.ads-actions {
+    display: flex;
+    justify-content: flex-end;
+    max-width: 700px
+}
+
+.btn-assign {
+    padding: 9px 28px;
+    background: #2563eb;
+    border: none;
+    border-radius: 6px;
+    font-size: 13.5px;
+    color: #fff;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background .14s
+}
+
+.btn-assign:hover {
+    background: #1d4ed8
+}
 
 /* right side center redesigned modal */
-.modal-overlay{
-  display:none;
-  position:fixed;
-  inset:0;
-  background:rgba(15,23,42,.45);
-  z-index:999;
-  align-items:center;
-  justify-content:flex-end;
-  padding-right:28px;
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, .45);
+    z-index: 999;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 28px;
 }
-.modal-overlay.show{display:flex}
 
-.adv-modal{
-  background:#fff;
-  width:100%;
-  max-width:980px;
-  height:82vh;
-  border-radius:18px;
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
-  box-shadow:0 18px 55px rgba(15,23,42,.28);
-  animation:slideIn .25s ease;
+.modal-overlay.show {
+    display: flex
 }
-@keyframes slideIn{from{transform:translateX(70px);opacity:0}to{transform:translateX(0);opacity:1}}
 
-.adv-top{
-  padding:24px 30px 18px;
-  border-bottom:1px solid #e8ecf0;
-  background:linear-gradient(180deg,#ffffff,#f8fafc);
-  flex-shrink:0;
+.adv-modal {
+    background: #fff;
+    width: 100%;
+    max-width: 980px;
+    max-height: 96vh;
+    height: 82vh;
+    scroll-behavior: smooth;
+    overflow-y: scroll;
+    border-radius: 18px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 18px 55px rgba(15, 23, 42, .28);
+    animation: slideIn .25s ease;
 }
-.adv-title-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-.adv-title{font-size:16px;font-weight:800;color:#0f172a}
-.adv-close{
-  width:34px;
-  height:34px;
-  border-radius:50%;
-  border:1px solid #cbd5e1;
-  background:#fff;
-  color:#64748b;
-  cursor:pointer;
+
+@keyframes slideIn {
+    from {
+        transform: translateX(70px);
+        opacity: 0
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1
+    }
 }
-.adv-close:hover{background:#f1f5f9}
 
-.adv-search-wrap{position:relative;margin-bottom:18px}
-.adv-search-wrap i{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px}
-.adv-search-input{width:100%;padding:10px 12px 10px 34px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e2d3d;outline:none;box-sizing:border-box;background:#fff;transition:border-color .15s,box-shadow .15s}
-.adv-search-input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
-
-.adv-filter-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 20px;margin-bottom:14px}
-.adv-field label{display:block;font-size:12px;color:#64748b;margin-bottom:6px;font-weight:600}
-.adv-filter-select{width:100%;padding:8px 28px 8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;color:#374151;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 8px center;outline:none;box-sizing:border-box;appearance:none;cursor:pointer;transition:border-color .15s,box-shadow .15s}
-.adv-filter-select:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.10)}
-.adv-filter-select.active{background-color:#eff6ff;border-color:#2563eb;color:#2563eb;font-weight:600}
-
-.adv-bottom-bar{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
-.adv-per-page{display:flex;align-items:center;gap:8px;font-size:13px;color:#374151}
-.adv-per-page select{padding:6px 24px 6px 8px;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;color:#374151;background:#fff;outline:none;cursor:pointer}
-.btn-adv-search{padding:10px 30px;background:#2563eb;border:none;border-radius:8px;font-size:13.5px;color:#fff;cursor:pointer;font-weight:700;transition:background .14s}
-.btn-adv-search:hover{background:#1d4ed8}
-
-.adv-results-area{flex:1;overflow-y:auto;padding:18px 28px;background:#fff}
-.adv-results-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}
-.adv-results-table th{padding:10px 12px;text-align:left;font-weight:700;color:#475569;background:#f8fafc;border-bottom:1px solid #e5e7eb}
-.adv-results-table td{padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155}
-.adv-results-table tr:hover{background:#f8fafc}
-
-.adv-footer{border-top:1px solid #e8ecf0;padding:16px 28px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-shrink:0;background:#f8fafc}
-.adv-sel-section{flex:1}
-.adv-sel-count{font-size:13.5px;font-weight:700;color:#374151;margin-bottom:10px}
-.adv-sel-emp{display:flex;align-items:center;gap:9px;font-size:13px;color:#374151;padding:4px 0}
-.adv-sel-emp input[type=checkbox]{width:15px;height:15px;accent-color:#2563eb}
-
-.adv-history{width:300px;flex-shrink:0}
-.adv-history-tabs{display:flex;border-bottom:1px solid #e8ecf0;margin-bottom:10px}
-.adv-hist-tab{padding:8px 16px;font-size:13px;color:#6b7280;border-bottom:2px solid transparent;cursor:pointer;background:none;border-top:none;border-left:none;border-right:none;font-weight:500;transition:color .15s}
-.adv-hist-tab.active{color:#2563eb;border-bottom-color:#2563eb;font-weight:700}
-.adv-hist-item{display:flex;align-items:center;justify-content:space-between;padding:8px 4px;font-size:12.5px;color:#6b7280;border-bottom:1px solid #e5e7eb;cursor:pointer}
-.adv-hist-item:hover{color:#374151}
-.adv-hist-drag{color:#cbd5e1;margin-right:8px;cursor:grab}
-.btn-hist-del{background:#fff;border:1px solid #e2e8f0;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#9ca3af;font-size:11px}
-.btn-hist-del:hover{border-color:#ef4444;color:#ef4444}
-
-.toast-container{position:fixed;top:20px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none}
-.toast{display:flex;align-items:center;gap:10px;background:#fff;border-radius:8px;padding:13px 18px;box-shadow:0 4px 18px rgba(0,0,0,.14);font-size:13.5px;font-weight:500;min-width:260px;pointer-events:all;animation:toastIn .25s ease;border-left:4px solid #2563eb;color:#1e2d3d}
-.toast.success{border-color:#22c55e}
-.toast.error{border-color:#ef4444}
-.toast.warning{border-color:#f59e0b}
-.toast i{font-size:16px}
-.toast.success i{color:#22c55e}
-.toast.error i{color:#ef4444}
-.toast.warning i{color:#f59e0b}
-.toast-close{margin-left:auto;cursor:pointer;color:#9ca3af;font-size:14px;background:none;border:none;padding:0;line-height:1}
-@keyframes toastIn{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}
-@keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateX(40px)}}
-
-@media(max-width:900px){
-  .modal-overlay{justify-content:center;padding:14px}
-  .adv-modal{height:90vh;max-width:100%}
-  .adv-filter-grid{grid-template-columns:1fr 1fr}
+.adv-top {
+    padding: 24px 30px 18px;
+    border-bottom: 1px solid #e8ecf0;
+    background: linear-gradient(180deg, #ffffff, #f8fafc);
+    flex-shrink: 0;
 }
-@media(max-width:600px){
-  .adv-filter-grid,.ads-form-row{grid-template-columns:1fr}
+
+.adv-title-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px
+}
+
+.adv-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: #0f172a
+}
+
+.adv-close {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #64748b;
+    cursor: pointer;
+}
+
+.adv-close:hover {
+    background: #f1f5f9
+}
+
+.adv-search-wrap {
+    position: relative;
+    margin-bottom: 18px
+}
+
+.adv-search-wrap i {
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+    font-size: 13px
+}
+
+.adv-search-input {
+    width: 100%;
+    padding: 10px 12px 10px 34px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 13px;
+    color: #1e2d3d;
+    outline: none;
+    box-sizing: border-box;
+    background: #fff;
+    transition: border-color .15s, box-shadow .15s
+}
+
+.adv-search-input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .12)
+}
+
+.adv-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px 20px;
+    margin-bottom: 14px
+}
+
+.adv-field label {
+    display: block;
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 6px;
+    font-weight: 600
+}
+
+.adv-filter-select {
+    width: 100%;
+    padding: 8px 28px 8px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #374151;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 8px center;
+    outline: none;
+    box-sizing: border-box;
+    appearance: none;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s
+}
+
+.adv-filter-select:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .10)
+}
+
+.adv-filter-select.active {
+    background-color: #eff6ff;
+    border-color: #2563eb;
+    color: #2563eb;
+    font-weight: 600
+}
+
+.adv-bottom-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 6px
+}
+
+.adv-per-page {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #374151
+}
+
+.adv-per-page select {
+    padding: 6px 24px 6px 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+    font-size: 13px;
+    color: #374151;
+    background: #fff;
+    outline: none;
+    cursor: pointer
+}
+
+.btn-adv-search {
+    padding: 10px 30px;
+    background: #2563eb;
+    border: none;
+    border-radius: 8px;
+    font-size: 13.5px;
+    color: #fff;
+    cursor: pointer;
+    font-weight: 700;
+    transition: background .14s
+}
+
+.btn-adv-search:hover {
+    background: #1d4ed8
+}
+
+.adv-results-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0px 28px;
+    background: #fff
+}
+
+.adv-results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden
+}
+
+.adv-results-table th {
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 700;
+    color: #475569;
+    background: #f8fafc;
+    border-bottom: 1px solid #e5e7eb
+}
+
+.adv-results-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155
+}
+
+.adv-results-table tr:hover {
+    background: #f8fafc
+}
+
+.adv-footer {
+    border-top: 1px solid #e8ecf0;
+    padding: 0px 28px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    flex-shrink: 0;
+    background: #f8fafc
+}
+
+.adv-sel-section {
+    flex: 1
+}
+
+.adv-sel-count {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #374151;
+    margin-bottom: 10px
+}
+
+.adv-sel-emp {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 13px;
+    color: #374151;
+    padding: 4px 0
+}
+
+.adv-sel-emp input[type=checkbox] {
+    width: 15px;
+    height: 15px;
+    accent-color: #2563eb
+}
+
+.adv-history {
+    width: 300px;
+    flex-shrink: 0
+}
+
+.adv-history-tabs {
+    display: flex;
+    border-bottom: 1px solid #e8ecf0;
+    margin-bottom: 10px
+}
+
+.adv-hist-tab {
+    padding: 8px 16px;
+    font-size: 13px;
+    color: #6b7280;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    font-weight: 500;
+    transition: color .15s
+}
+
+.adv-hist-tab.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+    font-weight: 700
+}
+
+.adv-hist-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 4px;
+    font-size: 12.5px;
+    color: #6b7280;
+    border-bottom: 1px solid #e5e7eb;
+    cursor: pointer
+}
+
+.adv-hist-item:hover {
+    color: #374151
+}
+
+.adv-hist-drag {
+    color: #cbd5e1;
+    margin-right: 8px;
+    cursor: grab
+}
+
+.btn-hist-del {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #9ca3af;
+    font-size: 11px
+}
+
+.btn-hist-del:hover {
+    border-color: #ef4444;
+    color: #ef4444
+}
+
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 24px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #fff;
+    border-radius: 8px;
+    padding: 13px 18px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, .14);
+    font-size: 13.5px;
+    font-weight: 500;
+    min-width: 260px;
+    pointer-events: all;
+    animation: toastIn .25s ease;
+    border-left: 4px solid #2563eb;
+    color: #1e2d3d
+}
+
+.toast.success {
+    border-color: #22c55e
+}
+
+.toast.error {
+    border-color: #ef4444
+}
+
+.toast.warning {
+    border-color: #f59e0b
+}
+
+.toast i {
+    font-size: 16px
+}
+
+.toast.success i {
+    color: #22c55e
+}
+
+.toast.error i {
+    color: #ef4444
+}
+
+.toast.warning i {
+    color: #f59e0b
+}
+
+.toast-close {
+    margin-left: auto;
+    cursor: pointer;
+    color: #9ca3af;
+    font-size: 14px;
+    background: none;
+    border: none;
+    padding: 0;
+    line-height: 1
+}
+
+@keyframes toastIn {
+    from {
+        transform: translateX(40px);
+        opacity: 0
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1
+    }
+}
+
+@keyframes toastOut {
+    from {
+        opacity: 1
+    }
+
+    to {
+        opacity: 0;
+        transform: translateX(40px)
+    }
+}
+
+@media(max-width:900px) {
+    .modal-overlay {
+        justify-content: center;
+        padding: 14px
+    }
+
+    .adv-modal {
+        height: 90vh;
+        max-width: 100%
+    }
+
+    .adv-filter-grid {
+        grid-template-columns: 1fr 1fr
+    }
+}
+
+@media(max-width:600px) {
+
+    .adv-filter-grid,
+    .ads-form-row {
+        grid-template-columns: 1fr
+    }
 }
 </style>
 
@@ -397,239 +1046,255 @@ ob_start();
 </div>
 
 <div class="section-card" style="padding:0;overflow:hidden">
-<div class="ads-wrapper">
+    <div class="ads-wrapper">
 
-  <div class="cfg-tabs">
-    <?php foreach (['AccountInfo'=>'Account Info','Organization'=>'Organization','Payroll',
+        <div class="cfg-tabs">
+            <?php foreach (['AccountInfo'=>'Account Info','Organization'=>'Organization','Payroll',
                     'Attendance'=>'Attendance','Leave'=>'Leave','Training'=>'Training','Others'=>'Others'] as $k=>$l): ?>
-    <a href="configuration#<?= e($k) ?>" class="cfg-tab <?= $k==='Attendance'?'active':'' ?>"><?= e($l) ?></a>
-    <?php endforeach; ?>
-  </div>
-
-  <div class="ads-inner">
-
-    <nav class="ads-breadcrumb">
-      <a href="configuration#Attendance">Attendance</a>
-      <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
-      <span>Assign Day Status</span>
-    </nav>
-
-    <form method="POST" id="adsForm">
-      <input type="hidden" name="action" value="assign_day_status">
-
-      <div class="ads-filter-bar">
-        <div class="ads-search-wrap">
-          <i class="fa-solid fa-magnifying-glass"></i>
-          <input type="text" id="empSearch" class="ads-search-input"
-                 list="employeeList"
-                 placeholder="Search by employee name or #code"
-                 oninput="selectEmployeeFromSearch(this.value)">
-
-          <datalist id="employeeList">
-            <?php foreach ($all_employees as $emp): ?>
-              <option value="<?= e($emp['emp_name']) ?> - #<?= e($emp['emp_code']) ?>"></option>
+            <a href="configuration#<?= e($k) ?>" class="cfg-tab <?= $k==='Attendance'?'active':'' ?>"><?= e($l) ?></a>
             <?php endforeach; ?>
-          </datalist>
         </div>
 
-        <button type="button" class="btn-filter" onclick="openAdvModal()">
-          <i class="fa-solid fa-filter"></i> Filter
-        </button>
-      </div>
+        <div class="ads-inner">
 
-      <div class="ads-sel-header" id="selHeader" onclick="toggleEmpBox()" style="display:none">
-        <span class="ads-sel-label" id="selLabel">Selected Employees - 0</span>
-        <i class="fa-solid fa-chevron-down ads-sel-chevron" id="selChevron"></i>
-      </div>
+            <nav class="ads-breadcrumb">
+                <a href="configuration#Attendance">Attendance</a>
+                <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
+                <span>Assign Day Status</span>
+            </nav>
 
-      <div class="ads-emp-box" id="empBox"></div>
+            <form method="POST" id="adsForm">
+                <input type="hidden" name="action" value="assign_day_status">
 
-      <div class="ads-form-row">
-        <div class="ads-field">
-          <label><span class="req">*</span> Shift Date</label>
-          <div class="ads-date-wrap">
-            <input type="date" name="shift_date"
-                   value="<?= e($_POST['shift_date'] ?? $today) ?>" required>
-            <i class="fa-regular fa-calendar"></i>
-          </div>
+                <div class="ads-filter-bar">
+                    <div class="ads-search-wrap">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="empSearch" class="ads-search-input" list="employeeList"
+                            placeholder="Search by employee name or #code"
+                            oninput="selectEmployeeFromSearch(this.value)">
+
+                        <datalist id="employeeList">
+                            <?php foreach ($all_employees as $emp): ?>
+                            <option value="<?= e($emp['emp_name']) ?> - #<?= e($emp['emp_code']) ?>"></option>
+                            <?php endforeach; ?>
+                        </datalist>
+                    </div>
+
+                    <button type="button" class="btn-filter" onclick="openAdvModal()">
+                        <i class="fa-solid fa-filter"></i> Filter
+                    </button>
+                </div>
+
+                <div class="ads-sel-header" id="selHeader" onclick="toggleEmpBox()" style="display:none">
+                    <span class="ads-sel-label" id="selLabel">Selected Employees - 0</span>
+                    <i class="fa-solid fa-chevron-down ads-sel-chevron" id="selChevron"></i>
+                </div>
+
+                <div class="ads-emp-box" id="empBox"></div>
+
+                <div class="ads-form-row">
+                    <div class="ads-field">
+                        <label><span class="req">*</span> Shift Date</label>
+                        <div class="ads-date-wrap">
+                            <input type="date" name="shift_date" value="<?= e($_POST['shift_date'] ?? $today) ?>"
+                                required>
+                            <i class="fa-regular fa-calendar"></i>
+                        </div>
+                    </div>
+
+                    <div class="ads-field">
+                        <label><span class="req">*</span> Day Status</label>
+                        <select name="day_status" class="ads-select" required>
+                            <option value="">Select</option>
+                            <?php foreach ($day_status_options as $opt): ?>
+                            <option value="<?= e($opt) ?>"
+                                <?= (($_POST['day_status'] ?? '') === $opt) ? 'selected' : '' ?>>
+                                <?= e($opt) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="ads-actions">
+                    <button type="submit" class="btn-assign">Assign</button>
+                </div>
+            </form>
         </div>
-
-        <div class="ads-field">
-          <label><span class="req">*</span> Day Status</label>
-          <select name="day_status" class="ads-select" required>
-            <option value="">Select</option>
-            <?php foreach ($day_status_options as $opt): ?>
-            <option value="<?= e($opt) ?>"
-              <?= (($_POST['day_status'] ?? '') === $opt) ? 'selected' : '' ?>>
-              <?= e($opt) ?>
-            </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-      </div>
-
-      <div class="ads-actions">
-        <button type="submit" class="btn-assign">Assign</button>
-      </div>
-    </form>
-  </div>
-</div>
+    </div>
 </div>
 
 <div class="modal-overlay" id="advModal">
-  <div class="adv-modal">
+    <div class="adv-modal">
 
-    <div class="adv-top">
-      <div class="adv-title-bar">
-        <span class="adv-title">Advance Employee Search</span>
-        <button type="button" class="adv-close" onclick="closeAdvModal()">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
+        <div class="adv-top">
+            <div class="adv-title-bar">
+                <span class="adv-title">Advance Employee Search</span>
+                <button type="button" class="adv-close" onclick="closeAdvModal()">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
 
-      <div class="adv-search-wrap">
-        <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="text" class="adv-search-input" id="advSearchInput"
-               list="employeeList"
-               placeholder="Search by employee name or #code"
-               oninput="advLiveSearch(this.value)">
-      </div>
+            <div class="adv-search-wrap">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" class="adv-search-input" id="advSearchInput" list="employeeList"
+                    placeholder="Search by employee name or #code" oninput="advLiveSearch(this.value)">
+            </div>
 
-      <div class="adv-filter-grid">
-        <div class="adv-field">
-          <label>Organization</label>
-          <select class="adv-filter-select" id="f-org" onchange="updateLabel(this)">
-            <option>Organization - 0</option>
-            <option>Ramkrishna IVF Centre</option>
-          </select>
+            <div class="adv-filter-grid">
+                <div class="adv-field">
+                    <label>Organization</label>
+                    <select class="adv-filter-select" id="f-org" onchange="updateLabel(this)">
+                        <option>Organization</option>
+                        <?php foreach ($organizations as $org): ?>
+                        <option value="<?= e($org) ?>"><?= e($org) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="adv-field">
+                    <label>Locations</label>
+                    <select class="adv-filter-select" id="f-loc" onchange="updateLabel(this)">
+                        <option>Locations</option>
+                        <?php foreach ($location_name as $location): ?>
+                        <option value="<?= e($location) ?>"><?= e($location) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="adv-field">
+                    <label>Department</label>
+                    <select class="adv-filter-select" id="f-dept" onchange="updateLabel(this)">
+                        <option value="">Department</option>
+                        <?php foreach ($departments as $dept): ?>
+                        <option value="<?= e($dept) ?>"><?= e($dept) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="adv-field">
+                    <label>Designation</label>
+                    <select class="adv-filter-select" id="f-desig" onchange="updateLabel(this)">
+                        <option value="">Designation</option>
+                        <?php foreach ($designations as $desig): ?>
+                        <option value="<?= e($desig) ?>"><?= e($desig) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="adv-field">
+                    <label>Status</label>
+                    <select class="adv-filter-select active" id="f-status" onchange="updateLabel(this)">
+                        <option value="active" selected>Status - 1</option>
+                        <option value="">All Status</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+
+                <div class="adv-field">
+                    <label>Group</label>
+                    <select class="adv-filter-select">
+                        <option>Group</option>
+                        <?php foreach ($groups as $group): ?>
+                        <option value="<?= e($group) ?>"><?= e($group) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="adv-field">
+                    <label>Sub Group</label>
+                    <select class="adv-filter-select">
+                        <option>Sub Group</option>
+                        <?php foreach ($subgroups as $subgroup): ?>
+                        <option value="<?= e($subgroup) ?>"><?= e($subgroup) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="adv-field">
+                    <label>Category</label>
+                    <select class="adv-filter-select">
+                        <option>Category - 0</option>
+                        <option>REGULAR</option>
+                    </select>
+                </div>
+
+                <div class="adv-field">
+                    <label>Grade</label>
+                    <select class="adv-filter-select">
+                        <option>Grade - 0</option>
+                    </select>
+                </div>
+
+                <div class="adv-field">
+                    <label>Additional Field</label>
+                    <select class="adv-filter-select">
+                        <option>Additional Field - 0</option>
+                    </select>
+                </div>
+
+                <div class="adv-field">
+                    <label>Field Value</label>
+                    <select class="adv-filter-select">
+                        <option>Field Value - 0</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="adv-bottom-bar">
+                <div class="adv-per-page">
+                    Records per page :
+                    <select id="recordsPerPage">
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+
+                <button type="button" class="btn-adv-search" onclick="advSearch()">Search</button>
+            </div>
         </div>
 
-        <div class="adv-field">
-          <label>Locations</label>
-          <select class="adv-filter-select" id="f-loc" onchange="updateLabel(this)">
-            <option>Locations - 0</option>
-            <option>COOCHBEHAR</option>
-            <option>MALDA</option>
-            <option>RAIGANJ</option>
-            <option>SILIGURI</option>
-          </select>
+        <div class="adv-results-area" id="advResults">
+            <div style="color:#9ca3af;font-size:13px;text-align:center;padding:20px">
+                Search by employee name or code.
+            </div>
         </div>
 
-        <div class="adv-field">
-          <label>Department</label>
-          <select class="adv-filter-select" id="f-dept" onchange="updateLabel(this)">
-            <option value="">Department - 0</option>
-            <?php foreach ($departments as $dept): ?>
-              <option value="<?= e($dept) ?>"><?= e($dept) ?></option>
-            <?php endforeach; ?>
-          </select>
-        </div>
+        <div class="adv-footer">
+            <div class="adv-sel-section">
+                <div class="adv-sel-count" id="advSelCount">Selected Employees - 0</div>
+                <div id="advSelList"></div>
+            </div>
 
-        <div class="adv-field">
-          <label>Designation</label>
-          <select class="adv-filter-select" id="f-desig" onchange="updateLabel(this)">
-            <option value="">Designation - 0</option>
-            <?php foreach ($designations as $desig): ?>
-              <option value="<?= e($desig) ?>"><?= e($desig) ?></option>
-            <?php endforeach; ?>
-          </select>
-        </div>
+            <div class="adv-history">
+                <div class="adv-history-tabs">
+                    <button type="button" class="adv-hist-tab active" onclick="switchHistTab(this,'recent')">Recent
+                        Search</button>
+                    <button type="button" class="adv-hist-tab" onclick="switchHistTab(this,'saved')">Saved
+                        Search</button>
+                </div>
 
-        <div class="adv-field">
-          <label>Status</label>
-          <select class="adv-filter-select active" id="f-status" onchange="updateLabel(this)">
-            <option value="active" selected>Status - 1</option>
-            <option value="">All Status</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
+                <div id="hist-recent">
+                    <div class="adv-hist-item">
+                        <span class="adv-hist-drag"><i class="fa-solid fa-grip-dots-vertical"></i></span>
+                        <span style="flex:1"><?= date('d-m H:i') ?></span>
+                        <button type="button" class="btn-hist-del"><i class="fa-solid fa-minus"></i></button>
+                    </div>
+                </div>
 
-        <div class="adv-field">
-          <label>Group</label>
-          <select class="adv-filter-select"><option>Group - 0</option></select>
+                <div id="hist-saved" style="display:none">
+                    <div style="color:#9ca3af;font-size:13px;padding:12px 0">No saved searches.</div>
+                </div>
+            </div>
         </div>
-
-        <div class="adv-field">
-          <label>Sub Group</label>
-          <select class="adv-filter-select"><option>Sub Group - 0</option></select>
-        </div>
-
-        <div class="adv-field">
-          <label>Category</label>
-          <select class="adv-filter-select">
-            <option>Category - 0</option>
-            <option>REGULAR</option>
-          </select>
-        </div>
-
-        <div class="adv-field">
-          <label>Grade</label>
-          <select class="adv-filter-select"><option>Grade - 0</option></select>
-        </div>
-
-        <div class="adv-field">
-          <label>Additional Field</label>
-          <select class="adv-filter-select"><option>Additional Field - 0</option></select>
-        </div>
-
-        <div class="adv-field">
-          <label>Field Value</label>
-          <select class="adv-filter-select"><option>Field Value - 0</option></select>
-        </div>
-      </div>
-
-      <div class="adv-bottom-bar">
-        <div class="adv-per-page">
-          Records per page :
-          <select id="recordsPerPage">
-            <option value="25">25</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-          </select>
-        </div>
-
-        <button type="button" class="btn-adv-search" onclick="advSearch()">Search</button>
-      </div>
     </div>
-
-    <div class="adv-results-area" id="advResults">
-      <div style="color:#9ca3af;font-size:13px;text-align:center;padding:20px">
-        Search by employee name or code.
-      </div>
-    </div>
-
-    <div class="adv-footer">
-      <div class="adv-sel-section">
-        <div class="adv-sel-count" id="advSelCount">Selected Employees - 0</div>
-        <div id="advSelList"></div>
-      </div>
-
-      <div class="adv-history">
-        <div class="adv-history-tabs">
-          <button type="button" class="adv-hist-tab active" onclick="switchHistTab(this,'recent')">Recent Search</button>
-          <button type="button" class="adv-hist-tab" onclick="switchHistTab(this,'saved')">Saved Search</button>
-        </div>
-
-        <div id="hist-recent">
-          <div class="adv-hist-item">
-            <span class="adv-hist-drag"><i class="fa-solid fa-grip-dots-vertical"></i></span>
-            <span style="flex:1"><?= date('d-m H:i') ?></span>
-            <button type="button" class="btn-hist-del"><i class="fa-solid fa-minus"></i></button>
-          </div>
-        </div>
-
-        <div id="hist-saved" style="display:none">
-          <div style="color:#9ca3af;font-size:13px;padding:12px 0">No saved searches.</div>
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
 
 <?php if ($flash): ?>
 <script>
 window.addEventListener('DOMContentLoaded', function() {
-  showToast(<?= json_encode($flash) ?>, <?= json_encode($flash_type) ?>);
+    showToast(<?= json_encode($flash) ?>, <?= json_encode($flash_type) ?>);
 });
 </script>
 <?php endif; ?>
@@ -639,141 +1304,148 @@ const ALL_EMPLOYEES = <?= json_encode(array_values($all_employees), JSON_UNESCAP
 let selectedIds = new Set(<?= json_encode($selected_ids_post) ?>);
 
 function escapeHtml(str) {
-  return String(str ?? '').replace(/[&<>"']/g, function(m) {
-    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m];
-  });
+    return String(str ?? '').replace(/[&<>"']/g, function(m) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        } [m];
+    });
 }
 
 function selectEmployeeFromSearch(value) {
-  value = String(value || '').trim().toLowerCase();
-  if (!value) return;
+    value = String(value || '').trim().toLowerCase();
+    if (!value) return;
 
-  const emp = ALL_EMPLOYEES.find(e => {
-    const full = `${e.emp_name} - #${e.emp_code}`.toLowerCase();
-    return full === value ||
-           String(e.emp_name || '').toLowerCase() === value ||
-           String(e.emp_code || '').toLowerCase() === value.replace('#','');
-  });
+    const emp = ALL_EMPLOYEES.find(e => {
+        const full = `${e.emp_name} - #${e.emp_code}`.toLowerCase();
+        return full === value ||
+            String(e.emp_name || '').toLowerCase() === value ||
+            String(e.emp_code || '').toLowerCase() === value.replace('#', '');
+    });
 
-  if (emp) {
-    selectedIds.add(Number(emp.id));
-    renderSelected();
-    document.getElementById('empBox').classList.add('show');
-    document.getElementById('selChevron').classList.add('open');
-    document.getElementById('empSearch').value = '';
-    showToast(emp.emp_name + ' selected.', 'success');
-  }
+    if (emp) {
+        selectedIds.add(Number(emp.id));
+        renderSelected();
+        document.getElementById('empBox').classList.add('show');
+        document.getElementById('selChevron').classList.add('open');
+        document.getElementById('empSearch').value = '';
+        showToast(emp.emp_name + ' selected.', 'success');
+    }
 }
 
 function renderSelected() {
-  const header = document.getElementById('selHeader');
-  const label  = document.getElementById('selLabel');
-  const box    = document.getElementById('empBox');
-  const count  = selectedIds.size;
+    const header = document.getElementById('selHeader');
+    const label = document.getElementById('selLabel');
+    const box = document.getElementById('empBox');
+    const count = selectedIds.size;
 
-  if (count === 0) {
-    header.style.display = 'none';
-    box.classList.remove('show');
-    box.innerHTML = '';
-    renderAdvSelList();
-    return;
-  }
+    if (count === 0) {
+        header.style.display = 'none';
+        box.classList.remove('show');
+        box.innerHTML = '';
+        renderAdvSelList();
+        return;
+    }
 
-  header.style.display = 'flex';
-  label.textContent = 'Selected Employees - ' + count;
+    header.style.display = 'flex';
+    label.textContent = 'Selected Employees - ' + count;
 
-  box.innerHTML = [...selectedIds].map(id => {
-    const emp = ALL_EMPLOYEES.find(e => Number(e.id) === Number(id));
-    if (!emp) return '';
-    return `<div class="ads-emp-item">
+    box.innerHTML = [...selectedIds].map(id => {
+        const emp = ALL_EMPLOYEES.find(e => Number(e.id) === Number(id));
+        if (!emp) return '';
+        return `<div class="ads-emp-item">
       <input type="checkbox" name="emp_ids[]" value="${Number(emp.id)}" checked
              onchange="toggleEmp(${Number(emp.id)}, this.checked)">
       ${escapeHtml(emp.emp_name)} - ${escapeHtml(emp.emp_code)}
     </div>`;
-  }).join('');
+    }).join('');
 
-  renderAdvSelList();
+    renderAdvSelList();
 }
 
 function toggleEmp(id, checked) {
-  id = Number(id);
-  if (checked) selectedIds.add(id);
-  else selectedIds.delete(id);
-  renderSelected();
-  syncAdvCheckboxes();
+    id = Number(id);
+    if (checked) selectedIds.add(id);
+    else selectedIds.delete(id);
+    renderSelected();
+    syncAdvCheckboxes();
 }
 
 function toggleEmpBox() {
-  const box = document.getElementById('empBox');
-  const chev = document.getElementById('selChevron');
-  box.classList.toggle('show');
-  chev.classList.toggle('open');
+    const box = document.getElementById('empBox');
+    const chev = document.getElementById('selChevron');
+    box.classList.toggle('show');
+    chev.classList.toggle('open');
 }
 
 renderSelected();
 
 function openAdvModal() {
-  document.getElementById('advModal').classList.add('show');
-  renderAdvSelList();
+    document.getElementById('advModal').classList.add('show');
+    renderAdvSelList();
 }
 
 function closeAdvModal() {
-  document.getElementById('advModal').classList.remove('show');
-  renderSelected();
+    document.getElementById('advModal').classList.remove('show');
+    renderSelected();
 }
 
 function advSearch() {
-  const q = document.getElementById('advSearchInput').value.trim().toLowerCase();
-  const dept = document.getElementById('f-dept').value.trim().toLowerCase();
-  const desig = document.getElementById('f-desig').value.trim().toLowerCase();
-  const status = document.getElementById('f-status').value.trim().toLowerCase();
-  const limit = parseInt(document.getElementById('recordsPerPage').value || '25', 10);
+    const q = document.getElementById('advSearchInput').value.trim().toLowerCase();
+    const dept = document.getElementById('f-dept').value.trim().toLowerCase();
+    const desig = document.getElementById('f-desig').value.trim().toLowerCase();
+    const status = document.getElementById('f-status').value.trim().toLowerCase();
+    const limit = parseInt(document.getElementById('recordsPerPage').value || '25', 10);
 
-  let filtered = ALL_EMPLOYEES.filter(e => {
-    const empName = String(e.emp_name || '').toLowerCase();
-    const empCode = String(e.emp_code || '').toLowerCase();
-    const empDept = String(e.department || '').toLowerCase();
-    const empDesig = String(e.designation || '').toLowerCase();
-    const empStatus = String(e.status || '').toLowerCase();
+    let filtered = ALL_EMPLOYEES.filter(e => {
+        const empName = String(e.emp_name || '').toLowerCase();
+        const empCode = String(e.emp_code || '').toLowerCase();
+        const empDept = String(e.department || '').toLowerCase();
+        const empDesig = String(e.designation || '').toLowerCase();
+        const empStatus = String(e.status || '').toLowerCase();
 
-    if (q && !empName.includes(q) && !empCode.includes(q.replace('#',''))) return false;
-    if (dept && empDept !== dept) return false;
-    if (desig && empDesig !== desig) return false;
-    if (status && empStatus !== status) return false;
+        if (q && !empName.includes(q) && !empCode.includes(q.replace('#', ''))) return false;
+        if (dept && empDept !== dept) return false;
+        if (desig && empDesig !== desig) return false;
+        if (status && empStatus !== status) return false;
 
-    return true;
-  }).slice(0, limit);
+        return true;
+    }).slice(0, limit);
 
-  renderAdvResults(filtered);
-  showToast(filtered.length + ' employee(s) found.', filtered.length ? 'success' : 'warning');
+    renderAdvResults(filtered);
+    showToast(filtered.length + ' employee(s) found.', filtered.length ? 'success' : 'warning');
 }
 
 function advLiveSearch(q) {
-  q = String(q || '').trim().toLowerCase();
+    q = String(q || '').trim().toLowerCase();
 
-  if (!q) {
-    document.getElementById('advResults').innerHTML =
-      '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:20px">Search by employee name or code.</div>';
-    return;
-  }
+    if (!q) {
+        document.getElementById('advResults').innerHTML =
+            '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:20px">Search by employee name or code.</div>';
+        return;
+    }
 
-  const filtered = ALL_EMPLOYEES.filter(e =>
-    String(e.emp_name || '').toLowerCase().includes(q) ||
-    String(e.emp_code || '').toLowerCase().includes(q.replace('#',''))
-  );
+    const filtered = ALL_EMPLOYEES.filter(e =>
+        String(e.emp_name || '').toLowerCase().includes(q) ||
+        String(e.emp_code || '').toLowerCase().includes(q.replace('#', ''))
+    );
 
-  renderAdvResults(filtered);
+    renderAdvResults(filtered);
 }
 
 function renderAdvResults(list) {
-  const results = document.getElementById('advResults');
+    const results = document.getElementById('advResults');
 
-  if (!list.length) {
-    results.innerHTML = '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:20px">No employees found.</div>';
-    return;
-  }
+    if (!list.length) {
+        results.innerHTML =
+            '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:20px">No employees found.</div>';
+        return;
+    }
 
-  results.innerHTML = `<table class="adv-results-table">
+    results.innerHTML = `<table class="adv-results-table">
     <thead>
       <tr>
         <th style="width:40px">
@@ -801,87 +1473,92 @@ function renderAdvResults(list) {
     </tbody>
   </table>`;
 
-  renderAdvSelList();
+    renderAdvSelList();
 }
 
 function toggleAllAdv(master) {
-  document.querySelectorAll('#advResults input[type=checkbox][value]').forEach(cb => {
-    cb.checked = master.checked;
-    toggleEmp(Number(cb.value), master.checked);
-  });
+    document.querySelectorAll('#advResults input[type=checkbox][value]').forEach(cb => {
+        cb.checked = master.checked;
+        toggleEmp(Number(cb.value), master.checked);
+    });
 }
 
 function syncAdvCheckboxes() {
-  document.querySelectorAll('#advResults input[type=checkbox][value]').forEach(cb => {
-    cb.checked = selectedIds.has(Number(cb.value));
-  });
+    document.querySelectorAll('#advResults input[type=checkbox][value]').forEach(cb => {
+        cb.checked = selectedIds.has(Number(cb.value));
+    });
 }
 
 function renderAdvSelList() {
-  const countEl = document.getElementById('advSelCount');
-  const listEl = document.getElementById('advSelList');
+    const countEl = document.getElementById('advSelCount');
+    const listEl = document.getElementById('advSelList');
 
-  if (!countEl || !listEl) return;
+    if (!countEl || !listEl) return;
 
-  countEl.textContent = 'Selected Employees - ' + selectedIds.size;
+    countEl.textContent = 'Selected Employees - ' + selectedIds.size;
 
-  listEl.innerHTML = [...selectedIds].map(id => {
-    const emp = ALL_EMPLOYEES.find(e => Number(e.id) === Number(id));
-    if (!emp) return '';
-    return `<div class="adv-sel-emp">
+    listEl.innerHTML = [...selectedIds].map(id => {
+        const emp = ALL_EMPLOYEES.find(e => Number(e.id) === Number(id));
+        if (!emp) return '';
+        return `<div class="adv-sel-emp">
       <input type="checkbox" checked onchange="toggleEmp(${Number(emp.id)}, this.checked)">
       ${escapeHtml(emp.emp_name)} - ${escapeHtml(emp.emp_code)}
     </div>`;
-  }).join('');
+    }).join('');
 }
 
 function switchHistTab(btn, tab) {
-  document.querySelectorAll('.adv-hist-tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('hist-recent').style.display = tab === 'recent' ? 'block' : 'none';
-  document.getElementById('hist-saved').style.display  = tab === 'saved'  ? 'block' : 'none';
+    document.querySelectorAll('.adv-hist-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('hist-recent').style.display = tab === 'recent' ? 'block' : 'none';
+    document.getElementById('hist-saved').style.display = tab === 'saved' ? 'block' : 'none';
 }
 
 function updateLabel(sel) {
-  if (sel.selectedIndex > 0) sel.classList.add('active');
-  else sel.classList.remove('active');
+    if (sel.selectedIndex > 0) sel.classList.add('active');
+    else sel.classList.remove('active');
 }
 
-const toastIcons = {success:'fa-circle-check',error:'fa-circle-xmark',warning:'fa-triangle-exclamation',info:'fa-circle-info'};
+const toastIcons = {
+    success: 'fa-circle-check',
+    error: 'fa-circle-xmark',
+    warning: 'fa-triangle-exclamation',
+    info: 'fa-circle-info'
+};
 
-function showToast(msg, type='success', dur=3500) {
-  const c = document.getElementById('toastContainer');
-  const t = document.createElement('div');
-  t.className = 'toast ' + type;
-  t.innerHTML = `<i class="fa-solid ${toastIcons[type]||toastIcons.info}"></i>
+function showToast(msg, type = 'success', dur = 3500) {
+    const c = document.getElementById('toastContainer');
+    const t = document.createElement('div');
+    t.className = 'toast ' + type;
+    t.innerHTML = `<i class="fa-solid ${toastIcons[type]||toastIcons.info}"></i>
     <span>${msg}</span>
     <button class="toast-close" onclick="rmToast(this.parentElement)"><i class="fa-solid fa-xmark"></i></button>`;
-  c.appendChild(t);
-  setTimeout(() => rmToast(t), dur);
+    c.appendChild(t);
+    setTimeout(() => rmToast(t), dur);
 }
 
 function rmToast(el) {
-  if (!el?.parentElement) return;
-  el.style.animation = 'toastOut .25s ease forwards';
-  setTimeout(() => el.remove(), 260);
+    if (!el?.parentElement) return;
+    el.style.animation = 'toastOut .25s ease forwards';
+    setTimeout(() => el.remove(), 260);
 }
 
 document.getElementById('adsForm').addEventListener('submit', function(e) {
-  if (selectedIds.size === 0) {
-    e.preventDefault();
-    showToast('Please select at least one employee.', 'error');
-    return;
-  }
+    if (selectedIds.size === 0) {
+        e.preventDefault();
+        showToast('Please select at least one employee.', 'error');
+        return;
+    }
 
-  document.querySelectorAll('input[name="emp_ids[]"]').forEach(i => i.remove());
+    document.querySelectorAll('input[name="emp_ids[]"]').forEach(i => i.remove());
 
-  selectedIds.forEach(id => {
-    const inp = document.createElement('input');
-    inp.type = 'hidden';
-    inp.name = 'emp_ids[]';
-    inp.value = id;
-    document.getElementById('adsForm').appendChild(inp);
-  });
+    selectedIds.forEach(id => {
+        const inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = 'emp_ids[]';
+        inp.value = id;
+        document.getElementById('adsForm').appendChild(inp);
+    });
 });
 </script>
 
