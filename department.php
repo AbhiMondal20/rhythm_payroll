@@ -7,9 +7,7 @@ if (!isset($_SESSION['login'])) {
 
 require_once 'includes/db_client.php';
 require_once 'includes/config.php';
-
 $page_title = 'Department Configuration';
-
 function esc($v) {
     return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
 }
@@ -114,17 +112,14 @@ if ($search !== '') {
 } else {
     $res = $conn->query("SELECT * FROM org_departments ORDER BY dept_name ASC");
 }
-
 if ($res) {
     while ($row = $res->fetch_assoc()) {
         $depts[] = $row;
     }
 }
-
 if ($active_id === 0 && $mode === 'view' && !empty($depts)) {
     $active_id = (int)$depts[0]['id'];
 }
-
 $active_dept = null;
 if ($active_id > 0) {
     $stmt = $conn->prepare("SELECT * FROM org_departments WHERE id=? LIMIT 1");
@@ -133,7 +128,6 @@ if ($active_id > 0) {
     $active_dept = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 }
-
 ob_start();
 ?>
 

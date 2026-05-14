@@ -40,10 +40,11 @@ if ($result->num_rows > 0) {
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <link rel="icon" type="image/png" sizes="32x32" href="includes/assets/img/favicon.svg">
-    <link rel="icon" type="image/png" sizes="16x16" href="favicon.svg">
-    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="includes/assets/img/favicon.svg">
+    <link rel="apple-touch-icon" href="includes/assets/img/apple-touch-icon.png">
     <?php if (!empty($extra_head)) echo $extra_head; ?>
 </head>
 
@@ -73,8 +74,6 @@ if ($result->num_rows > 0) {
                         </svg>
                         <span class="notif-dot"></span>
                     </button>
-
-
                     <!-- USER DROPDOWN -->
                     <div class="user-menu-wrap" id="userMenuWrap">
                         <div class="user-trigger" id="userTrigger" onclick="toggleUserDropdown(event)">

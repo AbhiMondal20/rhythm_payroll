@@ -21,16 +21,13 @@ Employee - Completed
 AddEmployee - Working
 Designation - Completed
 Devices - Completed
-Holidays - Pending
-
-
-
-
-
-
+Holidays - Completed
+LeaveType - Working
 
 
 dont chnage style write db table and fetch from table write full page code write also dami data
 toast alert add karo
 
 
+dont chnage style write db table and fetch from table write full page code 
+toast alert add karo

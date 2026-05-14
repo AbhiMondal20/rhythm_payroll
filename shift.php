@@ -567,7 +567,7 @@ foreach ($shifts as $s) {
 /* Toast */
 .toast-box{
   position:fixed;
-  top:18px;
+  bottom:18px;
   right:18px;
   z-index:99999;
   min-width:280px;
