@@ -100,9 +100,8 @@ $config_data = [
         'cards' => [
             ['icon'=>'leavetype',   'title'=>'Leave Type',         'desc'=>'Create and manage different types of leaves like Casual, Sick, Earned, etc.',             'href'=>'LeaveType'],
             ['icon'=>'leavepol',    'title'=>'Leave Policy',       'desc'=>'Define leave policies, accrual rules, and carryover settings for your organization.',      'href'=>'LeavePolicy'],
-            ['icon'=>'leaveassign', 'title'=>'Assign Leave Policy','desc'=>'Assign leave policies to employees based on their department, designation or category.',   'href'=>'AssignLeavePolicy'],
-            ['icon'=>'leavebal',    'title'=>'Leave Balance',       'desc'=>'View and manage employee leave balances. Set opening balances for each leave type.',       'href'=>'LeaveBalance'],
-            ['icon'=>'holiday',     'title'=>'Holiday Calendar',   'desc'=>'Map holidays to leave calendars for accurate leave day calculations.',                     'href'=>'LeaveHolidayCalendar'],
+            ['icon'=>'leaveaccumulations', 'title'=>'Leave Accumulations','desc'=>'Allocate leaves to employees and set up the accumulation and availability period.',   'href'=>'LeaveAccumulations'],
+            ['icon'=>'autoassignleavepolicies',    'title'=>'Auto Assign Leave Policies',       'desc'=>'Set leave policies that will be applied to employees progressively.',       'href'=>'AutoAssignLeavePolicies'],
         ],
     ],
 
@@ -525,12 +524,16 @@ function cfg_icon(string $key): string {
         /* leave */
         'leavetype'   => '<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         'leavepol'    => '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
-        'leaveassign' => '<svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
-        'leavebal'    => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 4h12"/>
-            <path d="M6 8h12"/>
-            <path d="M9 12c3 0 5-2 5-4s-2-4-5-4"/>
-            <path d="M9 12l6 8"/>
+        'leaveaccumulations' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 8v8"/>
+            <path d="M8 12h8"/>
+            <circle cx="12" cy="12" r="9"/>
+        </svg>',
+        'autoassignleavepolicies' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M19 8v6"/>
+            <path d="M22 11h-6"/>
         </svg>',
 
         /* others */
