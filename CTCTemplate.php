@@ -1,4 +1,11 @@
 <?php
+session_start();
+if (!isset($_SESSION['login'])) {
+    header('Location: login');
+    exit();
+}
+
+
 require_once 'includes/config.php';
 require_once 'includes/db_client.php';
 $page_title = 'CTC Templates';
@@ -7,7 +14,7 @@ function esc($v){
     return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-$pt_states = ['West Bengal','Maharashtra','Karnataka','Tamil Nadu','Andhra Pradesh','Telangana','Gujarat','Madhya Pradesh'];
+$pt_states = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal'];
 
 $salary_components = [
     'earnings'    => ['Basic Salary','House Rent Allowance','Special Allowance','Conveyance Allowance','Medical Allowance','Variable Pay','Performance Bonus'],

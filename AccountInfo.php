@@ -4,6 +4,7 @@ if (!isset($_SESSION['login'])) {
     header('Location: login');
     exit();
 }
+
 require_once 'includes/db_client.php';
 require_once 'includes/config.php';
 $page_title = 'Account Information';

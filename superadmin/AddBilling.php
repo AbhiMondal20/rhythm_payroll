@@ -1,4 +1,9 @@
 <?php
+session_start();
+if (!isset($_SESSION['login'])) {
+    header('Location: index');
+    exit();
+}
 require_once '../includes/db_conn.php';
 require_once '../includes/config.php';
 

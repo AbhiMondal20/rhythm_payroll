@@ -23,11 +23,16 @@ Designation - Completed
 Devices - Completed
 Holidays - Completed
 LeaveType - Working
+Leave Accumulations - Working
+Leave Auto Assing Leave Policies - Done
 
 
 dont chnage style write db table and fetch from table write full page code write also dami data
 toast alert add karo
 
 
-dont chnage style write db table and fetch from table write full page code 
+Dont chnage style write db table and fetch from table write full page code 
 toast alert add karo
+
+
+
