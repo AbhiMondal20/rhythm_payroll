@@ -15,7 +15,32 @@ if (!isset($conn) || !($conn instanceof mysqli)) {
 }
 
 function e($v) {
-    return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
+
+    if ($v === null) {
+        return '';
+    }
+
+    // JSON string check
+    if (is_string($v) && str_starts_with(trim($v), '{')) {
+
+        $decoded = json_decode($v, true);
+
+        if (json_last_error() === JSON_ERROR_NONE) {
+
+            if (isset($decoded['cal_name'])) {
+                $v = $decoded['cal_name'];
+            } else {
+                $v = implode(', ', $decoded);
+            }
+        }
+    }
+
+    // Array handle
+    if (is_array($v)) {
+        $v = implode(', ', $v);
+    }
+
+    return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 }
 
 function inputDate($date) {
@@ -94,7 +119,16 @@ for ($y = date('Y') + 2; $y >= date('Y') - 3; $y--) {
     $years[] = (int)$y;
 }
 
-$calendars = ['India', 'Auto Shift', 'Auto Shift 1'];
+
+$res = $conn->query("SELECT code_name, cal_name, remarks FROM org_calendars");
+
+$calendars = [];
+
+while ($row = $res->fetch_assoc()) {
+    $calendars[] = [
+        'cal_name'  => $row['cal_name']
+    ];
+}
 
 /* POST */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

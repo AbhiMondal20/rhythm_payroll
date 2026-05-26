@@ -25,6 +25,9 @@ Holidays - Completed
 LeaveType - Working
 Leave Accumulations - Working
 Leave Auto Assing Leave Policies - Done
+News/Announcement - Working
+Approval Rules - Working
+
 
 
 dont chnage style write db table and fetch from table write full page code write also dami data
@@ -33,6 +36,17 @@ toast alert add karo
 
 Dont chnage style write db table and fetch from table write full page code 
 toast alert add karo
+
+
+
+GMB Updates
+Successfully published 2 GMB posts for each location: 
+Siliguri, Coochbehar, and Raiganj.
+
+Payroll Module Progress
+News/Announcement - Working
+Leave Accumulations - Working
+Leave Auto Assing Leave Policies - Done
 
 
 

@@ -22,9 +22,12 @@ function formatHolidayDate($date) {
 
 function calcDays($start, $end, $halfday = 0) {
     if ($halfday) return 0.5;
+
     $s = strtotime($start);
     $e = strtotime($end);
+
     if (!$s || !$e || $e < $s) return 1;
+
     return floor(($e - $s) / 86400) + 1;
 }
 
@@ -38,69 +41,107 @@ $search    = trim($_GET['q'] ?? '');
 
 $toast_msg  = $_SESSION['toast_msg'] ?? '';
 $toast_type = $_SESSION['toast_type'] ?? '';
+
 unset($_SESSION['toast_msg'], $_SESSION['toast_type']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
     $action = $_POST['action'] ?? '';
 
+    /* =========================================================
+       ADD CALENDAR
+    ========================================================= */
     if ($action === 'add_cal') {
+
         $code    = trim($_POST['code_name'] ?? '');
         $name    = trim($_POST['cal_name'] ?? '');
         $remarks = trim($_POST['remarks'] ?? '');
 
         if ($code === '' || $name === '') {
-            $_SESSION['toast_msg'] = 'Code Name and Calendar Name are required.';
+
+            $_SESSION['toast_msg']  = 'Code Name and Calendar Name are required.';
             $_SESSION['toast_type'] = 'error';
+
             header("Location: ?mode=add");
             exit;
         }
 
-        $stmt = $conn->prepare("INSERT INTO org_calendars (code_name, cal_name, remarks) VALUES (?, ?, ?)");
+        $stmt = $conn->prepare("
+            INSERT INTO org_calendars 
+            (code_name, cal_name, remarks) 
+            VALUES (?, ?, ?)
+        ");
+
         $stmt->bind_param("sss", $code, $name, $remarks);
 
         if ($stmt->execute()) {
-            $_SESSION['toast_msg'] = 'Calendar added successfully.';
+
+            $_SESSION['toast_msg']  = 'Calendar added successfully.';
             $_SESSION['toast_type'] = 'success';
+
             header("Location: ?id=" . $stmt->insert_id . "&mode=view");
             exit;
+
         } else {
-            $_SESSION['toast_msg'] = 'Save failed: ' . $stmt->error;
+
+            $_SESSION['toast_msg']  = 'Save failed: ' . $stmt->error;
             $_SESSION['toast_type'] = 'error';
+
             header("Location: ?mode=add");
             exit;
         }
     }
 
+    /* =========================================================
+       EDIT CALENDAR
+    ========================================================= */
     if ($action === 'edit_cal') {
+
         $id      = (int)($_POST['edit_id'] ?? 0);
         $code    = trim($_POST['code_name'] ?? '');
         $name    = trim($_POST['cal_name'] ?? '');
         $remarks = trim($_POST['remarks'] ?? '');
 
         if ($id <= 0 || $code === '' || $name === '') {
-            $_SESSION['toast_msg'] = 'Code Name and Calendar Name are required.';
+
+            $_SESSION['toast_msg']  = 'Code Name and Calendar Name are required.';
             $_SESSION['toast_type'] = 'error';
+
             header("Location: ?id=" . $id . "&mode=edit");
             exit;
         }
 
-        $stmt = $conn->prepare("UPDATE org_calendars SET code_name=?, cal_name=?, remarks=? WHERE id=?");
+        $stmt = $conn->prepare("
+            UPDATE org_calendars 
+            SET code_name=?, cal_name=?, remarks=? 
+            WHERE id=?
+        ");
+
         $stmt->bind_param("sssi", $code, $name, $remarks, $id);
 
         if ($stmt->execute()) {
-            $_SESSION['toast_msg'] = 'Calendar updated successfully.';
+
+            $_SESSION['toast_msg']  = 'Calendar updated successfully.';
             $_SESSION['toast_type'] = 'success';
+
             header("Location: ?id=" . $id . "&mode=view");
             exit;
+
         } else {
-            $_SESSION['toast_msg'] = 'Update failed: ' . $stmt->error;
+
+            $_SESSION['toast_msg']  = 'Update failed: ' . $stmt->error;
             $_SESSION['toast_type'] = 'error';
+
             header("Location: ?id=" . $id . "&mode=edit");
             exit;
         }
     }
 
+    /* =========================================================
+       ADD HOLIDAY
+    ========================================================= */
     if ($action === 'add_holiday') {
+
         $cal_id       = (int)($_POST['cal_id'] ?? 0);
         $code         = trim($_POST['code_name'] ?? '');
         $holiday_name = trim($_POST['holiday_name'] ?? '');
@@ -109,25 +150,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $is_optional  = isset($_POST['is_optional']) ? 1 : 0;
         $holiday_type = trim($_POST['holiday_type'] ?? 'Holiday');
         $is_halfday   = isset($_POST['is_halfday']) ? 1 : 0;
-        $days         = calcDays($start_date, $end_date, $is_halfday);
+        $remarks      = trim($_POST['remarks'] ?? '');
 
-        if ($cal_id <= 0 || $code === '' || $holiday_name === '' || $start_date === '' || $end_date === '') {
-            $_SESSION['toast_msg'] = 'Holiday required fields missing.';
+        if (
+            $cal_id <= 0 ||
+            $code === '' ||
+            $holiday_name === '' ||
+            $start_date === '' ||
+            $end_date === ''
+        ) {
+
+            $_SESSION['toast_msg']  = 'Holiday required fields missing.';
             $_SESSION['toast_type'] = 'error';
+
             header("Location: ?id=" . $cal_id . "&mode=view");
             exit;
         }
 
-        $stmt = $conn->prepare("INSERT INTO org_holidays 
-            (cal_id, code_name, holiday_name, start_date, end_date, days, is_optional, holiday_type, is_halfday)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("issssdisi", $cal_id, $code, $holiday_name, $start_date, $end_date, $days, $is_optional, $holiday_type, $is_halfday);
+        $stmtCal = $conn->prepare("
+            SELECT cal_name 
+            FROM org_calendars 
+            WHERE id=? 
+            LIMIT 1
+        ");
+
+        $stmtCal->bind_param("i", $cal_id);
+        $stmtCal->execute();
+
+        $calData = $stmtCal->get_result()->fetch_assoc();
+
+        $calendar_name = $calData['cal_name'] ?? '';
+
+        $stmt = $conn->prepare("
+            INSERT INTO att_holidays
+            (
+                code_name,
+                holiday_name,
+                start_date,
+                end_date,
+                holiday_type,
+                is_halfday,
+                is_optional,
+                calendars,
+                remarks,
+                type,
+                status,
+                created_at,
+                updated_at
+            )
+            VALUES
+            (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW()
+            )
+        ");
+
+        $type   = 'Organization';
+        $status = 'Active';
+
+        $stmt->bind_param(
+            "sssssisssss",
+            $code,
+            $holiday_name,
+            $start_date,
+            $end_date,
+            $holiday_type,
+            $is_halfday,
+            $is_optional,
+            $calendar_name,
+            $remarks,
+            $type,
+            $status
+        );
 
         if ($stmt->execute()) {
-            $_SESSION['toast_msg'] = 'Holiday added successfully.';
+
+            $_SESSION['toast_msg']  = 'Holiday added successfully.';
             $_SESSION['toast_type'] = 'success';
+
         } else {
-            $_SESSION['toast_msg'] = 'Holiday save failed: ' . $stmt->error;
+
+            $_SESSION['toast_msg']  = 'Holiday save failed: ' . $stmt->error;
             $_SESSION['toast_type'] = 'error';
         }
 
@@ -136,16 +238,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+/* =========================================================
+   CALENDARS
+========================================================= */
+
 $cals = [];
 
 if ($search !== '') {
+
     $like = '%' . $search . '%';
-    $stmt = $conn->prepare("SELECT * FROM org_calendars WHERE cal_name LIKE ? OR code_name LIKE ? ORDER BY cal_name ASC");
+
+    $stmt = $conn->prepare("
+        SELECT * 
+        FROM org_calendars
+        WHERE cal_name LIKE ?
+        OR code_name LIKE ?
+        ORDER BY cal_name ASC
+    ");
+
     $stmt->bind_param("ss", $like, $like);
     $stmt->execute();
+
     $res = $stmt->get_result();
+
 } else {
-    $res = $conn->query("SELECT * FROM org_calendars ORDER BY cal_name ASC");
+
+    $res = $conn->query("
+        SELECT * 
+        FROM org_calendars
+        ORDER BY cal_name ASC
+    ");
 }
 
 if ($res) {
@@ -158,22 +280,71 @@ if ($active_id === 0 && $mode === 'view' && count($cals)) {
     $active_id = (int)$cals[0]['id'];
 }
 
+/* =========================================================
+   ACTIVE CALENDAR
+========================================================= */
+
 $active_cal = null;
+
 if ($active_id > 0) {
-    $stmt = $conn->prepare("SELECT * FROM org_calendars WHERE id=? LIMIT 1");
+
+    $stmt = $conn->prepare("
+        SELECT * 
+        FROM org_calendars 
+        WHERE id=? 
+        LIMIT 1
+    ");
+
     $stmt->bind_param("i", $active_id);
     $stmt->execute();
+
     $active_cal = $stmt->get_result()->fetch_assoc();
 }
 
+/* =========================================================
+   HOLIDAYS FROM att_holidays
+========================================================= */
+
 $holidays = [];
-if ($active_id > 0) {
-    $stmt = $conn->prepare("SELECT * FROM org_holidays WHERE cal_id=? ORDER BY start_date ASC");
-    $stmt->bind_param("i", $active_id);
+
+if ($active_cal) {
+
+    $calendar_name = $active_cal['cal_name'];
+
+    $stmt = $conn->prepare("
+        SELECT
+            id,
+            code_name,
+            holiday_name,
+            start_date,
+            end_date,
+            holiday_type,
+            is_halfday,
+            is_optional,
+            calendars,
+            remarks,
+            type,
+            status,
+            created_at,
+            updated_at
+        FROM att_holidays
+        WHERE calendars = ?
+        ORDER BY start_date ASC
+    ");
+
+    $stmt->bind_param("s", $calendar_name);
     $stmt->execute();
+
     $hres = $stmt->get_result();
 
     while ($row = $hres->fetch_assoc()) {
+
+        $row['days'] = calcDays(
+            $row['start_date'],
+            $row['end_date'],
+            $row['is_halfday']
+        );
+
         $holidays[] = $row;
     }
 }
@@ -181,9 +352,10 @@ if ($active_id > 0) {
 
 <link rel="stylesheet" href="includes/assets/style.css">
 
+
 <style>
 
-  .cfg-page-head {
+    .cfg-page-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -717,376 +889,726 @@ table.cal-holidays-table tbody td {
   color: #9ca3af;
   font-size: 13.5px;
 }
+.toast-box{
+    position:fixed;
+    top:18px;
+    right:18px;
+    z-index:99999;
+    min-width:280px;
+    padding:13px 16px;
+    border-radius:8px;
+    color:#fff;
+    font-size:13.5px;
+    font-weight:600;
+    box-shadow:0 10px 30px rgba(0,0,0,.18);
+    display:flex;
+    gap:10px;
+    align-items:center
+}
+.toast-box.success{background:#16a34a}
+.toast-box.error{background:#dc2626}
 </style>
 
 <?php if ($toast_msg): ?>
 <div class="toast-box <?= esc($toast_type) ?>" id="toastBox">
-  <i class="fa-solid <?= $toast_type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation' ?>"></i>
-  <?= esc($toast_msg) ?>
+    <i class="fa-solid <?= $toast_type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation' ?>"></i>
+    <?= esc($toast_msg) ?>
 </div>
-<style>
-.toast-box{position:fixed;top:18px;right:18px;z-index:99999;min-width:280px;padding:13px 16px;border-radius:8px;color:#fff;font-size:13.5px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.18);display:flex;gap:10px;align-items:center}
-.toast-box.success{background:#16a34a}
-.toast-box.error{background:#dc2626}
-</style>
+
+
 <script>
 setTimeout(() => {
-  const t = document.getElementById('toastBox');
-  if (t) t.remove();
+    const t = document.getElementById('toastBox');
+    if (t) t.remove();
 }, 3500);
 </script>
 <?php endif; ?>
-
 
 <div class="cfg-page-head">
     <h1 class="page-title">Configuration</h1>
 </div>
 
 <div class="section-card" style="padding:0;overflow:hidden">
+
 <div class="cal-wrapper">
 
-  <div class="cfg-tabs">
-    <?php foreach (['AccountInfo'=>'Account Info','Organization'=>'Organization','Payroll'=>'Payroll','Attendance'=>'Attendance','Leave'=>'Leave','Training'=>'Training','Others'=>'Others'] as $k=>$l): ?>
-    <a href="configuration#<?= esc($k) ?>" class="cfg-tab <?= $k==='Organization'?'active':'' ?>">
-      <?= esc($l) ?>
-    </a>
-    <?php endforeach; ?>
-  </div>
+<div class="cfg-tabs">
+<?php foreach ([
+    'AccountInfo'=>'Account Info',
+    'Organization'=>'Organization',
+    'Payroll'=>'Payroll',
+    'Attendance'=>'Attendance',
+    'Leave'=>'Leave',
+    'Training'=>'Training',
+    'Others'=>'Others'
+] as $k=>$l): ?>
 
-  <div class="cal-inner">
+<a href="configuration#<?= esc($k) ?>"
+   class="cfg-tab <?= $k==='Organization'?'active':'' ?>">
+    <?= esc($l) ?>
+</a>
 
-    <div class="cal-topbar">
-      <nav class="cal-breadcrumb">
-        <a href="configuration#Organization">Organization Masters</a>
-        <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
-        <span>Calendar</span>
-      </nav>
-
-      <?php if ($mode !== 'add'): ?>
-      <button class="btn-add-cal" onclick="setMode('add')">
-        <i class="fa-solid fa-plus"></i> Add Calendar
-      </button>
-      <?php endif; ?>
-    </div>
-
-    <div class="cal-panel">
-
-      <div class="cal-list-col">
-        <div class="cal-list-heading">List of Calendars</div>
-
-        <div class="cal-search-wrap">
-          <form method="GET" style="display:contents" id="searchForm">
-            <input type="hidden" name="mode" value="view">
-            <div class="cal-search-inner">
-              <i class="fa-solid fa-magnifying-glass"></i>
-              <input type="text" name="q" class="cal-search-input"
-                     placeholder="Search items"
-                     value="<?= esc($search) ?>">
-            </div>
-          </form>
-        </div>
-
-        <div class="cal-list-scroll">
-          <?php foreach ($cals as $cal): ?>
-            <div class="cal-item <?= ((int)$cal['id'] === $active_id && $mode !== 'add') ? 'active' : '' ?>"
-                 onclick="selectCal(<?= (int)$cal['id'] ?>)">
-              <span class="cal-item-name"><?= esc($cal['cal_name']) ?></span>
-              <i class="fa-solid <?= ((int)$cal['id'] === $active_id && $mode !== 'add') ? 'fa-chevron-right' : 'fa-chevron-down' ?> cal-item-chevron"></i>
-            </div>
-          <?php endforeach; ?>
-
-          <?php if (empty($cals)): ?>
-            <div style="padding:22px 16px;color:#9ca3af;font-size:13px">No calendars found.</div>
-          <?php endif; ?>
-        </div>
-      </div>
-
-      <div class="cal-detail-col">
-        <div class="cal-detail-heading">Calendar Details</div>
-
-        <?php if ($mode === 'add'): ?>
-
-        <div class="cal-detail-title" style="margin-bottom:24px">ADD CALENDAR</div>
-
-        <form method="POST">
-          <input type="hidden" name="action" value="add_cal">
-
-          <div class="cal-field-grid" style="margin-bottom:20px">
-            <div class="cal-field">
-              <label><span class="req">*</span> Code Name</label>
-              <input type="text" name="code_name" class="cal-input" placeholder="Code Name" required>
-            </div>
-
-            <div class="cal-field">
-              <label><span class="req">*</span> Calendar Name</label>
-              <input type="text" name="cal_name" class="cal-input" placeholder="Calendar Name" required>
-            </div>
-          </div>
-
-          <div class="cal-field-grid single" style="margin-bottom:10px">
-            <div class="cal-field">
-              <label>Remarks</label>
-              <input type="text" name="remarks" class="cal-input" placeholder="Remarks">
-            </div>
-          </div>
-
-          <div class="cal-form-actions">
-            <button type="button" class="btn-cancel-sm" onclick="setMode('view')">Cancel</button>
-            <button type="submit" class="btn-save-sm">Add</button>
-          </div>
-        </form>
-
-        <?php elseif ($mode === 'edit' && $active_cal): ?>
-
-        <div class="cal-detail-title" style="margin-bottom:24px">
-          EDIT — <?= esc($active_cal['cal_name']) ?>
-        </div>
-
-        <form method="POST">
-          <input type="hidden" name="action" value="edit_cal">
-          <input type="hidden" name="edit_id" value="<?= (int)$active_cal['id'] ?>">
-
-          <div class="cal-field-grid" style="margin-bottom:20px">
-            <div class="cal-field">
-              <label><span class="req">*</span> Code Name</label>
-              <input type="text" name="code_name" class="cal-input"
-                     value="<?= esc($active_cal['code_name']) ?>" required>
-            </div>
-
-            <div class="cal-field">
-              <label><span class="req">*</span> Calendar Name</label>
-              <input type="text" name="cal_name" class="cal-input"
-                     value="<?= esc($active_cal['cal_name']) ?>" required>
-            </div>
-          </div>
-
-          <div class="cal-field-grid single" style="margin-bottom:10px">
-            <div class="cal-field">
-              <label>Remarks</label>
-              <input type="text" name="remarks" class="cal-input"
-                     value="<?= esc($active_cal['remarks'] ?? '') ?>">
-            </div>
-          </div>
-
-          <div class="cal-form-actions">
-            <button type="button" class="btn-cancel-sm"
-                    onclick="window.location.href='?id=<?= (int)$active_cal['id'] ?>&mode=view'">
-              Cancel
-            </button>
-            <button type="submit" class="btn-save-sm">Update</button>
-          </div>
-        </form>
-
-        <?php elseif ($active_cal): ?>
-
-        <div class="cal-detail-title-bar">
-          <div class="cal-detail-title">NAME</div>
-          <button class="btn-edit-link"
-                  onclick="window.location.href='?id=<?= (int)$active_cal['id'] ?>&mode=edit'">
-            <i class="fa-regular fa-pen-to-square"></i> Edit Details
-          </button>
-        </div>
-
-        <div class="cal-field-grid" style="margin-bottom:14px">
-          <div class="cal-field">
-            <label>Code Name</label>
-            <div class="cal-field-value"><?= esc($active_cal['code_name']) ?></div>
-          </div>
-
-          <div class="cal-field">
-            <label>Calendar Name</label>
-            <div class="cal-field-value"><?= esc($active_cal['cal_name']) ?></div>
-          </div>
-        </div>
-
-        <div class="cal-field-grid single" style="margin-bottom:0">
-          <div class="cal-field">
-            <label>Remarks</label>
-            <div class="cal-field-value"><?= esc($active_cal['remarks'] ?? '') ?>&nbsp;</div>
-          </div>
-        </div>
-
-        <div class="cal-holidays-bar">
-          <span class="cal-holidays-count">Holidays - <?= count($holidays) ?></span>
-          <button class="btn-add-new" onclick="openHolidayModal(<?= (int)$active_cal['id'] ?>)">
-            <i class="fa-solid fa-plus"></i> Add New
-          </button>
-        </div>
-
-        <div class="cal-holidays-table-wrap">
-          <table class="cal-holidays-table">
-            <thead>
-              <tr>
-                <th>Holiday Name</th>
-                <th>Start Date - Day</th>
-                <th>End Date - Day</th>
-                <th>Days</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($holidays as $h): ?>
-              <tr>
-                <td><?= esc($h['holiday_name']) ?></td>
-                <td><?= esc(formatHolidayDate($h['start_date'])) ?></td>
-                <td><?= esc(formatHolidayDate($h['end_date'])) ?></td>
-                <td><?= esc($h['days']) ?></td>
-              </tr>
-              <?php endforeach; ?>
-
-              <?php if (empty($holidays)): ?>
-              <tr>
-                <td colspan="4" style="text-align:center;color:#9ca3af;padding:20px">
-                  No holidays added yet.
-                </td>
-              </tr>
-              <?php endif; ?>
-            </tbody>
-          </table>
-        </div>
-
-        <?php else: ?>
-
-        <div class="cal-empty">Select a calendar to view details.</div>
-
-        <?php endif; ?>
-
-      </div>
-    </div>
-  </div>
+<?php endforeach; ?>
 </div>
+
+<div class="cal-inner">
+
+<div class="cal-topbar">
+
+<nav class="cal-breadcrumb">
+    <a href="configuration#Organization">Organization Masters</a>
+
+    <span class="sep">
+        <i class="fa-solid fa-chevron-right"></i>
+    </span>
+
+    <span>Calendar</span>
+</nav>
+
+<?php if ($mode !== 'add'): ?>
+<button class="btn-add-cal" onclick="setMode('add')">
+    <i class="fa-solid fa-plus"></i>
+    Add Calendar
+</button>
+<?php endif; ?>
+
 </div>
+
+<div class="cal-panel">
+
+<!-- ======================================================
+     LEFT
+====================================================== -->
+
+<div class="cal-list-col">
+
+<div class="cal-list-heading">
+    List of Calendars
+</div>
+
+<div class="cal-search-wrap">
+
+<form method="GET" style="display:contents" id="searchForm">
+
+<input type="hidden" name="mode" value="view">
+
+<div class="cal-search-inner">
+
+<i class="fa-solid fa-magnifying-glass"></i>
+
+<input type="text"
+       name="q"
+       class="cal-search-input"
+       placeholder="Search items"
+       value="<?= esc($search) ?>">
+
+</div>
+
+</form>
+
+</div>
+
+<div class="cal-list-scroll">
+
+<?php foreach ($cals as $cal): ?>
+
+<div class="cal-item <?= ((int)$cal['id'] === $active_id && $mode !== 'add') ? 'active' : '' ?>"
+     onclick="selectCal(<?= (int)$cal['id'] ?>)">
+
+<span class="cal-item-name">
+    <?= esc($cal['cal_name']) ?>
+</span>
+
+<i class="fa-solid <?= ((int)$cal['id'] === $active_id && $mode !== 'add') ? 'fa-chevron-right' : 'fa-chevron-down' ?> cal-item-chevron"></i>
+
+</div>
+
+<?php endforeach; ?>
+
+<?php if (empty($cals)): ?>
+
+<div style="padding:22px 16px;color:#9ca3af;font-size:13px">
+    No calendars found.
+</div>
+
+<?php endif; ?>
+
+</div>
+
+</div>
+
+<!-- ======================================================
+     RIGHT
+====================================================== -->
+
+<div class="cal-detail-col">
+
+<div class="cal-detail-heading">
+    Calendar Details
+</div>
+
+<?php if ($mode === 'add'): ?>
+
+<!-- ======================================================
+     ADD CALENDAR
+====================================================== -->
+
+<div class="cal-detail-title" style="margin-bottom:24px">
+    ADD CALENDAR
+</div>
+
+<form method="POST">
+
+<input type="hidden" name="action" value="add_cal">
+
+<div class="cal-field-grid" style="margin-bottom:20px">
+
+<div class="cal-field">
+<label>
+    <span class="req">*</span>
+    Code Name
+</label>
+
+<input type="text"
+       name="code_name"
+       class="cal-input"
+       placeholder="Code Name"
+       required>
+</div>
+
+<div class="cal-field">
+<label>
+    <span class="req">*</span>
+    Calendar Name
+</label>
+
+<input type="text"
+       name="cal_name"
+       class="cal-input"
+       placeholder="Calendar Name"
+       required>
+</div>
+
+</div>
+
+<div class="cal-field-grid single" style="margin-bottom:10px">
+
+<div class="cal-field">
+
+<label>Remarks</label>
+
+<input type="text"
+       name="remarks"
+       class="cal-input"
+       placeholder="Remarks">
+
+</div>
+
+</div>
+
+<div class="cal-form-actions">
+
+<button type="button"
+        class="btn-cancel-sm"
+        onclick="setMode('view')">
+    Cancel
+</button>
+
+<button type="submit" class="btn-save-sm">
+    Add
+</button>
+
+</div>
+
+</form>
+
+<?php elseif ($mode === 'edit' && $active_cal): ?>
+
+<!-- ======================================================
+     EDIT CALENDAR
+====================================================== -->
+
+<div class="cal-detail-title" style="margin-bottom:24px">
+    EDIT — <?= esc($active_cal['cal_name']) ?>
+</div>
+
+<form method="POST">
+
+<input type="hidden" name="action" value="edit_cal">
+
+<input type="hidden"
+       name="edit_id"
+       value="<?= (int)$active_cal['id'] ?>">
+
+<div class="cal-field-grid" style="margin-bottom:20px">
+
+<div class="cal-field">
+
+<label>
+    <span class="req">*</span>
+    Code Name
+</label>
+
+<input type="text"
+       name="code_name"
+       class="cal-input"
+       value="<?= esc($active_cal['code_name']) ?>"
+       required>
+
+</div>
+
+<div class="cal-field">
+
+<label>
+    <span class="req">*</span>
+    Calendar Name
+</label>
+
+<input type="text"
+       name="cal_name"
+       class="cal-input"
+       value="<?= esc($active_cal['cal_name']) ?>"
+       required>
+
+</div>
+
+</div>
+
+<div class="cal-field-grid single" style="margin-bottom:10px">
+
+<div class="cal-field">
+
+<label>Remarks</label>
+
+<input type="text"
+       name="remarks"
+       class="cal-input"
+       value="<?= esc($active_cal['remarks'] ?? '') ?>">
+
+</div>
+
+</div>
+
+<div class="cal-form-actions">
+
+<button type="button"
+        class="btn-cancel-sm"
+        onclick="window.location.href='?id=<?= (int)$active_cal['id'] ?>&mode=view'">
+    Cancel
+</button>
+
+<button type="submit" class="btn-save-sm">
+    Update
+</button>
+
+</div>
+
+</form>
+
+<?php elseif ($active_cal): ?>
+
+<!-- ======================================================
+     VIEW
+====================================================== -->
+
+<div class="cal-detail-title-bar">
+
+<div class="cal-detail-title">
+    NAME
+</div>
+
+<button class="btn-edit-link"
+        onclick="window.location.href='?id=<?= (int)$active_cal['id'] ?>&mode=edit'">
+
+<i class="fa-regular fa-pen-to-square"></i>
+Edit Details
+
+</button>
+
+</div>
+
+<div class="cal-field-grid" style="margin-bottom:14px">
+
+<div class="cal-field">
+
+<label>Code Name</label>
+
+<div class="cal-field-value">
+    <?= esc($active_cal['code_name']) ?>
+</div>
+
+</div>
+
+<div class="cal-field">
+
+<label>Calendar Name</label>
+
+<div class="cal-field-value">
+    <?= esc($active_cal['cal_name']) ?>
+</div>
+
+</div>
+
+</div>
+
+<div class="cal-field-grid single" style="margin-bottom:0">
+
+<div class="cal-field">
+
+<label>Remarks</label>
+
+<div class="cal-field-value">
+    <?= esc($active_cal['remarks'] ?? '') ?>&nbsp;
+</div>
+
+</div>
+
+</div>
+
+<div class="cal-holidays-bar">
+
+<span class="cal-holidays-count">
+    Holidays - <?= count($holidays) ?>
+</span>
+
+<!-- <button class="btn-add-new"
+        onclick="openHolidayModal(<?= (int)$active_cal['id'] ?>)">
+
+<i class="fa-solid fa-plus"></i>
+Add New
+
+</button> -->
+
+</div>
+
+<div class="cal-holidays-table-wrap">
+
+<table class="cal-holidays-table">
+
+<thead>
+<tr>
+    <th>Holiday Name</th>
+    <th>Type</th>
+    <th>Start Date - Day</th>
+    <th>End Date - Day</th>
+    <th>Days</th>
+</tr>
+</thead>
+
+<tbody>
+
+<?php foreach ($holidays as $h): ?>
+
+<tr>
+
+<td><?= esc($h['holiday_name']) ?></td>
+
+<td><?= esc($h['holiday_type']) ?></td>
+
+<td><?= esc(formatHolidayDate($h['start_date'])) ?></td>
+
+<td><?= esc(formatHolidayDate($h['end_date'])) ?></td>
+
+<td><?= esc($h['days']) ?></td>
+
+</tr>
+
+<?php endforeach; ?>
+
+<?php if (empty($holidays)): ?>
+
+<tr>
+<td colspan="5"
+    style="text-align:center;color:#9ca3af;padding:20px">
+
+    No holidays added yet.
+
+</td>
+</tr>
+
+<?php endif; ?>
+
+</tbody>
+
+</table>
+
+</div>
+
+<?php else: ?>
+
+<div class="cal-empty">
+    Select a calendar to view details.
+</div>
+
+<?php endif; ?>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<!-- ======================================================
+     MODAL
+====================================================== -->
 
 <div class="modal-overlay" id="holidayModal">
-  <div class="modal-box">
-    <div class="modal-title">Quick Add Holiday</div>
 
-    <form method="POST" id="holidayForm">
-      <input type="hidden" name="action" value="add_holiday">
-      <input type="hidden" name="cal_id" id="modal_cal_id" value="">
+<div class="modal-box">
 
-      <div class="toggle-row">
-        <label class="toggle-switch">
-          <input type="checkbox" name="is_halfday" id="toggle_halfday">
-          <span class="toggle-slider"></span>
-        </label>
-        <span class="toggle-label">Half-day</span>
-      </div>
+<div class="modal-title">
+    Quick Add Holiday
+</div>
 
-      <div class="modal-field">
-        <label><span class="req">*</span> Code Name</label>
-        <input type="text" name="code_name" class="modal-input" placeholder="Code Name" required>
-      </div>
+<form method="POST" id="holidayForm">
 
-      <div class="modal-field">
-        <label><span class="req">*</span> Holiday Name</label>
-        <input type="text" name="holiday_name" class="modal-input" placeholder="Holiday Name" required>
-      </div>
+<input type="hidden" name="action" value="add_holiday">
 
-      <div class="modal-date-grid">
-        <div class="modal-date-field">
-          <label><span class="req">*</span> Start Date</label>
-          <div class="modal-date-wrap">
-            <input type="date" name="start_date" value="<?= date('Y-m-d') ?>" required>
-            <i class="fa-regular fa-calendar"></i>
-          </div>
-        </div>
+<input type="hidden"
+       name="cal_id"
+       id="modal_cal_id"
+       value="">
 
-        <div class="modal-date-field">
-          <label><span class="req">*</span> End Date</label>
-          <div class="modal-date-wrap">
-            <input type="date" name="end_date" value="<?= date('Y-m-d') ?>" required>
-            <i class="fa-regular fa-calendar"></i>
-          </div>
-        </div>
-      </div>
+<div class="toggle-row">
 
-      <div class="modal-options-row">
-        <label>
-          <input type="checkbox" name="is_optional" value="1">
-          Optional Holiday
-        </label>
+<label class="toggle-switch">
 
-        <label>
-          <input type="radio" name="holiday_type" value="Holiday" checked>
-          Holiday
-        </label>
+<input type="checkbox"
+       name="is_halfday"
+       id="toggle_halfday">
 
-        <label>
-          <input type="radio" name="holiday_type" value="Week-Off">
-          Week-Off
-        </label>
-      </div>
+<span class="toggle-slider"></span>
 
-      <div style="border-top:1px solid #e8ecf0;margin-bottom:0"></div>
+</label>
 
-      <div class="modal-actions">
-        <button type="button" class="btn-cancel-sm" onclick="closeModal()">Cancel</button>
-        <button type="submit" class="btn-save-sm">Add</button>
-      </div>
-    </form>
-  </div>
+<span class="toggle-label">
+    Half-day
+</span>
+
+</div>
+
+<div class="modal-field">
+
+<label>
+    <span class="req">*</span>
+    Code Name
+</label>
+
+<input type="text"
+       name="code_name"
+       class="modal-input"
+       placeholder="Code Name"
+       required>
+
+</div>
+
+<div class="modal-field">
+
+<label>
+    <span class="req">*</span>
+    Holiday Name
+</label>
+
+<input type="text"
+       name="holiday_name"
+       class="modal-input"
+       placeholder="Holiday Name"
+       required>
+
+</div>
+
+<div class="modal-date-grid">
+
+<div class="modal-date-field">
+
+<label>
+    <span class="req">*</span>
+    Start Date
+</label>
+
+<div class="modal-date-wrap">
+
+<input type="date"
+       name="start_date"
+       value="<?= date('Y-m-d') ?>"
+       required>
+
+<i class="fa-regular fa-calendar"></i>
+
+</div>
+
+</div>
+
+<div class="modal-date-field">
+
+<label>
+    <span class="req">*</span>
+    End Date
+</label>
+
+<div class="modal-date-wrap">
+
+<input type="date"
+       name="end_date"
+       value="<?= date('Y-m-d') ?>"
+       required>
+
+<i class="fa-regular fa-calendar"></i>
+
+</div>
+
+</div>
+
+</div>
+
+<div class="modal-options-row">
+
+<label>
+<input type="checkbox"
+       name="is_optional"
+       value="1">
+Optional Holiday
+</label>
+
+<label>
+<input type="radio"
+       name="holiday_type"
+       value="Holiday"
+       checked>
+Holiday
+</label>
+
+<label>
+<input type="radio"
+       name="holiday_type"
+       value="Week-Off">
+Week-Off
+</label>
+
+</div>
+
+<div class="modal-field">
+
+<label>Remarks</label>
+
+<input type="text"
+       name="remarks"
+       class="modal-input"
+       placeholder="Remarks">
+
+</div>
+
+<div style="border-top:1px solid #e8ecf0;margin-bottom:0"></div>
+
+<div class="modal-actions">
+
+<button type="button"
+        class="btn-cancel-sm"
+        onclick="closeModal()">
+    Cancel
+</button>
+
+<button type="submit" class="btn-save-sm">
+    Add
+</button>
+
+</div>
+
+</form>
+
+</div>
+
 </div>
 
 <script>
+
 function selectCal(id) {
-  const url = new URL(window.location.href);
-  url.searchParams.set('id', id);
-  url.searchParams.set('mode', 'view');
 
-  const q = document.querySelector('input[name="q"]');
-  if (q && q.value.trim() !== '') {
-    url.searchParams.set('q', q.value.trim());
-  } else {
-    url.searchParams.delete('q');
-  }
+    const url = new URL(window.location.href);
 
-  window.location.href = url.toString();
+    url.searchParams.set('id', id);
+    url.searchParams.set('mode', 'view');
+
+    const q = document.querySelector('input[name="q"]');
+
+    if (q && q.value.trim() !== '') {
+        url.searchParams.set('q', q.value.trim());
+    } else {
+        url.searchParams.delete('q');
+    }
+
+    window.location.href = url.toString();
 }
 
 function setMode(mode) {
-  const url = new URL(window.location.href);
-  url.searchParams.set('mode', mode);
 
-  if (mode === 'add') {
-    url.searchParams.delete('id');
-  }
+    const url = new URL(window.location.href);
 
-  window.location.href = url.toString();
+    url.searchParams.set('mode', mode);
+
+    if (mode === 'add') {
+        url.searchParams.delete('id');
+    }
+
+    window.location.href = url.toString();
 }
 
 function openHolidayModal(calId) {
-  document.getElementById('modal_cal_id').value = calId;
-  document.getElementById('holidayModal').classList.add('show');
+
+    document.getElementById('modal_cal_id').value = calId;
+
+    document.getElementById('holidayModal').classList.add('show');
 }
 
 function closeModal() {
-  document.getElementById('holidayModal').classList.remove('show');
+
+    document.getElementById('holidayModal').classList.remove('show');
 }
 
 const modal = document.getElementById('holidayModal');
+
 if (modal) {
-  modal.addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
-  });
+
+    modal.addEventListener('click', function(e) {
+
+        if (e.target === this) {
+            closeModal();
+        }
+
+    });
 }
 
 let searchTimer;
+
 const searchInput = document.querySelector('.cal-search-input');
 
 if (searchInput) {
-  searchInput.addEventListener('input', function () {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-      document.getElementById('searchForm').submit();
-    }, 450);
-  });
+
+    searchInput.addEventListener('input', function () {
+
+        clearTimeout(searchTimer);
+
+        searchTimer = setTimeout(() => {
+            document.getElementById('searchForm').submit();
+        }, 450);
+
+    });
 }
+
 </script>
 
 <?php
 $page_content = ob_get_clean();
+
 include 'includes/header.php';
+
 echo $page_content;
+
 include 'includes/footer.php';
 ?>
+
 <script src="includes/assets/scripts.js"></script>

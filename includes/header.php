@@ -24,9 +24,8 @@ if ($result->num_rows > 0) {
     $row = $result->fetch_assoc();
     $company_name = $row['client_name'];
     $company_logo = $row['logo'];
-
 } else {
-    $profile_pic = 'default.png';
+    $company_logo = 'uploads/default.png';
 }
 ?>
 <!DOCTYPE html>
@@ -63,7 +62,9 @@ if ($result->num_rows > 0) {
                             <line x1="3" y1="18" x2="21" y2="18" />
                         </svg>
                     </button>
-                    <span style="font-weight:600;font-size:15px;color:#1a1a2e"><?= $company_name ?? APP_NAME ?></span>
+                    <span style="font-weight:600;font-size:15px;color:#1a1a2e"><img src="<?= $company_logo ?? 'company/uploads/default.png' ?>" style="height: 50px;" alt="Company Logo"> 
+                    <!-- <?= $company_name ?? APP_NAME ?> -->
+                </span>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px">
                     <button style="position:relative;padding:7px 9px" class="btn">
@@ -132,7 +133,6 @@ if ($result->num_rows > 0) {
                             </a>
                         </div>
                     </div>
-
                     <!-- STATUS MODAL -->
                     <div class="status-modal-overlay" id="statusModalOverlay">
                         <div class="status-modal">
