@@ -1,32 +1,39 @@
 <?php
-require_once 'includes/config.php';
-$page_title = 'Users';
+session_start();
 
+if (!isset($_SESSION['login'])) {
+    header('Location: login');
+    exit();
+}
+
+require_once 'includes/db_client.php';
+require_once 'includes/config.php';
+
+$page_title = 'Users';
 /* ─────────────────────────────────────────
    ACTIVE TAB & VIEW
 ───────────────────────────────────────── */
 $active_tab = $_GET['tab']  ?? 'list';
 $view       = $_GET['view'] ?? '';
 
+$sql = "SELECT u.id, u.username, u.employee_code as code, e.employee_name as display, u.role
+        FROM users u
+        INNER JOIN employees e ON u.employee_code = e.employee_code
+        ORDER BY u.id DESC";
+
+$result = mysqli_query($conn, $sql);
+$users = [];
+if ($result) {
+    while ($row = mysqli_fetch_assoc($result)) {
+        $users[] = $row;
+    }
+} else {
+    die("Error fetching users: " . mysqli_error($conn));
+}
+
 /* ─────────────────────────────────────────
    DUMMY USERS DATA
 ───────────────────────────────────────── */
-$users = [
-    ['id'=>1,  'code'=>'',    'username'=>'ramkrishnaivfsiliguri@gmail.com','display'=>'Admin',              'role'=>'Administrator','active'=>true],
-    ['id'=>2,  'code'=>'1006','username'=>'1006@RKIVFCentre.com',           'display'=>'Sumi Das',           'role'=>'Employee',      'active'=>true],
-    ['id'=>3,  'code'=>'1008','username'=>'1008@RKIVFCentre.com',           'display'=>'Shubhankar Naha',    'role'=>'Employee',      'active'=>true],
-    ['id'=>4,  'code'=>'1009','username'=>'1009@RKIVFCentre.com',           'display'=>'Biswajit Dutta',     'role'=>'Employee',      'active'=>true],
-    ['id'=>5,  'code'=>'1011','username'=>'1011@RKIVFCentre.com',           'display'=>'Sujata Roy',         'role'=>'Employee',      'active'=>true],
-    ['id'=>6,  'code'=>'1013','username'=>'1013@RKIVFCentre.com',           'display'=>'Priyanka Chakraborty','role'=>'Employee',      'active'=>true],
-    ['id'=>7,  'code'=>'1015','username'=>'1015@RKIVFCentre.com',           'display'=>'Babli Mallik',       'role'=>'Employee',      'active'=>true],
-    ['id'=>8,  'code'=>'1017','username'=>'1017@RKIVFCentre.com',           'display'=>'Dibakar Sarkar',     'role'=>'Employee',      'active'=>true],
-    ['id'=>9,  'code'=>'1018','username'=>'1018@RKIVFCentre.com',           'display'=>'Lal Bahadur Pradhan','role'=>'Employee',      'active'=>true],
-    ['id'=>10, 'code'=>'1020','username'=>'1020@RKIVFCentre.com',           'display'=>'Anita Sharma',       'role'=>'Employee',      'active'=>false],
-    ['id'=>11, 'code'=>'1022','username'=>'1022@RKIVFCentre.com',           'display'=>'Rahul Verma',        'role'=>'Manager',       'active'=>true],
-    ['id'=>12, 'code'=>'1024','username'=>'1024@RKIVFCentre.com',           'display'=>'Kavita Singh',       'role'=>'Edit Tax',      'active'=>true],
-];
-
-
 $roles_list = ['Administrator','Employee','Edit Tax','Manager','WebEmployee'];
 
 /* ─────────────────────────────────────────
@@ -355,11 +362,11 @@ document.addEventListener('DOMContentLoaded',function(){
             </thead>
             <tbody id="usrTableBody">
                 <?php foreach($paged_users as $i=>$u): ?>
-                    <tr data-search="<?= strtolower(esc($u['username'])) ?> <?= strtolower(esc($u['display'])) ?> <?= strtolower(esc($u['code'])) ?>">
+                    <tr data-search="<?= strtolower(esc($u['employee_code'])) ?> <?= strtolower(esc($u['employee_name'])) ?> <?= strtolower(esc($u['employee_code'])) ?>">
                         <td style="color:#6B7280"><?= $offset + $i + 1 ?></td>
-                        <td style="color:#374151;font-weight:500"><?= esc($u['code']) ?></td>
-                        <td style="color:#374151"><?= esc($u['username']) ?></td>
-                        <td style="font-weight:500;color:#111827"><?= esc($u['display']) ?></td>
+                        <td style="color:#374151;font-weight:500"><?= esc($u['employee_code']) ?></td>
+                        <td style="color:#374151"><?= esc($u['employee_code']) ?>@RKIVFCentre.com</td>
+                        <td style="font-weight:500;color:#111827"><?= esc($u['employee_name']) ?></td>
                         <td style="color:#374151"><?= esc($u['role']) ?></td>
                         <td>
                             <label class="usr-toggle" title="Toggle status" onclick="toggleStatus(<?= $u['id'] ?>,this)">

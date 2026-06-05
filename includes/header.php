@@ -46,7 +46,6 @@ if ($result->num_rows > 0) {
     <link rel="apple-touch-icon" href="includes/assets/img/apple-touch-icon.png">
     <?php if (!empty($extra_head)) echo $extra_head; ?>
 </head>
-
 <body>
     <?php include 'includes/sidebar.php'; ?>
     <div id="toast-container"></div>
@@ -67,6 +66,8 @@ if ($result->num_rows > 0) {
                 </span>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px">
+                    
+                
                     <button style="position:relative;padding:7px 9px" class="btn">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
@@ -75,6 +76,19 @@ if ($result->num_rows > 0) {
                         </svg>
                         <span class="notif-dot"></span>
                     </button>
+
+                    <a href="support" style="position:relative;padding:7px 9px" class="btn" title="Support">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <!-- Headset -->
+                            <path d="M4 12a8 8 0 0 1 16 0" />
+                            <rect x="2" y="12" width="4" height="6" rx="1" />
+                            <rect x="18" y="12" width="4" height="6" rx="1" />
+                            <path d="M18 19a6 6 0 0 1-6 3" />
+                        </svg>
+                    </a>
+
                     <!-- USER DROPDOWN -->
                     <div class="user-menu-wrap" id="userMenuWrap">
                         <div class="user-trigger" id="userTrigger" onclick="toggleUserDropdown(event)">
