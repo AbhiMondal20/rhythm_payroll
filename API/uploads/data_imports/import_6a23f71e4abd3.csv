@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description"
+        content="E-Clinic Solutions by Abhitechbot offers advanced healthcare software services, including patient management systems, online appointment bookings, diagnostic tools, and more to streamline medical operations efficiently.">
+    <meta name="keywords"
+        content="E-Clinic Solutions, Abhitechbot, Healthcare Software, Patient Management System, Online Appointment Booking, Diagnostic Software, Clinic Management, Healthcare IT, Medical Software, Digital Healthcare">
+    <meta name="author" content="Abhitechbot">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="icon" href="https://leadbuket.com/assets/favLogo.jpg">
+    <title>LeadBuket — Modern Lead Management CRM</title>
+    <!-- CSS -->
+    <link rel="stylesheet" href="css/vendors_css.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/header.css">
+    <link rel="stylesheet" href="css/skin_color.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.1/css/all.min.css">
+    <!-- jQuery -->
+    <script src="js/jquery-3.7.1.js"></script>
+    <!-- SweetAlert -->
+    <script src="js/sweetalert.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Select2 CSS & JS -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    
+    <!--Echarts-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/6.0.0/echarts.min.js" integrity="sha512-4/g9GAdOdTpUP2mKClpKsEzaK7FQNgMjq+No0rX8XZlfrCGtbi4r+T/p5fnacsEC3zIAmHKLJUL7sh3/yVA4OQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+    <!--InputMask Js-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.inputmask/5.0.9/jquery.inputmask.min.js" integrity="sha512-F5Ul1uuyFlGnIT1dk2c4kB4DBdi5wnBJjVhL7gQlGh46Xn0VhvD8kgxLtjdZ5YN83gybk/aASUAlpdoWUjRR3g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <style>
+        /* Action icon buttons */
+        .action-icons .icon-btn {
+            width: 32px;
+            height: 32px;
+            border: 1px solid #4c63ff;
+            color: #4c63ff;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        
+        /* Hover */
+        .action-icons .icon-btn:hover {
+            background: #4c63ff;
+            color: #fff;
+        }
+        
+        /* PDF (Red) */
+        .action-icons .icon-danger {
+            border-color: #ff4d4f;
+            color: #ff4d4f;
+        }
+        
+        .action-icons .icon-danger:hover {
+            background: #ff4d4f;
+            color: #fff;
+        }
+        
+    
+    /*Date range style*/
+    .gmail-select {
+        height: 44px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #dadce0;
+        font-size: 14px;
+        color: #202124;
+        background-color: #fff;
+        transition: all 0.2s ease;
+    }
+    
+    .gmail-select:focus {
+        border-color: #1a73e8;
+        box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+        outline: none;
+    }
+    
+    .gmail-select option {
+        font-size: 14px;
+    }
+    
+    /* Gmail-style input wrapper */
+    .gmail-input {
+        position: relative;
+        width: 100%;
+    }
+    
+    /* Input */
+    .gmail-input input {
+        width: 100%;
+        height: 46px;
+        padding: 12px 10px;
+        font-size: 14px;
+        border-radius: 6px;
+        border: 1px solid #dadce0;
+        outline: none;
+        background: #fff;
+    }
+    
+    /* Focus */
+    .gmail-input input:focus {
+        border-color: #1a73e8;
+    }
+    
+    /* Floating label */
+    .gmail-input label {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #fff;
+        padding: 0 5px;
+        color: #5f6368;
+        font-size: 14px;
+        pointer-events: none;
+        transition: 0.2s ease;
+    }
+    
+    /* Float on focus or value */
+    .gmail-input input:focus + label,
+    .gmail-input input:not(:placeholder-shown) + label {
+        top: -6px;
+        font-size: 12px;
+        color: #1a73e8;
+    }
+    
+    /* Select & Button match */
+    .gmail-select {
+        height: 46px;
+        border-radius: 6px;
+    }
+    
+    .gmail-btn {
+        height: 46px;
+        border-radius: 6px;
+        font-weight: 500;
+    }
+    
+    .flatpickr-calendar {
+        border-radius: 10px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        border: none;
+    }
+    
+    .flatpickr-day.selected,
+    .flatpickr-day.startRange,
+    .flatpickr-day.endRange {
+        background: #1a73e8;
+        border-color: #1a73e8;
+    }
+    
+    .flatpickr-day.today {
+        border-color: #1a73e8;
+    }
+    
+    
+    
+    /*Index page Ads slider*/
+       .greeting-widget{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:14px;
+    }
+    
+    .greet-right{
+      min-width: 480px;          /* adjust */
+      max-width: 560px;          /* adjust */
+    }
+    
+    .ads-slider{
+      position: relative;
+      width: 100%;
+      height: 90px;              /* adjust */
+      border-radius: 12px;
+      overflow: hidden;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+    }
+    
+    .ads-slide{
+      position:absolute;
+      inset:0;
+      opacity:0;
+      transition: opacity .45s ease;
+      display:block;
+    }
+    
+    .ads-slide.active{ opacity:1; }
+    
+    .ads-slide img{
+      width:100%;
+      height:100%;
+      object-fit: cover;
+      display:block;
+    }
+    
+    .ads-nav{
+      position:absolute;
+      top:50%;
+      transform:translateY(-50%);
+      width:28px;
+      height:28px;
+      border-radius:999px;
+      border:0;
+      cursor:pointer;
+      background: rgba(0,0,0,.35);
+      color:#fff;
+      font-size:18px;
+      line-height:28px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    
+    .ads-nav.prev{ left:8px; }
+    .ads-nav.next{ right:8px; }
+    
+    .ads-dots{
+      position:absolute;
+      bottom:6px;
+      left:0;
+      right:0;
+      display:flex;
+      gap:6px;
+      justify-content:center;
+    }
+    
+    .ads-dots button{
+      width:7px;
+      height:7px;
+      border-radius:999px;
+      border:0;
+      cursor:pointer;
+      opacity:.55;
+    }
+    
+    .ads-dots button.active{ opacity:1; }
+    
+    </style>
+    </head>
+
+<body class="hold-transition light-skin sidebar-mini theme-success fixed dashboard-zoom" id="body">
+    <!--<div class="dashboard-zoom">-->
+    <div class="wrapper">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+
+        <header class="main-header" style="box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);">
+            <div class="d-flex align-items-center logo-box justify-content-start">
+                <!-- Logo -->
+                <a href="#" class="logo">
+                    <!--<div class="logo-mini">-->
+                    <!--    <span class="light-logo">-->
+                    <!--        <img src="https://leadbuket.com/assets/logo.png" alt="logo">-->
+                    <!--    </span>-->
+                    <!--    <span class="dark-logo">-->
+                    <!--        <img src="https://leadbuket.com/assets/logo.png" alt="logo">-->
+                    <!--    </span>-->
+                    <!--</div>-->
+                
+                    <div class="logo-lg">
+                        <span class="light-logo">
+                            <img src="https://leadbuket.com/assets/logo.png" alt="logo">
+                        </span>
+                        <span class="dark-logo">
+                            <img src="https://leadbuket.com/assets/logo.png" alt="logo">
+                        </span>
+                    </div>
+                </a>
+
+            </div>
+
+            <!-- Header Navbar -->
+            <nav class="navbar navbar-static-top">
+                <div class="app-menu">
+                    <ul class="header-megamenu nav">
+                        <li class="btn-group nav-item">
+                            <a href="#" class="waves-effect waves-light nav-link push-btn btn-primary-light"
+                                data-toggle="push-menu" role="button">
+                                <i class="fa-solid fa-bars"></i>
+                            </a>
+                        </li>
+                        <li class="btn-group d-lg-inline-flex d-none">
+                            <div class="app-menu">
+                                <div class="search-bx mx-5">
+                                    <form autocomplete="off">
+                                        <div class="input-group">
+                                            <input type="search" id="searchInput" class="form-control"
+                                                placeholder="Search...">
+                                        </div>
+                                        <div id="suggestion-box" class="list-group position-absolute"></div>
+                                    </form>
+                                </div>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="navbar-custom-menu r-side">
+                    <ul class="nav navbar-nav">
+                        <!--Main Menu-->
+                        <li class="btn-group nav-item d-lg-inline-flex d-none">
+                            <a href="#" class="waves-effect waves-light push-btn btn btn-primary-light"
+                                data-bs-toggle="modal" data-bs-target="#main-menu-modal">
+                                <i class="fa-solid fa-layer-group"></i>
+                            </a>
+                        </li>
+                        <!-- Full Screen -->
+                        <li class="btn-group nav-item d-lg-inline-flex d-none">
+                            <a href="#" data-provide="fullscreen"
+                                class="waves-effect waves-light nav-link full-screen btn-warning-light"
+                                title="Full Screen">
+                                <i class="fa-solid fa-expand"></i>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <div class="navbar-custom-menu r-side">
+                    <ul class="nav navbar-nav">
+                        <!-- Theme toggle -->
+                        <!--<li class="nav-item d-flex align-items-center px-2">-->
+                        <!--    <button class="btn btn-sm" style="background-color: #1DBFC1;" id="themeToggle"-->
+                        <!--        title="Toggle Theme">-->
+                        <!--        <i class="fa-solid fa-moon" id="themeIcon"></i>-->
+                        <!--    </button>-->
+                        <!--</li>-->
+                        <!-- User Account-->
+                        <li class="dropdown user user-menu">
+                            <a href="#" class="waves-effect waves-light dropdown-toggle w-auto l-h-12 bg-transparent py-0 no-shadow"
+                                data-bs-toggle="dropdown" title="User">
+                                <div class="d-flex pt-5">
+                                    <div class="text-end me-10">
+                                        <p class="pt-5 fs-14 mb-0 fw-700 text-primary"
+                                            style="text-transform: capitalize;">
+                                            RKIVF .                                        </p>
+                                    </div>
+                                    <img src="upload/692942d53d215.png"
+                                        class="avatar rounded-10 bg-primary-light h-40 w-40" alt="" />
+                                </div>
+                            </a>
+                            <ul class="dropdown-menu animated flipInX">
+                                <li class="user-body">
+                                    <a class="dropdown-item" href="profile"><i class="fa-solid fa-user"></i>
+                                        Profile</a>
+                                                                        <a class="dropdown-item" href="log_activity"><i
+                                            class="fa-solid fa-font-awesome"></i>
+                                        Logs</a>
+                                                                        
+                                                                                                                      <a class="dropdown-item" href="documentation" target="_BLANK"><i class="fa-brands fa-readme"></i>
+                                        Documentation</a>                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-item" href="../../logout"><i class="fa-solid fa-lock"></i>Logout</a>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        </header>
+
+        <!-- Main Menu Modal -->
+        <div class="modal fade" id="main-menu-modal" tabindex="-1">
+            <div class="modal-dialog modal-fullscreen">
+                <div class="modal-content">
+                    <div class="modal-header border-0">
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body custom-scroll">
+                        <div class="search-box mb-4">
+                            <input type="text" class="form-control search-input" placeholder="Search">
+                        </div>
+        
+                        <div class="app-grid">
+                                                        <a href="crm_dashboard?module=CRM" class="app-item">
+                                <div class="app-icon">
+                                    <img src="../images/main-menu/crm.png" alt="CRM">
+                                </div>
+                                <div class="app-title">CRM</div>
+                            </a>
+                                    
+                                                        <a href="renewals_dashboard?module=Renewals" class="app-item">
+                                <div class="app-icon">
+                                    <img src="../images/main-menu/Renewals.jpg" alt="Renewals">
+                                </div>
+                                <div class="app-title">Renewals</div>
+                            </a>
+                                                        
+                                                        <a href="system_config?module=Settings" class="app-item">
+                                <div class="app-icon">
+                                    <img src="../images/main-menu/settings.png" alt="Settings">
+                                </div>
+                                <div class="app-title">Settings</div>
+                            </a>
+                                                    </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <aside class="main-sidebar" style="box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);">
+            <section class="sidebar position-relative">
+                <div class="help-bt">
+                    <a href="tel:+918101202074" class="d-flex align-items-center">
+                        <div class="bg-danger rounded10 h-50 w-50 l-h-50 text-center me-15">
+                            <i data-feather="mic"></i>
+                            <img src="../images/emergency.png" height="40px">
+                        </div>
+                        <h4 class="mb-0">Emergency<br>help</h4>
+                    </a>
+                </div>
+                <div class="multinav">
+                    <div class="multinav-scroll" style="height: 100%;">
+                        <!-- sidebar menu-->
+                        <ul class="sidebar-menu" data-widget="tree">
+                        
+                            <!-- CRM -->
+                                                                                                                    <li><a href="crm_dashboard?module=CRM"><i class="fa-solid fa-desktop me-2"></i>Dashboard</a></li>
+                                                    
+                        
+                        
+                                                <li class="treeview">
+                            <a href="#">
+                               <i class="fa-solid fa-server"></i> Master
+                                <i class="fa-solid fa-angle-right pull-right"></i>
+                            </a>
+                            <ul class="treeview-menu">
+                                                                <li><a href="crm_user_master?module=CRM"><i class="fa-solid fa-code-commit me-2"></i>User Master</a></li>
+                                                                                                <li><a href="crm_team_master?module=CRM"><i class="fa-solid fa-code-commit me-2"></i>Team Master</a></li>
+                                                                                                <li><a href="crm_user_access_master?module=CRM"><i class="fa-solid fa-code-commit me-2"></i>User Access Master</a></li>
+                                                                                                <li><a href="crm_platform_master?module=CRM"><i class="fa-solid fa-code-commit me-2"></i>Platform Master</a></li>
+                                                                                                <li><a href="crm_source_master?module=CRM"><i class="fa-solid fa-code-commit me-2"></i>Source Master</a></li>
+                                                                                                <li><a href="crm_facebook_forms?module=CRM"><i class="fa-solid fa-code-commit me-2"></i>Facebook Forms</a></li>
+                                                                                                 <li><a href="crm_upload_file?module=CRM"><i class="fa-solid fa-code-commit me-2"></i>Upload File</a></li>
+                                                            </ul>
+                        </li>
+                                                                <!--Renewals module-->
+                        
+                        <div class="sidebar-widgets">
+                            <!--<div class="mx-25 mb-30 pb-20 side-bx bg-primary-light rounded20">-->
+                            <!--    <div class="text-center">-->
+                            <!--        <img src="../images/images.jpg" class="sideimg p-5" style="border-radius: 12px; display:block;" alt="">-->
+
+                            <!--        <h4 class="title-bx text-primary">Make an Appointments</h4>-->
+                            <!--        <a href="" target="_BLANK"-->
+                            <!--            class="py-10 fs-14 mb-0 text-primary">-->
+                            <!--            Best Health Care here <i class="mdi mdi-arrow-right"></i>-->
+                            <!--        </a>-->
+                            <!--    </div>-->
+                            <!--</div>-->
+                            <div class="copyright text-center m-25">
+                                <p><strong class="d-block">LeadBuket.</strong> © <script>
+                                    document.write(new Date().getFullYear())
+                                    </script>  All rights reserved.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </aside>
+
+        <script>
+            feather.replace();
+            const searchInput = document.getElementById('searchInput');
+            const suggestionBox = document.getElementById('suggestion-box');
+            if (searchInput) {
+                searchInput.addEventListener('keyup', function() {
+                    let query = this.value.trim();
+                    if (query.length > 1) {
+                        fetch('load/search_suggestion.php?q=' + encodeURIComponent(query))
+                            .then(response => response.text())
+                            .then(data => {
+                                suggestionBox.innerHTML = data;
+                                suggestionBox.style.display = 'block';
+                            });
+                    } else {
+                        suggestionBox.style.display = 'none';
+                    }
+                });
+            }
+    
+            document.addEventListener('click', function(e) {
+                if (e.target.closest('.suggestion-item')) {
+                    const item = e.target.closest('.suggestion-item');
+                    const patientName = item.querySelector('strong').innerText;
+                    searchInput.value = patientName;
+                    suggestionBox.style.display = 'none';
+                }
+            });
+        </script>
+
+        <script>
+            let lastNotifIds = [];
+            let isFirstLoad = true;
+            if (Notification && Notification.permission !== "granted" && Notification.permission !== "denied") {
+                Notification.requestPermission();
+            }
+            
+            function showBrowserNotification(title, message) {
+                if (!("Notification" in window)) return;
+                if (Notification.permission === "granted") {
+                    const notification = new Notification(title, {
+                        body: message,
+                        icon: "https://leadbuket.com/assets/logo.png"
+                    });
+                    notification.onclick = () => {
+                        window.focus();
+                    };
+                }
+            }
+            
+            function isMobile() {
+                return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            }
+    
+            function playNotificationSound() {
+                const audio = document.getElementById("notif-sound");
+                audio.currentTime = 0;
+                audio.play();
+            }
+    
+            function showToast(sender, message) {
+                const container = document.getElementById("toast-container");
+                const toast = document.createElement("div");
+                toast.className = "toast-msg";
+                toast.innerHTML = `
+                <div style="
+                  background: #ffffff;
+                  border-left: 5px solid #00bfa5;
+                  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                  border-radius: 10px;
+                  padding: 12px 16px;
+                  margin-top: 10px;
+                  width: 280px;
+                  display: flex;
+                  align-items: start;
+                  animation: slideIn 0.4s ease, fadeOut 5s forwards 3.5s;
+                ">
+                  <i class="fa-solid fa-whatsapp text-success me-2" style="font-size: 1.3rem; margin-top: 3px;"></i>
+                  <div>
+                    <strong>${sender}</strong><br>
+                    <small>${message}</small>
+                  </div>
+                </div>
+              `;
+                container.appendChild(toast);
+                setTimeout(() => toast.remove(), 6000);
+            }
+    
+            const style = document.createElement("style");
+            style.innerHTML = `
+                @keyframes slideIn {
+                  from { transform: translateX(120%); opacity: 0; }
+                  to { transform: translateX(0); opacity: 1; }
+                }
+                @keyframes fadeOut {
+                  to { opacity: 0; transform: translateX(120%); }
+                }
+            `;
+            document.head.appendChild(style);
+    
+            function fetchNotifications() {
+                fetch('load/wb_fetch_notifications.php')
+                    .then(res => res.json())
+                    .then(data => {
+                        const badge = document.getElementById('notif-badge');
+                        if (data.count > 0) {
+                            badge.style.display = 'flex';
+                            badge.textContent = data.count;
+                        } else {
+                            badge.style.display = 'none';
+                        }
+    
+                        document.getElementById('notif-list').innerHTML = data.html;
+    
+                        const parser = new DOMParser();
+                        const htmlDoc = parser.parseFromString(data.html, 'text/html');
+                        const items = htmlDoc.querySelectorAll('li');
+                        let newIds = [];
+                        items.forEach(li => {
+                            const href = li.querySelector('a');
+                            if (href) {
+                                const urlParams = new URLSearchParams(href.getAttribute('href').split('?')[1] ||
+                                    '');
+                                const notifId = urlParams.get('notif_id');
+                                if (notifId) newIds.push(notifId);
+                            }
+                        });
+    
+                        if (!isFirstLoad) {
+                            const newOnes = newIds.filter(id => !lastNotifIds.includes(id));
+                            if (newOnes.length > 0) {
+                                playNotificationSound();
+    
+                                const firstNew = htmlDoc.querySelector('li');
+                                if (firstNew) {
+                                    const sender = firstNew.querySelector('strong')?.innerText || "New Message";
+                                    const msg = firstNew.querySelector('small')?.innerText || "";
+    
+                                    if (!isMobile() && Notification.permission === "granted") {
+                                        showBrowserNotification(sender, msg);
+                                    } else {
+                                        Swal.fire({
+                                            icon: 'info',
+                                            title: 'New WhatsApp Message',
+                                            text: msg,
+                                            timer: 4000,
+                                            toast: true,
+                                            position: 'top-end',
+                                            showConfirmButton: false
+                                        });
+                                    }
+    
+                                    showToast(sender, msg);
+                                }
+                            }
+                        }
+    
+                        lastNotifIds = newIds;
+                        isFirstLoad = false;
+                    })
+                    .catch(err => console.error('Error fetching notifications:', err));
+            }
+    
+            setInterval(fetchNotifications, 5000);
+            fetchNotifications();
+        </script>
+        
+        <script>
+            function markAsRead(id) {
+                fetch("load/wb_mark_read.php?id=" + id)
+                    .then(() => {
+                        const li = document.querySelector(`[data-notif='${id}']`);
+                        if (li) li.remove();
+                        const badge = document.getElementById("notif-badge");
+                        let count = parseInt(badge.textContent || 0);
+                        if (count > 0) {
+                            badge.textContent = count - 1;
+                            if (count - 1 <= 0) badge.style.display = "none";
+                        }
+                    });
+            }
+</script>
+<br />
+<b>Notice</b>:  ob_end_clean(): Failed to discard buffer of zlib output compression (1) in <b>/home/u543350320/domains/leadbuket.com/public_html/opd/admin/crm_upload_file.php</b> on line <b>15</b><br />
+source_id,form_id,user_id,message_id,full_name,email,subject,phone,city,message,status,branch,rating,"reminder_date (YYYY-MM-DD)",expected_revenue,probability,customer,contact_person,mobile,salesperson,"closing_date (YYYY-MM-DD)",project,branch_pin,parent_id,tag,"received_at (YYYY-MM-DD HH:MM:SS)",facebook_form_id,lead_data

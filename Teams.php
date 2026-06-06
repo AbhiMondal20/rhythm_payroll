@@ -68,9 +68,9 @@ if ($action) {
                 $team = mysqli_fetch_assoc($resT);
                 if (!$team) { echo json_encode(['success' => false, 'message' => 'Not found']); break; }
 
-                // Get Owners
+                // Get Owners (Updated to match provided schema)
                 $team['owners'] = [];
-                $sqlO = "SELECT e.id, CONCAT(e.first_name,' ',e.last_name) AS name, e.designation, e.profile_photo
+                $sqlO = "SELECT e.id, e.employee_name AS name, e.designation
                          FROM team_owners to2
                          JOIN employees e ON e.id = to2.employee_id
                          WHERE to2.team_id = $id";
@@ -79,9 +79,9 @@ if ($action) {
                     while ($row = mysqli_fetch_assoc($resO)) { $team['owners'][] = $row; }
                 }
 
-                // Get Members
+                // Get Members (Updated to match provided schema)
                 $team['members'] = [];
-                $sqlM = "SELECT e.id, CONCAT(e.first_name,' ',e.last_name) AS name, e.designation, e.profile_photo
+                $sqlM = "SELECT e.id, e.employee_name AS name, e.designation
                          FROM team_members tm2
                          JOIN employees e ON e.id = tm2.employee_id
                          WHERE tm2.team_id = $id";
@@ -192,11 +192,12 @@ if ($action) {
                 $q = trim($_GET['q'] ?? '');
                 $q_esc = mysqli_real_escape_string($conn, $q);
                 
-                $sql = "SELECT id, CONCAT(first_name,' ',last_name) AS name, designation, employee_code, profile_photo
+                // Updated to match your exact schema columns
+                $sql = "SELECT id, employee_name AS name, designation, employee_code
                         FROM employees
-                        WHERE is_active = 1
-                          AND (first_name LIKE '%$q_esc%' OR last_name LIKE '%$q_esc%' OR employee_code LIKE '%$q_esc%')
-                        ORDER BY first_name
+                        WHERE status = 'Active' 
+                          AND (employee_name LIKE '%$q_esc%' OR employee_code LIKE '%$q_esc%')
+                        ORDER BY employee_name
                         LIMIT 50";
                         
                 $res = mysqli_query($conn, $sql);
@@ -228,9 +229,9 @@ if ($action) {
 $page_title = 'Teams';
 ob_start();
 ?>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <link rel="stylesheet" href="includes/assets/style.css">
 <style>
-/* ... [CSS remains completely unchanged from previous version] ... */
 .cfg-tabs { display: flex; align-items: center; border-bottom: 1px solid #E5E7EB; background: #fff; overflow-x: auto; scrollbar-width: none; }
 .cfg-tabs::-webkit-scrollbar { display: none; }
 .cfg-tab { padding: 14px 20px; font-size: 13.5px; font-weight: 500; color: #6B7280; cursor: pointer; border: none; background: transparent; border-bottom: 2.5px solid transparent; white-space: nowrap; transition: color .15s, border-color .15s; text-decoration: none; display: block; margin-bottom: -1px; }
@@ -448,13 +449,13 @@ const TM = (() => {
   let editingTeamId = null, viewingTeamId = null;
 
   // Uses exactly the current page URL to avoid routing 404s
-  const API = window.location.href; 
+  const API = window.location.href.split('?')[0]; 
   const $ = id => document.getElementById(id);
 
   document.addEventListener('DOMContentLoaded', () => { loadTeams(); prefetchEmployees(); });
 
   function loadTeams() {
-    fetch(`${API}${API.includes('?') ? '&' : '?'}action=list`)
+    fetch(`${API}?action=list`)
       .then(r => {
           if (!r.ok) throw new Error("Server error");
           return r.json();
@@ -485,7 +486,7 @@ const TM = (() => {
   }
 
   function prefetchEmployees() {
-    fetch(`${API}${API.includes('?') ? '&' : '?'}action=search_employees&q=`)
+    fetch(`${API}?action=search_employees&q=`)
       .then(r => r.json())
       .then(res => { if (res.success) allEmployees = res.data || []; })
       .catch(() => {});
@@ -524,7 +525,7 @@ const TM = (() => {
 
   function openDetail(id) {
     viewingTeamId = id;
-    fetch(`${API}${API.includes('?') ? '&' : '?'}action=get&id=${id}`)
+    fetch(`${API}?action=get&id=${id}`)
       .then(r => r.json())
       .then(res => {
         if (!res.success) { showToast(res.message, 'error'); return; }
@@ -647,10 +648,11 @@ const TM = (() => {
   }
 
   function avatarEl(emp, cls = 'tm-owner-avatar') {
-    if (emp.profile_photo) return `<img src="${esc(emp.profile_photo)}" class="${cls}" onerror="this.outerHTML=initials('${esc(emp.name)}','${cls}')">`;
+    // Generate initials safely since profile_photo doesn't exist
     const initials = (emp.name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
     return `<div class="${cls}">${initials}</div>`;
   }
+  
   function esc(str) { return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
   let toastTimer;

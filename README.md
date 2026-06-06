@@ -29,7 +29,10 @@ News/Announcement - Working
 Approval Rules - Working
 Reimbursement - Working
 
-Team - done
+Team - Done
+FaceEnrolment - Done
+UserRoles - Done
+
 
 
 CRM add tag filter in list view
