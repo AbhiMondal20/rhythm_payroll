@@ -15,19 +15,19 @@ $action = $_POST['action'] ?? $_GET['action'] ?? '';
 /* ── Standard list of application modules/pages ─────────── */
 function allPages(): array {
     return [
-        ['module_key' => 'Admin', 'page_name' => 'Organisation'],
-        ['module_key' => 'Admin', 'page_name' => 'Location'],
-        ['module_key' => 'Admin', 'page_name' => 'Department'],
-        ['module_key' => 'Admin', 'page_name' => 'Designation'],
-        ['module_key' => 'Admin', 'page_name' => 'Category'],
+        ['module_key' => 'HR', 'page_name' => 'Organisation'],
+        ['module_key' => 'HR', 'page_name' => 'Location'],
+        ['module_key' => 'HR', 'page_name' => 'Department'],
+        ['module_key' => 'HR', 'page_name' => 'Designation'],
+        ['module_key' => 'HR', 'page_name' => 'Category'],
         ['module_key' => 'HR',    'page_name' => 'Employee'],
         ['module_key' => 'HR',    'page_name' => 'Payroll'],
         ['module_key' => 'HR',    'page_name' => 'Attendance'],
         ['module_key' => 'HR',    'page_name' => 'Leave'],
         ['module_key' => 'HR',    'page_name' => 'Training'],
-        ['module_key' => 'System','page_name' => 'Report'],
-        ['module_key' => 'System','page_name' => 'Configuration'],
-        ['module_key' => 'System','page_name' => 'User']
+        ['module_key' => 'HR','page_name' => 'Report'],
+        ['module_key' => 'HR','page_name' => 'Configuration'],
+        ['module_key' => 'HR','page_name' => 'User']
     ];
 }
 

@@ -41,21 +41,12 @@ function initials_name($name) {
     return strtoupper(substr($p[0] ?? '', 0, 1) . substr($p[1] ?? '', 0, 1));
 }
 
-function run_stmt(mysqli $conn, string $sql, string $types = '', array $params = []) {
-    $stmt = $conn->prepare($sql);
-    if (!$stmt) {
-        throw new Exception($conn->error);
+// Security Helper to prevent SQL Injection when using mysqli_query
+function sql_val($conn, $val) {
+    if ($val === null) {
+        return 'NULL';
     }
-
-    if ($types !== '' && !empty($params)) {
-        $stmt->bind_param($types, ...$params);
-    }
-
-    if (!$stmt->execute()) {
-        throw new Exception($stmt->error);
-    }
-
-    return $stmt;
+    return "'" . mysqli_real_escape_string($conn, (string)$val) . "'";
 }
 
 $toast_msg  = $_SESSION['toast_msg'] ?? '';
@@ -118,9 +109,9 @@ $emp = [
 ];
 
 $employees = [];
-$resMgr = $conn->query("SELECT id, employee_name, department FROM employees ORDER BY employee_name ASC");
+$resMgr = mysqli_query($conn, "SELECT id, employee_name, department FROM employees ORDER BY employee_name ASC");
 if ($resMgr) {
-    while ($r = $resMgr->fetch_assoc()) {
+    while ($r = mysqli_fetch_assoc($resMgr)) {
         $employees[] = [
             'id' => $r['id'],
             'name' => $r['employee_name'],
@@ -134,7 +125,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === '
 
     if ($del_id > 0) {
         try {
-            run_stmt($conn, "DELETE FROM employees WHERE id=?", "i", [$del_id]);
+            $del_sql = "DELETE FROM employees WHERE id = " . $del_id;
+            if (!mysqli_query($conn, $del_sql)) {
+                throw new Exception(mysqli_error($conn));
+            }
             $_SESSION['toast_icon'] = '✅';
             $_SESSION['toast_msg']  = 'Employee deleted successfully.';
             header("Location: employees");
@@ -182,116 +176,121 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') !== '
     $list_status = strtolower($status) === 'active' ? 'active' : 'inactive';
 
     $data = [
-        'employee_code'   => $employee_code,
-        'employee_name'   => $full_name,
-        'title'           => clean_post('title'),
-        'first_name'      => $first_name,
-        'middle_name'     => $middle_name,
-        'last_name'       => $last_name,
-        'dob'             => date_or_null($_POST['dob'] ?? ''),
-        'gender'          => clean_post('gender'),
-        'blood'           => clean_post('blood'),
-        'marital'         => clean_post('marital'),
-        'nationality'     => clean_post('nationality', 'Indian'),
-        'phone'           => clean_post('phone'),
-        'phone2'          => clean_post('phone2'),
-        'personal_email'  => clean_post('email'),
-        'official_email'  => clean_post('off_email'),
-        'address'         => clean_post('address'),
-        'aadhaar'         => clean_post('aadhaar'),
-        'pan'             => strtoupper(clean_post('pan')),
-        'uan'             => clean_post('uan'),
-        'esi_no'          => clean_post('esi_no'),
-        'department'      => clean_post('dept'),
-        'designation'     => clean_post('desig'),
-        'emp_type'        => clean_post('emp_type', 'Permanent'),
-        'manager'         => clean_post('manager') !== '' ? (int)clean_post('manager') : null,
-        'grade'           => clean_post('grade'),
-        'location'        => clean_post('location'),
-        'join_date'       => date_or_null($_POST['join'] ?? ''),
-        'probation'       => clean_post('probation'),
-        'notice'          => clean_post('notice'),
-        'confirm_date'    => date_or_null($_POST['confirm_date'] ?? ''),
-        'contract_end'    => date_or_null($_POST['contract_end'] ?? ''),
-        'shift'           => clean_post('shift'),
-        'qualification'   => clean_post('qualification'),
-        'specialisation'  => clean_post('specialisation'),
-        'reg_no'          => clean_post('reg_no'),
-        'ctc_monthly'     => (float)clean_post('salary', 0),
-        'basic_pct'       => (float)clean_post('basic_pct', 60),
-        'hra_pct'         => (float)clean_post('hra_pct', 40),
-        'acc_name'        => clean_post('acc_name'),
-        'acc_no'          => clean_post('acc_no'),
-        'bank'            => clean_post('bank'),
-        'ifsc'            => strtoupper(clean_post('ifsc')),
-        'branch'          => clean_post('branch'),
-        'pay_mode'        => clean_post('pay_mode', 'NEFT'),
-        'nom_name'        => clean_post('nom_name'),
-        'nom_rel'         => clean_post('nom_rel'),
-        'emg_name'        => clean_post('emg_name'),
-        'emg_rel'         => clean_post('emg_rel'),
-        'emg_phone'       => clean_post('emg_phone'),
-        'notes'           => clean_post('notes'),
-        'status'          => $list_status,
+        'employee_code'  => $employee_code,
+        'employee_name'  => $full_name,
+        'title'          => clean_post('title'),
+        'first_name'     => $first_name,
+        'middle_name'    => $middle_name,
+        'last_name'      => $last_name,
+        'dob'            => date_or_null($_POST['dob'] ?? ''),
+        'gender'         => clean_post('gender'),
+        'blood'          => clean_post('blood'),
+        'marital'        => clean_post('marital'),
+        'nationality'    => clean_post('nationality', 'Indian'),
+        'phone'          => clean_post('phone'),
+        'phone2'         => clean_post('phone2'),
+        'personal_email' => clean_post('email'),
+        'official_email' => clean_post('off_email'),
+        'address'        => clean_post('address'),
+        'aadhaar'        => clean_post('aadhaar'),
+        'pan'            => strtoupper(clean_post('pan')),
+        'uan'            => clean_post('uan'),
+        'esi_no'         => clean_post('esi_no'),
+        'department'     => clean_post('dept'),
+        'designation'    => clean_post('desig'),
+        'emp_type'       => clean_post('emp_type', 'Permanent'),
+        'manager'        => clean_post('manager') !== '' ? (int)clean_post('manager') : null,
+        'grade'          => clean_post('grade'),
+        'location'       => clean_post('location'),
+        'join_date'      => date_or_null($_POST['join'] ?? ''),
+        'probation'      => clean_post('probation'),
+        'notice'         => clean_post('notice'),
+        'confirm_date'   => date_or_null($_POST['confirm_date'] ?? ''),
+        'contract_end'   => date_or_null($_POST['contract_end'] ?? ''),
+        'shift'          => clean_post('shift'),
+        'qualification'  => clean_post('qualification'),
+        'specialisation' => clean_post('specialisation'),
+        'reg_no'         => clean_post('reg_no'),
+        'ctc_monthly'    => (float)clean_post('salary', 0),
+        'basic_pct'      => (float)clean_post('basic_pct', 60),
+        'hra_pct'        => (float)clean_post('hra_pct', 40),
+        'acc_name'       => clean_post('acc_name'),
+        'acc_no'         => clean_post('acc_no'),
+        'bank'           => clean_post('bank'),
+        'ifsc'           => strtoupper(clean_post('ifsc')),
+        'branch'         => clean_post('branch'),
+        'pay_mode'       => clean_post('pay_mode', 'NEFT'),
+        'nom_name'       => clean_post('nom_name'),
+        'nom_rel'        => clean_post('nom_rel'),
+        'emg_name'       => clean_post('emg_name'),
+        'emg_rel'        => clean_post('emg_rel'),
+        'emg_phone'      => clean_post('emg_phone'),
+        'notes'          => clean_post('notes'),
+        'status'         => $list_status,
     ];
 
     try {
         if ($is_edit && $emp_id > 0) {
-            $set = [];
-            $params = [];
-            $types = '';
-
+            $set_parts = [];
             foreach ($data as $col => $val) {
-                $set[] = "$col=?";
-                $params[] = $val;
-
-                if (in_array($col, ['manager'], true)) {
-                    $types .= 'i';
-                } elseif (in_array($col, ['ctc_monthly','basic_pct','hra_pct'], true)) {
-                    $types .= 'd';
-                } else {
-                    $types .= 's';
-                }
+                $set_parts[] = "`$col` = " . sql_val($conn, $val);
             }
 
-            $params[] = $emp_id;
-            $types .= 'i';
-
-            $sql = "UPDATE employees SET " . implode(", ", $set) . ", updated_at=NOW() WHERE id=?";
-            run_stmt($conn, $sql, $types, $params);
+            $sql = "UPDATE employees SET " . implode(", ", $set_parts) . ", updated_at=NOW() WHERE id=" . $emp_id;
+            
+            if (!mysqli_query($conn, $sql)) {
+                throw new Exception(mysqli_error($conn));
+            }
 
             $employee_id = $emp_id;
             $_SESSION['toast_msg'] = 'Employee record updated successfully!';
         } else {
             $cols = array_keys($data);
-            $placeholders = implode(',', array_fill(0, count($cols), '?'));
-
-            $params = [];
-            $types = '';
-
+            $vals = [];
+            
             foreach ($data as $col => $val) {
-                $params[] = $val;
-
-                if (in_array($col, ['manager'], true)) {
-                    $types .= 'i';
-                } elseif (in_array($col, ['ctc_monthly','basic_pct','hra_pct'], true)) {
-                    $types .= 'd';
-                } else {
-                    $types .= 's';
-                }
+                $vals[] = sql_val($conn, $val);
             }
 
             $sql = "
                 INSERT INTO employees
-                (" . implode(',', $cols) . ", ctc_template_id, created_at, updated_at)
+                (`" . implode('`,`', $cols) . "`, ctc_template_id, created_at, updated_at)
                 VALUES
-                ($placeholders, NULL, NOW(), NOW())
+                (" . implode(',', $vals) . ", NULL, NOW(), NOW())
             ";
 
-            $stmt = run_stmt($conn, $sql, $types, $params);
-            $employee_id = $stmt->insert_id;
+            if (!mysqli_query($conn, $sql)) {
+                throw new Exception(mysqli_error($conn));
+            }
+            
+            $employee_id = mysqli_insert_id($conn);
 
-            $_SESSION['toast_msg'] = 'Employee record created successfully!';
+            // ==========================================================
+            // USER ACCOUNT CREATION
+            // ==========================================================
+            $default_password = 'Password@123';
+            $hashed_password  = password_hash($default_password, PASSWORD_DEFAULT);
+            $user_email       = !empty($data['official_email']) ? $data['official_email'] : $data['personal_email'];
+            $username         = $data['employee_code']; 
+            
+            $u_emp_code = sql_val($conn, $data['employee_code']);
+            $u_username = sql_val($conn, $username);
+            $u_email    = sql_val($conn, $user_email);
+            $u_pass     = sql_val($conn, $hashed_password);
+
+            $user_sql = "
+                INSERT INTO users 
+                (employee_code, username, email, password_hash, role, status, created_at, updated_at) 
+                VALUES 
+                ($u_emp_code, $u_username, $u_email, $u_pass, 'Employee', 'Active', NOW(), NOW())
+            ";
+            
+            if (!mysqli_query($conn, $user_sql)) {
+                 throw new Exception("Employee created, but user account failed: " . mysqli_error($conn));
+            }
+            // ==========================================================
+
+            $_SESSION['toast_msg'] = 'Employee record and user account created successfully!';
         }
 
         $_SESSION['toast_icon'] = '✅';
@@ -309,11 +308,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') !== '
 if ($is_edit) {
     $edit_id = (int)($_GET['id'] ?? 0);
 
-    $stmt = $conn->prepare("SELECT * FROM employees WHERE id=? LIMIT 1");
-    $stmt->bind_param("i", $edit_id);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
+    $sql = "SELECT * FROM employees WHERE id = $edit_id LIMIT 1";
+    $res = mysqli_query($conn, $sql);
+    $row = $res ? mysqli_fetch_assoc($res) : null;
 
     if (!$row) {
         $_SESSION['toast_icon'] = '❌';
@@ -684,7 +681,7 @@ ob_start();
                         <div class="fg-row col-2">
                             <div class="fg">
                                 <label>EMPLOYEE ID</label>
-                                <input type="text" name="emp_code" id="fEmpCode" value="<?= esc($is_edit ? $emp['employee_code'] : 'EMP-' . str_pad((string)(count($employees) + 1), 3, '0', STR_PAD_LEFT)) ?>" oninput="updatePreview()">
+                                <input type="text" name="emp_code" id="fEmpCode" value="<?= esc($is_edit ? $emp['employee_code'] : '1' . str_pad((string)(count($employees) + 1), 3, '0', STR_PAD_LEFT)) ?>" oninput="updatePreview()">
                             </div>
                             <div class="fg">
                                 <label>DEPARTMENT <span class="req">*</span></label>

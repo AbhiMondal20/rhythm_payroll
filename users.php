@@ -10,17 +10,100 @@ require_once 'includes/db_client.php';
 require_once 'includes/config.php';
 
 $page_title = 'Users';
+
 /* ─────────────────────────────────────────
-   ACTIVE TAB & VIEW
+   POST HANDLERS (DB INSERTS / UPDATES)
+───────────────────────────────────────── */
+$save_success = false;
+$save_msg     = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['_action'] ?? '';
+
+    // Add User
+    if ($action === 'add_user') {
+        $username      = mysqli_real_escape_string($conn, $_POST['username'] ?? '');
+        $employee_code = mysqli_real_escape_string($conn, $_POST['client_code'] ?? '');
+        $employee_name = mysqli_real_escape_string($conn, $_POST['employee_name'] ?? '');
+        $status        = mysqli_real_escape_string($conn, $_POST['status'] ?? 'active');
+        $role          = isset($_POST['roles']) ? mysqli_real_escape_string($conn, implode(',', $_POST['roles'])) : '';
+        
+        $password      = $_POST['password'] ?? '';
+        $password_hash = !empty($password) ? password_hash($password, PASSWORD_DEFAULT) : '';
+
+        $sql = "INSERT INTO `users` (`username`, `employee_code`, `employee_name`, `status`, `role`, `password_hash`, `created_at`, `updated_at`)
+                VALUES ('$username', '$employee_code', '$employee_name', '$status', '$role', '$password_hash', NOW(), NOW())";
+        
+        if (mysqli_query($conn, $sql)) {
+            $save_success = true;
+            $save_msg = 'User added successfully!';
+        } else {
+            die("Error adding user: " . mysqli_error($conn));
+        }
+    }
+
+    // Edit User
+    if ($action === 'save_user') {
+        $user_id       = (int)($_POST['user_id'] ?? 0);
+        $username      = mysqli_real_escape_string($conn, $_POST['username'] ?? '');
+        $employee_code = mysqli_real_escape_string($conn, $_POST['client_code'] ?? '');
+        $employee_name = mysqli_real_escape_string($conn, $_POST['employee_name'] ?? '');
+        $status        = mysqli_real_escape_string($conn, $_POST['status'] ?? 'active');
+        $role          = isset($_POST['roles']) ? mysqli_real_escape_string($conn, implode(',', $_POST['roles'])) : '';
+
+        $password_update = "";
+        if (!empty($_POST['password']) && $_POST['password'] === $_POST['confirm_password']) {
+            $pw_hash = password_hash($_POST['password'], PASSWORD_DEFAULT);
+            $password_update = ", `password_hash` = '$pw_hash'";
+        }
+
+        $sql = "UPDATE `users` SET 
+                `username` = '$username',
+                `employee_code` = '$employee_code',
+                `employee_name` = '$employee_name',
+                `status` = '$status',
+                `role` = '$role',
+                `updated_at` = NOW()
+                $password_update
+                WHERE `id` = $user_id";
+
+        if (mysqli_query($conn, $sql)) {
+            $save_success = true;
+            $save_msg = 'User updated successfully!';
+        } else {
+            die("Error updating user: " . mysqli_error($conn));
+        }
+    }
+
+    // Assign Roles in Bulk
+    if ($action === 'assign_role') {
+        $selected_role  = mysqli_real_escape_string($conn, $_POST['selected_role'] ?? '');
+        $selected_users = $_POST['selected_users'] ?? [];
+
+        if (!empty($selected_users) && is_array($selected_users) && !empty($selected_role)) {
+            $ids     = array_map('intval', $selected_users);
+            $ids_str = implode(',', $ids);
+
+            $sql = "UPDATE `users` SET `role` = '$selected_role', `updated_at` = NOW() WHERE `id` IN ($ids_str)";
+            
+            if (mysqli_query($conn, $sql)) {
+                $save_success = true;
+                $save_msg = 'Roles assigned successfully!';
+            } else {
+                die("Error assigning roles: " . mysqli_error($conn));
+            }
+        }
+    }
+}
+
+/* ─────────────────────────────────────────
+   ACTIVE TAB & VIEW & FETCH DB DATA
 ───────────────────────────────────────── */
 $active_tab = $_GET['tab']  ?? 'list';
 $view       = $_GET['view'] ?? '';
 
-$sql = "SELECT u.id, u.username, u.employee_code as code, e.employee_name as display, u.role
-        FROM users u
-        INNER JOIN employees e ON u.employee_code = e.employee_code
-        ORDER BY u.id DESC";
-
+// Fetch Users (After POST so the view is fresh)
+$sql = "SELECT `id`, `client_id`, `client_code`, `employee_name`, `employee_code`, `username`, `email`, `password_hash`, `role`, `status`, `last_login_at`, `created_at`, `updated_at` FROM `users` ORDER BY created_at DESC";
 $result = mysqli_query($conn, $sql);
 $users = [];
 if ($result) {
@@ -31,10 +114,32 @@ if ($result) {
     die("Error fetching users: " . mysqli_error($conn));
 }
 
-/* ─────────────────────────────────────────
-   DUMMY USERS DATA
-───────────────────────────────────────── */
-$roles_list = ['Administrator','Employee','Edit Tax','Manager','WebEmployee'];
+// Fetch Roles
+$sql = "SELECT `id`, `role_code`, `role_name`, `remarks`, `is_deleted`, `created_by`, `created_at`, `updated_at` FROM `user_roles` WHERE is_deleted=0 ORDER BY role_name ASC";
+$roles_result = mysqli_query($conn, $sql);
+$roles_list = [];
+if ($roles_result) {
+    while ($row = mysqli_fetch_assoc($roles_result)) {
+        $roles_list[] = $row['role_name'];
+    }
+} else {
+    die("Error fetching roles: " . mysqli_error($conn));
+}
+
+// ==========================================
+// NEW: Fetch Employees from Database for Auto-search
+// ==========================================
+$emp_sql = "SELECT `employee_code`, `employee_name` FROM `employees` WHERE 1";
+$emp_result = mysqli_query($conn, $emp_sql);
+$emp_list = [];
+if ($emp_result) {
+    while ($row = mysqli_fetch_assoc($emp_result)) {
+        $emp_list[] = [
+            'code' => $row['employee_code'],
+            'name' => $row['employee_name']
+        ];
+    }
+}
 
 /* ─────────────────────────────────────────
    PAGINATION ONLY FOR USER LIST
@@ -56,38 +161,11 @@ $paged_users = array_slice($users, $offset, $per_page);
 $detail_user = null;
 if ($view === 'detail' && isset($_GET['id'])) {
     foreach ($users as $u) {
-        if ($u['id'] === (int)$_GET['id']) {
+        // FIX: Cast both to INT because fetched IDs are strings. This was breaking the View/Edit page!
+        if ((int)$u['id'] === (int)$_GET['id']) {
             $detail_user = $u;
             break;
         }
-    }
-}
-
-/* POST handlers */
-$save_success = false;
-$save_msg     = '';
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['_action'] ?? '';
-
-    if ($action === 'add_user') {
-        $save_success = true;
-        $save_msg = 'User added successfully!';
-    }
-
-    if ($action === 'save_user') {
-        $save_success = true;
-        $save_msg = 'User updated successfully!';
-    }
-
-    if ($action === 'assign_role') {
-        $save_success = true;
-        $save_msg = 'Roles assigned successfully!';
-    }
-
-    if ($action === 'toggle_status') {
-        $save_success = true;
-        $save_msg = 'Status updated!';
     }
 }
 
@@ -97,7 +175,6 @@ function esc($v) {
 
 ob_start();
 ?>
-
 <link rel="stylesheet" href="includes/assets/style.css">
 
 <style>
@@ -105,116 +182,60 @@ ob_start();
    USERS PAGE
 ════════════════════════════════════════ */
 
-.usr-tabs {
-    display:flex;align-items:center;gap:0;
-}
-.usr-tab {
-    padding:9px 18px;font-size:13.5px;font-weight:500;color:#6B7280;
-    cursor:pointer;border:none;background:transparent;
-    border-bottom:2.5px solid transparent;white-space:nowrap;
-    transition:color .15s,border-color .15s;text-decoration:none;
-    display:inline-block;margin-bottom:-1px;font-family:inherit;
-}
+.usr-tabs { display:flex;align-items:center;gap:0; }
+.usr-tab { padding:9px 18px;font-size:13.5px;font-weight:500;color:#6B7280;cursor:pointer;border:none;background:transparent;border-bottom:2.5px solid transparent;white-space:nowrap;transition:color .15s,border-color .15s;text-decoration:none;display:inline-block;margin-bottom:-1px;font-family:inherit; }
 .usr-tab:hover  { color:#111827; }
 .usr-tab.active { color:#2563EB;border-bottom-color:#2563EB;font-weight:600; }
 
-.usr-bc {
-    display:flex;align-items:center;gap:8px;font-size:13.5px;
-    font-weight:500;color:#374151;margin-bottom:20px;flex-wrap:wrap;
-}
+.usr-bc { display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;color:#374151;margin-bottom:20px;flex-wrap:wrap; }
 .usr-bc a        { color:#374151;text-decoration:none; }
 .usr-bc a:hover  { color:#2563EB; }
 .usr-bc .sep     { color:#D1D5DB;font-size:15px; }
 .usr-bc .cur     { font-weight:600;color:#374151; }
 
-.usr-search {
-    display:flex;align-items:center;gap:8px;padding:8px 14px;
-    border:1.5px solid #E5E7EB;border-radius:8px;background:#fff;
-    max-width:300px;transition:border-color .15s;
-}
+.usr-search { display:flex;align-items:center;gap:8px;padding:8px 14px;border:1.5px solid #E5E7EB;border-radius:8px;background:#fff;max-width:300px;transition:border-color .15s; }
 .usr-search:focus-within { border-color:#2563EB; }
 .usr-search svg { width:14px;height:14px;stroke:#9CA3AF;fill:none;stroke-width:2;stroke-linecap:round;flex-shrink:0; }
 .usr-search input { border:none;outline:none;font-size:13px;font-family:inherit;color:#374151;background:transparent;width:100%; }
 
 .usr-table { width:100%;border-collapse:collapse;font-size:13.5px; }
 .usr-table thead tr { background:#F3F4F6; }
-.usr-table th {
-    padding:11px 16px;text-align:left;font-weight:600;color:#374151;
-    font-size:13px;border-bottom:1px solid #E5E7EB;white-space:nowrap;
-}
-.usr-table td {
-    padding:13px 16px;border-bottom:1px solid #F3F4F6;
-    color:#374151;vertical-align:middle;
-}
+.usr-table th { padding:11px 16px;text-align:left;font-weight:600;color:#374151;font-size:13px;border-bottom:1px solid #E5E7EB;white-space:nowrap; }
+.usr-table td { padding:13px 16px;border-bottom:1px solid #F3F4F6;color:#374151;vertical-align:middle; }
 .usr-table tr:last-child td { border-bottom:none; }
 .usr-table tbody tr:hover td { background:#F9FAFB; }
 
 .usr-toggle { position:relative;width:46px;height:26px;cursor:pointer;display:inline-block; }
 .usr-toggle input { opacity:0;width:0;height:0; }
-.usr-toggle-sl {
-    position:absolute;inset:0;background:#D1D5DB;border-radius:13px;
-    cursor:pointer;transition:.2s;
-}
+.usr-toggle-sl { position:absolute;inset:0;background:#D1D5DB;border-radius:13px;cursor:pointer;transition:.2s; }
 .usr-toggle input:checked + .usr-toggle-sl { background:#2563EB; }
-.usr-toggle-sl::after {
-    content:'';position:absolute;width:20px;height:20px;background:#fff;
-    border-radius:50%;top:3px;left:3px;transition:.2s;
-    box-shadow:0 1px 3px rgba(0,0,0,.2);
-}
+.usr-toggle-sl::after { content:'';position:absolute;width:20px;height:20px;background:#fff;border-radius:50%;top:3px;left:3px;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2); }
 .usr-toggle input:checked + .usr-toggle-sl::after { transform:translateX(20px); }
 
-.usr-arrow {
-    color:#9CA3AF;cursor:pointer;font-size:16px;padding:0 4px;
-    transition:color .15s;user-select:none;
-}
+.usr-arrow { color:#9CA3AF;cursor:pointer;font-size:16px;padding:0 4px;transition:color .15s;user-select:none; }
 .usr-arrow:hover { color:#2563EB; }
 
 .ar-layout { display:grid;grid-template-columns:320px 1fr;gap:0;align-items:start; }
-.ar-roles-panel {
-    border:1px solid #E5E7EB;border-radius:10px 0 0 10px;
-    overflow:hidden;background:#fff;
-}
-.ar-role-item {
-    padding:13px 18px;font-size:13.5px;color:#374151;cursor:pointer;
-    border-bottom:1px solid #F9FAFB;transition:background .15s;
-    display:flex;align-items:center;gap:10px;
-}
+.ar-roles-panel { border:1px solid #E5E7EB;border-radius:10px 0 0 10px;overflow:hidden;background:#fff; }
+.ar-role-item { padding:13px 18px;font-size:13.5px;color:#374151;cursor:pointer;border-bottom:1px solid #F9FAFB;transition:background .15s;display:flex;align-items:center;gap:10px; }
 .ar-role-item:last-child { border-bottom:none; }
 .ar-role-item:hover  { background:#F3F4F6; }
 .ar-role-item.selected { background:#EFF6FF;color:#2563EB;font-weight:600; }
 
-.ar-assign-wrap {
-    padding:0 0 16px 16px;
-}
-.ar-assign-btn {
-    padding:9px 28px;background:#2563EB;color:#fff;border:none;
-    border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;
-    font-family:inherit;transition:background .15s;
-}
+.ar-assign-wrap { padding:0 0 16px 16px; }
+.ar-assign-btn { padding:9px 28px;background:#2563EB;color:#fff;border:none;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s; }
 .ar-assign-btn:hover { background:#1D4ED8; }
 
-.ar-sel-count {
-    display:flex;align-items:center;gap:8px;padding:10px 0;
-    font-size:13.5px;color:#374151;font-weight:500;cursor:pointer;
-    border-bottom:1px solid #E5E7EB;margin-bottom:0;
-}
+.ar-sel-count { display:flex;align-items:center;gap:8px;padding:10px 0;font-size:13.5px;color:#374151;font-weight:500;cursor:pointer;border-bottom:1px solid #E5E7EB;margin-bottom:0; }
 .ar-sel-count svg { width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round; }
 
 .ar-table { width:100%;border-collapse:collapse;font-size:13.5px; }
 .ar-table thead tr { background:#F3F4F6; }
-.ar-table th {
-    padding:11px 16px;text-align:left;font-weight:600;color:#374151;
-    font-size:13px;border-bottom:1px solid #E5E7EB;white-space:nowrap;
-}
-.ar-table td {
-    padding:12px 16px;border-bottom:1px solid #F3F4F6;
-    color:#374151;vertical-align:middle;
-}
+.ar-table th { padding:11px 16px;text-align:left;font-weight:600;color:#374151;font-size:13px;border-bottom:1px solid #E5E7EB;white-space:nowrap; }
+.ar-table td { padding:12px 16px;border-bottom:1px solid #F3F4F6;color:#374151;vertical-align:middle; }
 .ar-table tr:last-child td { border-bottom:none; }
 .ar-table tbody tr:hover td { background:#F9FAFB; }
-.ar-table input[type=checkbox] {
-    width:16px;height:16px;accent-color:#2563EB;cursor:pointer;
-}
+.ar-table input[type=checkbox] { width:16px;height:16px;accent-color:#2563EB;cursor:pointer; }
 
 .ud-form-wrap { background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:28px 24px; }
 
@@ -225,75 +246,33 @@ ob_start();
 .ud-row.c1 { grid-template-columns:1fr; }
 
 .ud-fg { display:flex;flex-direction:column;gap:6px; }
-.ud-fg label {
-    font-size:13px;font-weight:400;color:#374151;
-}
-.ud-fg input,
-.ud-fg select {
-    border:none;border-bottom:1.5px solid #D1D5DB;
-    border-radius:0;padding:6px 0;font-size:13.5px;
-    font-family:inherit;color:#111827;outline:none;
-    background:transparent;transition:border-color .15s;
-    width:100%;
-}
-.ud-fg input:focus,
-.ud-fg select:focus { border-bottom-color:#2563EB; }
+.ud-fg label { font-size:13px;font-weight:400;color:#374151; }
+.ud-fg input, .ud-fg select { border:none;border-bottom:1.5px solid #D1D5DB;border-radius:0;padding:6px 0;font-size:13.5px;font-family:inherit;color:#111827;outline:none;background:transparent;transition:border-color .15s;width:100%; }
+.ud-fg input:focus, .ud-fg select:focus { border-bottom-color:#2563EB; }
 .ud-fg input::placeholder { color:#C4C9D4; }
 
 .ud-code-wrap { position:relative; }
-.ud-code-wrap svg {
-    position:absolute;left:0;top:50%;transform:translateY(-50%);
-    width:14px;height:14px;stroke:#9CA3AF;fill:none;stroke-width:2;stroke-linecap:round;
-}
+.ud-code-wrap svg { position:absolute;left:0;top:50%;transform:translateY(-50%);width:14px;height:14px;stroke:#9CA3AF;fill:none;stroke-width:2;stroke-linecap:round; }
 .ud-code-wrap input { padding-left:22px; }
 
 .ud-roles-section { margin-top:4px; }
 .ud-roles-title { font-size:13.5px;font-weight:500;color:#374151;margin-bottom:14px; }
 .ud-roles-list { display:flex;flex-direction:column;gap:12px; }
-.ud-role-chk {
-    display:flex;align-items:center;gap:10px;
-    font-size:13.5px;color:#374151;cursor:pointer;
-}
-.ud-role-chk input[type=checkbox] {
-    width:16px;height:16px;accent-color:#2563EB;cursor:pointer;
-    flex-shrink:0;
-}
+.ud-role-chk { display:flex;align-items:center;gap:10px;font-size:13.5px;color:#374151;cursor:pointer; }
+.ud-role-chk input[type=checkbox] { width:16px;height:16px;accent-color:#2563EB;cursor:pointer;flex-shrink:0; }
 
-.ud-actions {
-    display:flex;justify-content:flex-end;gap:10px;
-    padding-top:20px;margin-top:16px;border-top:1px solid #E5E7EB;
-}
-.ud-cancel {
-    padding:9px 24px;background:#fff;color:#374151;
-    border:1.5px solid #D1D5DB;border-radius:8px;font-size:13.5px;
-    font-weight:500;cursor:pointer;font-family:inherit;transition:.15s;
-}
+.ud-actions { display:flex;justify-content:flex-end;gap:10px;padding-top:20px;margin-top:16px;border-top:1px solid #E5E7EB; }
+.ud-cancel { padding:9px 24px;background:#fff;color:#374151;border:1.5px solid #D1D5DB;border-radius:8px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:inherit;transition:.15s; }
 .ud-cancel:hover { border-color:#374151; }
-.ud-add-btn {
-    padding:9px 30px;background:#2563EB;color:#fff;border:none;
-    border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;
-    font-family:inherit;transition:background .15s;
-}
+.ud-add-btn { padding:9px 30px;background:#2563EB;color:#fff;border:none;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s; }
 .ud-add-btn:hover { background:#1D4ED8; }
 
-.usr-toast {
-    position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);
-    background:#111827;color:#fff;padding:11px 20px;border-radius:10px;
-    font-size:13px;font-weight:500;z-index:999;display:flex;align-items:center;
-    gap:8px;box-shadow:0 8px 28px rgba(0,0,0,.2);transition:transform .3s ease;white-space:nowrap;
-}
+.usr-toast { position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:999;display:flex;align-items:center;gap:8px;box-shadow:0 8px 28px rgba(0,0,0,.2);transition:transform .3s ease;white-space:nowrap; }
 .usr-toast.show { transform:translateX(-50%) translateY(0); }
 
-@media(max-width:900px){
-    .ar-layout { grid-template-columns:1fr; }
-    .ar-roles-panel { border-radius:10px;border:1px solid #E5E7EB; }
-}
-@media(max-width:680px){
-    .ud-row.c4,.ud-row.c3 { grid-template-columns:1fr 1fr; }
-}
-@media(max-width:420px){
-    .ud-row.c4,.ud-row.c3 { grid-template-columns:1fr; }
-}
+@media(max-width:900px){ .ar-layout { grid-template-columns:1fr; } .ar-roles-panel { border-radius:10px;border:1px solid #E5E7EB; } }
+@media(max-width:680px){ .ud-row.c4,.ud-row.c3 { grid-template-columns:1fr 1fr; } }
+@media(max-width:420px){ .ud-row.c4,.ud-row.c3 { grid-template-columns:1fr; } }
 </style>
 
 <?php if($save_success): ?>
@@ -321,7 +300,6 @@ document.addEventListener('DOMContentLoaded',function(){
 <?php if(($active_tab==='list' || $active_tab==='') && $view==='' ): ?>
 
 <div class="section-card" style="padding:0;overflow:hidden">
-
     <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;border-bottom:1px solid #F3F4F6">
         <div class="usr-bc" style="margin-bottom:0">
             <a href="?tab=list">Users</a>
@@ -362,15 +340,17 @@ document.addEventListener('DOMContentLoaded',function(){
             </thead>
             <tbody id="usrTableBody">
                 <?php foreach($paged_users as $i=>$u): ?>
-                    <tr data-search="<?= strtolower(esc($u['employee_code'])) ?> <?= strtolower(esc($u['employee_name'])) ?> <?= strtolower(esc($u['employee_code'])) ?>">
+                    <tr data-search="<?= strtolower(esc($u['employee_code'])) ?> <?= strtolower(esc($u['employee_name'])) ?> <?= strtolower(esc($u['client_code'])) ?>">
                         <td style="color:#6B7280"><?= $offset + $i + 1 ?></td>
                         <td style="color:#374151;font-weight:500"><?= esc($u['employee_code']) ?></td>
-                        <td style="color:#374151"><?= esc($u['employee_code']) ?>@RKIVFCentre.com</td>
+                        <td style="color:#374151"><?= esc($u['client_code']) ?>@RKIVFCentre.com</td>
                         <td style="font-weight:500;color:#111827"><?= esc($u['employee_name']) ?></td>
                         <td style="color:#374151"><?= esc($u['role']) ?></td>
                         <td>
-                            <label class="usr-toggle" title="Toggle status" onclick="toggleStatus(<?= $u['id'] ?>,this)">
-                                <input type="checkbox" <?= $u['active']?'checked':'' ?>>
+                            <label class="usr-toggle" title="Toggle status">
+                                <input type="checkbox"
+                                    <?= ($u['status'] === 'active') ? 'checked' : '' ?>
+                                    onchange="toggleStatus(<?= $u['id'] ?>, this.parentElement)">
                                 <span class="usr-toggle-sl"></span>
                             </label>
                         </td>
@@ -388,7 +368,6 @@ document.addEventListener('DOMContentLoaded',function(){
             <span style="font-size:12px;color:#9CA3AF">
                 Showing <?= min($offset + 1, $total_users) ?> - <?= min($offset + $per_page, $total_users) ?> of <?= $total_users ?> users
             </span>
-
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                 <?php if($page_no > 1): ?>
                     <a href="?tab=list&page=<?= $page_no - 1 ?>"
@@ -427,11 +406,9 @@ document.addEventListener('DOMContentLoaded',function(){
             <span class="cur">User details</span>
         </div>
     </div>
-
     <div style="padding:28px 24px">
         <form method="POST" id="addUserForm" novalidate>
             <input type="hidden" name="_action" value="add_user">
-
             <div class="ud-row c4">
                 <div class="ud-fg">
                     <label>Username</label>
@@ -445,13 +422,13 @@ document.addEventListener('DOMContentLoaded',function(){
                             <circle cx="11" cy="11" r="8"/>
                             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                         </svg>
-                        <input type="text" name="emp_code" placeholder="Search by name or #code" id="addEmpCode">
+                        <input type="text" name="client_code" placeholder="Search by name or #code" id="addEmpCode">
                     </div>
                 </div>
 
                 <div class="ud-fg">
                     <label>Display Name</label>
-                    <input type="text" name="display_name" placeholder="">
+                    <input type="text" name="employee_name" placeholder="">
                 </div>
 
                 <div class="ud-fg">
@@ -525,26 +502,26 @@ document.addEventListener('DOMContentLoaded',function(){
                 </div>
 
                 <div class="ud-fg">
-                    <label>Employee Code</label>
+                    <label>Employee Search (Code/Name)</label>
                     <div class="ud-code-wrap">
                         <svg viewBox="0 0 24 24">
                             <circle cx="11" cy="11" r="8"/>
                             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                         </svg>
-                        <input type="text" name="emp_code" value="<?= esc($detail_user['code']) ?>" placeholder="Search by name or #code">
+                        <input type="text" name="client_code" id="editEmpCode" value="<?= esc($detail_user['employee_code']) ?>" placeholder="Search by name or #code">
                     </div>
                 </div>
 
                 <div class="ud-fg">
                     <label>Display Name</label>
-                    <input type="text" name="display_name" value="<?= esc($detail_user['display']) ?>">
+                    <input type="text" name="employee_name" value="<?= esc($detail_user['employee_name']) ?>">
                 </div>
 
                 <div class="ud-fg">
                     <label>Status</label>
                     <select name="status">
-                        <option <?= $detail_user['active']?'selected':'' ?>>Active</option>
-                        <option <?= !$detail_user['active']?'selected':'' ?>>Inactive</option>
+                        <option <?= (isset($detail_user['status']) && $detail_user['status'] === 'Active') ? 'selected' : '' ?>>Active</option>
+                        <option <?= (isset($detail_user['status']) && $detail_user['status'] === 'Inactive') ? 'selected' : '' ?>>Inactive</option>
                     </select>
                 </div>
             </div>
@@ -569,10 +546,13 @@ document.addEventListener('DOMContentLoaded',function(){
             <div class="ud-roles-section">
                 <div class="ud-roles-title">Roles</div>
                 <div class="ud-roles-list">
-                    <?php foreach($roles_list as $role): ?>
+                    <?php 
+                    $assigned_roles = array_map('trim', explode(',', $detail_user['role']));
+                    foreach($roles_list as $role): 
+                    ?>
                         <label class="ud-role-chk">
                             <input type="checkbox" name="roles[]" value="<?= esc($role) ?>"
-                                <?= $detail_user['role']===$role?'checked':'' ?>>
+                                <?= in_array($role, $assigned_roles) ? 'checked' : '' ?>>
                             <?= esc($role) ?>
                         </label>
                     <?php endforeach; ?>
@@ -601,8 +581,7 @@ document.addEventListener('DOMContentLoaded',function(){
     <div style="padding:20px">
         <form method="POST" id="assignRolesForm" novalidate>
             <input type="hidden" name="_action" value="assign_role">
-            <!-- <input type="hidden" name="selected_role" id="selectedRoleInput" value="Administrator"> -->
-
+            
             <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;flex-wrap:wrap">
                 <div style="min-width:240px;max-width:320px;flex:1">
                     <select name="selected_role"
@@ -665,8 +644,8 @@ document.addEventListener('DOMContentLoaded',function(){
                                     </td>
                                     <td style="color:#6B7280"><?= $i ?></td>
                                     <td style="color:#374151"><?= esc($u['username']) ?></td>
-                                    <td style="font-weight:500;color:#111827"><?= esc($u['display']) ?></td>
-                                    <td style="color:#6B7280"><?= esc($u['code']) ?></td>
+                                    <td style="font-weight:500;color:#111827"><?= esc($u['employee_name']) ?></td>
+                                    <td style="color:#6B7280"><?= esc($u['employee_code']) ?></td>
                                     <td style="color:#374151"><?= esc($u['role']) ?></td>
                                 </tr>
                             <?php endforeach; ?>
@@ -705,45 +684,45 @@ function usrToast(icon, msg) {
 
 function filterUsrTable(q) {
     q=q.toLowerCase().trim();
-
     var rows=document.querySelectorAll('#usrTableBody tr');
-
     rows.forEach(function(r){
         r.style.display=!q||(r.dataset.search||'').includes(q)?'':'none';
     });
 }
 
 function toggleStatus(id, label) {
-    var chk=label.querySelector('input');
-    var newStatus=chk.checked;
+    const chk = label.querySelector('input');
+    const newStatus = chk.checked ? 'active' : 'inactive';
 
-    usrToast('⚡','User ' + (newStatus?'activated':'deactivated') + ' successfully!');
+    fetch('API/update_user_status.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: `id=${id}&status=${newStatus}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            usrToast('⚡', 'User ' + (chk.checked ? 'activated' : 'deactivated') + ' successfully!');
+        } else {
+            chk.checked = !chk.checked; // revert toggle
+            usrToast('❌', data.message || 'Failed to update status');
+        }
+    })
+    .catch(error => {
+        chk.checked = !chk.checked; // revert toggle
+        usrToast('❌', 'Server error');
+        console.error(error);
+    });
 }
 
 var selectedRole='Administrator';
-
-function selectRole(role, el) {
-    selectedRole=role;
-
-    document.querySelectorAll('.ar-role-item').forEach(function(r){
-        r.classList.remove('selected');
-    });
-
-    el.classList.add('selected');
-
-    // var inp=document.getElementById('selectedRoleInput');
-    var selectedRole = document.getElementById('selectedRoleInput').value;
-
-    if(inp) {
-        inp.value=role;
-    }
-}
 
 function toggleArAll(masterChk) {
     document.querySelectorAll('.ar-chk').forEach(function(c){
         c.checked=masterChk.checked;
     });
-
     updateArCount();
 }
 
@@ -766,7 +745,6 @@ function updateArCount() {
 
 function toggleSelAll() {
     var master=document.getElementById('arSelectAll');
-
     if(master) {
         master.checked = !master.checked;
         toggleArAll(master);
@@ -775,6 +753,9 @@ function toggleSelAll() {
 
 function confirmAssign() {
     var checked=document.querySelectorAll('.ar-chk:checked').length;
+    var selectEl=document.getElementById('selectedRoleInput');
+    
+    if(selectEl) selectedRole = selectEl.value;
 
     if(!selectedRole) {
         usrToast('⚠','Please select a role.');
@@ -786,25 +767,7 @@ function confirmAssign() {
         return false;
     }
 
-    usrToast('✅','Role "'+selectedRole+'" assigned to '+checked+' employee(s)!');
-
-    document.querySelectorAll('.ar-chk:checked').forEach(function(c){
-        var row=c.closest('tr');
-
-        if(row) {
-            var roleTd=row.cells[row.cells.length-1];
-
-            if(roleTd) {
-                roleTd.textContent=selectedRole;
-            }
-        }
-
-        c.checked=false;
-    });
-
-    updateArCount();
-
-    return false;
+    return true;
 }
 
 function validateAddUser() {
@@ -827,44 +790,39 @@ function validateAddUser() {
     return true;
 }
 
-var empNames=[
-    {code:'1006',name:'Sumi Das'},
-    {code:'1008',name:'Shubhankar Naha'},
-    {code:'1009',name:'Biswajit Dutta'},
-    {code:'1011',name:'Sujata Roy'},
-    {code:'1013',name:'Priyanka Chakraborty'},
-    {code:'1015',name:'Babli Mallik'},
-    {code:'1017',name:'Dibakar Sarkar'},
-    {code:'1018',name:'Lal Bahadur Pradhan'}
-];
+// FIX: Outputting the database list here dynamically
+var empNames = <?= json_encode($emp_list) ?>;
 
 document.addEventListener('DOMContentLoaded',function(){
-    var codeInput=document.getElementById('addEmpCode');
+    
+    // Function that hooks up the autocomplete to both Add and Edit forms dynamically
+    function setupEmpSearch(inputId, formSelector) {
+        var codeInput = document.getElementById(inputId);
+        if(!codeInput) return;
 
-    if(!codeInput) return;
+        codeInput.addEventListener('input',function(){
+            var q = this.value.toLowerCase().trim();
+            if(!q) return;
 
-    codeInput.addEventListener('input',function(){
-        var q=this.value.toLowerCase().trim();
+            var match = empNames.find(function(e){
+                return (e.code && e.code.toLowerCase().includes(q)) || 
+                       (e.name && e.name.toLowerCase().includes(q));
+            });
 
-        if(!q) return;
+            if(match) {
+                var dn = document.querySelector(formSelector + ' input[name="employee_name"]');
+                var un = document.querySelector(formSelector + ' input[name="username"]');
 
-        var match=empNames.find(function(e){
-            return e.code.includes(q) || e.name.toLowerCase().includes(q);
+                if(dn) dn.value = match.name;
+                if(un && !un.value) un.value = match.code + '@RKIVFCentre.com';
+            }
         });
+    }
 
-        if(match) {
-            var dn=document.querySelector('#addUserForm input[name="display_name"]');
-            var un=document.querySelector('#addUserForm input[name="username"]');
+    // Attach to both forms
+    setupEmpSearch('addEmpCode', '#addUserForm');
+    setupEmpSearch('editEmpCode', '#editUserForm');
 
-            if(dn && !dn.value) {
-                dn.value=match.name;
-            }
-
-            if(un && !un.value) {
-                un.value=match.code+'@RKIVFCentre.com';
-            }
-        }
-    });
 });
 </script>
 

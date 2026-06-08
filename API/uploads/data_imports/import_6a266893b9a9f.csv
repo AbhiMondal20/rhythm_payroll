@@ -1,0 +1,3 @@
+EmpCode,UserName,Password,DisplayName,Role,Security Question,Security Answer,Remarks,Status
+EMP101,Prasad,raj@84536,Prasad,Employee,NULL,NULL,NULL,ACTIVE
+EMP102,Kiran,kr20210,Kiran,Manager,NULL,NULL,NULL,INACTIVE

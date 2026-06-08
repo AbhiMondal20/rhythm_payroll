@@ -9,57 +9,68 @@ function esc($v) {
     return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-
 $toast_msg  = $_SESSION['toast_msg'] ?? '';
 $toast_icon = $_SESSION['toast_icon'] ?? '✅';
 unset($_SESSION['toast_msg'], $_SESSION['toast_icon']);
 
+// ==========================================
+// 1. HANDLE POST REQUESTS (DELETE)
+// ==========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'delete_employee') {
+        // Cast to integer to prevent SQL injection
         $id = (int)($_POST['employee_id'] ?? 0);
 
         if ($id > 0) {
-            $stmt = $conn->prepare("DELETE FROM employees WHERE id=?");
-            $stmt->bind_param("i", $id);
-
-            if ($stmt->execute()) {
+            $deleteSql = "DELETE FROM employees WHERE id = $id";
+            
+            if (mysqli_query($conn, $deleteSql)) {
                 $_SESSION['toast_icon'] = '✅';
                 $_SESSION['toast_msg']  = 'Employee deleted successfully.';
             } else {
                 $_SESSION['toast_icon'] = '❌';
-                $_SESSION['toast_msg']  = 'Delete failed: ' . $stmt->error;
+                $_SESSION['toast_msg']  = 'Delete failed: ' . mysqli_error($conn);
             }
         }
 
-        header("Location: " . strtok($_SERVER["REQUEST_URI"], '?'));
+        // Clean redirect to prevent form resubmission
+        header("Location: " . explode('?', $_SERVER["REQUEST_URI"])[0]);
         exit;
     }
 }
 
+// ==========================================
+// 2. FETCH AND PAGINATE DATA
+// ==========================================
 $search = trim($_GET['search'] ?? '');
 $per_page = 10;
-
 $where = '';
-$params = [];
-$types = '';
 
 if ($search !== '') {
-    $where = "WHERE employee_code LIKE ? OR employee_name LIKE ? OR department LIKE ? OR status LIKE ?";
-    $like = '%' . $search . '%';
-    $params = [$like, $like, $like, $like];
-    $types = 'ssss';
+    // Sanitize the search string to prevent SQL injection
+    $safe_search = mysqli_real_escape_string($conn, $search);
+    $like = "'%" . $safe_search . "%'";
+    
+    // Using 'e.' alias to prevent ambiguous column errors on JOIN
+    $where = "WHERE e.employee_code LIKE $like 
+                 OR e.employee_name LIKE $like 
+                 OR e.department LIKE $like 
+                 OR e.status LIKE $like";
 }
 
-$countSql = "SELECT COUNT(*) AS total FROM employees $where";
-$countStmt = $conn->prepare($countSql);
-if (!empty($params)) {
-    $countStmt->bind_param($types, ...$params);
+// Get Total Count
+$countSql = "SELECT COUNT(*) AS total FROM employees AS e $where";
+$countRes = mysqli_query($conn, $countSql);
+
+$total_employees = 0;
+if ($countRes) {
+    $row = mysqli_fetch_assoc($countRes);
+    $total_employees = (int)($row['total'] ?? 0);
+} else {
+    die("Count Query Failed: " . mysqli_error($conn)); 
 }
-$countStmt->execute();
-$total_employees = (int)($countStmt->get_result()->fetch_assoc()['total'] ?? 0);
-$countStmt->close();
 
 $total_pages = max(1, (int)ceil($total_employees / $per_page));
 
@@ -69,34 +80,33 @@ if ($current_page > $total_pages) $current_page = $total_pages;
 
 $offset = ($current_page - 1) * $per_page;
 
+// Fetch Employee Data (Using LEFT JOIN so employees without templates still show up)
 $sql = "
-    SELECT `e`.`id`, `e`.`employee_code`, `e`.`employee_name`, `e`.`department`, `e`.`ctc_monthly`, `ct`.`name` AS `ctc_template_name`, `e`.`status`, `e`.`created_at`, `e`.`updated_at`
+    SELECT `e`.`id`, `e`.`employee_code`, `e`.`employee_name`, `e`.`department`, 
+           `e`.`personal_email`, `e`.`location`,`e`.`designation`, `e`.`ctc_monthly`, 
+           `e`.`emp_type`, `ct`.`name` AS `ctc_template_name`, `e`.`status`, 
+           `e`.`created_at`, `e`.`updated_at`
     FROM `employees` AS `e`
-    INNER JOIN `ctc_templates` AS `ct` ON `e`.`ctc_template_id` = `ct`.`id`
+    LEFT JOIN `ctc_templates` AS `ct` ON `e`.`ctc_template_id` = `ct`.`id`
     $where
     ORDER BY e.id DESC
-    LIMIT ? OFFSET ?
+    LIMIT $per_page OFFSET $offset
 ";
 
-$stmt = $conn->prepare($sql);
-
-if (!empty($params)) {
-    $params2 = array_merge($params, [$per_page, $offset]);
-    $types2 = $types . 'ii';
-    $stmt->bind_param($types2, ...$params2);
-} else {
-    $stmt->bind_param("ii", $per_page, $offset);
-}
-
-$stmt->execute();
-$res = $stmt->get_result();
-
+$res = mysqli_query($conn, $sql);
 $employees_page = [];
-while ($row = $res->fetch_assoc()) {
-    $employees_page[] = $row;
-}
-$stmt->close();
 
+if ($res) {
+    while ($row = mysqli_fetch_assoc($res)) {
+        $employees_page[] = $row;
+    }
+} else {
+    die("Main Query Failed: " . mysqli_error($conn));
+}
+
+// ==========================================
+// 3. UI RENDERING FUNCTIONS
+// ==========================================
 function pageUrl($page, $search = '') {
     $qs = ['page' => $page];
     if ($search !== '') $qs['search'] = $search;
@@ -112,19 +122,19 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
         <table id="empTable" style="width:100%;border-collapse:separate;border-spacing:0;">
             <thead>
                 <tr>
-                    <th>EMPLOYEE</th>
-                    <th>DEPARTMENT</th>
-                    <th>CTC MONTHLY</th>
-                    <th>CTC TEMPLATE</th>
-                    <th>CREATED AT</th>
-                    <th>UPDATED AT</th>
-                    <th>STATUS</th>
-                    <th>ACTIONS</th>
+                    <th>Employee</th>
+                    <th>Department</th>
+                    <th style="text-align:right">CTC (Monthly)</th>
+                    <th>Template</th>
+                    <th>Created At</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($employees_page as $e):
-                    $ini = initials($e['employee_name']);
+                <?php foreach ($employees_page as $e): 
+                    $ini = function_exists('initials') ? initials($e['employee_name']) : substr($e['employee_name'], 0, 1);
 
                     $colors = [
                         'Medical' => '#EDE9FE',
@@ -157,7 +167,7 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
                 <tr>
                     <td>
                         <div style="display:flex;align-items:center;gap:10px">
-                            <div class="avatar" style="background:<?= esc($bg) ?>;color:<?= esc($fg) ?>">
+                            <div class="avatar" style="background:<?= esc($bg) ?>;color:<?= esc($fg) ?>;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:50%;font-weight:bold;">
                                 <?= esc($ini) ?>
                             </div>
                             <div>
@@ -170,21 +180,23 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
                     </td>
 
                     <td>
-                        <span class="badge" style="background:<?= esc($bg) ?>;color:<?= esc($fg) ?>">
+                        <span class="badge" style="background:<?= esc($bg) ?>;color:<?= esc($fg) ?>;padding:2px 8px;border-radius:12px;font-size:12px;">
                             <?= esc($dept) ?>
                         </span>
                     </td>
 
-                    <td style="text-align:right;font-weight:600"><?= fmt_inr($e['ctc_monthly']) ?></td>
+                    <td style="text-align:right;font-weight:600">
+                        <?= function_exists('fmt_inr') ? fmt_inr($e['ctc_monthly']) : esc($e['ctc_monthly']) ?>
+                    </td>
                     <td style="color:#6B7280"><?= esc($e['ctc_template_name'] ?: 'N/A') ?></td>
                     <td style="color:#6B7280"><?= !empty($e['created_at']) ? date('d M Y', strtotime($e['created_at'])) : 'N/A' ?></td>
-                    <td style="color:#6B7280"><?= !empty($e['updated_at']) ? date('d M Y', strtotime($e['updated_at'])) : 'N/A' ?></td>
+                    <td style="color:#6B7280"><?= !empty($e['emp_type']) ? esc($e['emp_type']) : 'N/A' ?></td>
 
                     <td>
                         <?php if ($isActive): ?>
-                            <span class="badge" style="background:#D1FAE5;color:#065F46">● Active</span>
+                            <span class="badge" style="background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:12px;font-size:12px;">● Active</span>
                         <?php else: ?>
-                            <span class="badge" style="background:#FEE2E2;color:#991B1B">● Inactive</span>
+                            <span class="badge" style="background:#FEE2E2;color:#991B1B;padding:2px 8px;border-radius:12px;font-size:12px;">● Inactive</span>
                         <?php endif; ?>
                     </td>
 
@@ -192,13 +204,13 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
                         <div style="display:flex;gap:6px;flex-wrap:wrap">
                             <a href="AddEmployee?isEditEmployee=true&id=<?= (int)$e['id'] ?>"
                                class="btn"
-                               style="padding:4px 10px;font-size:12px;text-decoration:none">Edit</a>
+                               style="padding:4px 10px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">Edit</a>
 
                             <form method="POST" style="display:inline" onsubmit="return confirm('Delete this employee?')">
                                 <input type="hidden" name="action" value="delete_employee">
                                 <input type="hidden" name="employee_id" value="<?= (int)$e['id'] ?>">
                                 <button type="submit" class="btn"
-                                    style="padding:4px 10px;font-size:12px;color:#DC2626;border-color:#FEE2E2">
+                                    style="padding:4px 10px;font-size:12px;color:#DC2626;border:1px solid #FEE2E2;background:#fff;border-radius:6px;cursor:pointer;">
                                     Delete
                                 </button>
                             </form>
@@ -225,9 +237,9 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
 
             <?php if ($current_page > 1): ?>
             <a href="<?= esc(pageUrl($current_page - 1, $search)) ?>" class="btn page-link" data-page="<?= $current_page - 1 ?>"
-                style="padding:6px 12px;font-size:12px;text-decoration:none">Prev</a>
+                style="padding:6px 12px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">Prev</a>
             <?php else: ?>
-            <button class="btn" style="padding:6px 12px;font-size:12px;opacity:.5" disabled>Prev</button>
+            <button class="btn" style="padding:6px 12px;font-size:12px;opacity:.5;border:1px solid #d1d5db;border-radius:6px;color:#374151;" disabled>Prev</button>
             <?php endif; ?>
 
             <?php
@@ -243,12 +255,12 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
             <?php for ($i = $start; $i <= $end; $i++): ?>
                 <?php if ($i == $current_page): ?>
                     <a href="<?= esc(pageUrl($i, $search)) ?>" class="btn page-link" data-page="<?= $i ?>"
-                       style="padding:6px 12px;font-size:12px;background:#2563EB;color:#fff;border-color:#2563EB;text-decoration:none">
+                       style="padding:6px 12px;font-size:12px;background:#2563EB;color:#fff;border:1px solid #2563EB;border-radius:6px;text-decoration:none">
                         <?= $i ?>
                     </a>
                 <?php else: ?>
                     <a href="<?= esc(pageUrl($i, $search)) ?>" class="btn page-link" data-page="<?= $i ?>"
-                       style="padding:6px 12px;font-size:12px;text-decoration:none">
+                       style="padding:6px 12px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">
                         <?= $i ?>
                     </a>
                 <?php endif; ?>
@@ -260,16 +272,16 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
 
             <?php if ($end < $total_pages): ?>
                 <a href="<?= esc(pageUrl($total_pages, $search)) ?>" class="btn page-link" data-page="<?= $total_pages ?>"
-                   style="padding:6px 12px;font-size:12px;text-decoration:none">
+                   style="padding:6px 12px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">
                     <?= $total_pages ?>
                 </a>
             <?php endif; ?>
 
             <?php if ($current_page < $total_pages): ?>
             <a href="<?= esc(pageUrl($current_page + 1, $search)) ?>" class="btn page-link" data-page="<?= $current_page + 1 ?>"
-                style="padding:6px 12px;font-size:12px;text-decoration:none">Next</a>
+                style="padding:6px 12px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">Next</a>
             <?php else: ?>
-            <button class="btn" style="padding:6px 12px;font-size:12px;opacity:.5" disabled>Next</button>
+            <button class="btn" style="padding:6px 12px;font-size:12px;opacity:.5;border:1px solid #d1d5db;border-radius:6px;color:#374151;" disabled>Next</button>
             <?php endif; ?>
 
         </div>
@@ -279,11 +291,15 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
     return ob_get_clean();
 }
 
+// Handle AJAX Request for Pagination
 if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     echo renderEmployeeTable($employees_page, $total_employees, $current_page, $total_pages, $search);
     exit;
 }
 
+// ==========================================
+// 4. MAIN PAGE HTML
+// ==========================================
 ob_start();
 ?>
 
@@ -297,6 +313,7 @@ ob_start();
     z-index: 10;
     box-shadow: 0 1px 0 #E5E7EB;
     white-space: nowrap;
+    text-align: left;
 }
 
 #empTable th,
@@ -365,8 +382,8 @@ ob_start();
 
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px">
     <div>
-        <h1 class="page-title">Employees</h1>
-        <p class="page-sub">Total <?= (int)$total_employees ?> employees</p>
+        <h1 class="page-title" style="margin:0;font-size:24px;color:#111827;">Employees</h1>
+        <p class="page-sub" style="margin:4px 0 0;font-size:14px;color:#6B7280;">Total <?= (int)$total_employees ?> employees</p>
     </div>
 
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -375,14 +392,14 @@ ob_start();
                 placeholder="Search employee..."
                 style="padding:8px 14px;border:1px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none;width:220px">
 
-            <button type="submit" class="btn" style="padding:8px 14px;font-size:13px">Search</button>
+            <button type="submit" class="btn" style="padding:8px 14px;font-size:13px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;">Search</button>
 
             <?php if ($search !== ''): ?>
-                <a href="?" class="btn" style="padding:8px 14px;font-size:13px;text-decoration:none">Clear</a>
+                <a href="?" class="btn" style="padding:8px 14px;font-size:13px;text-decoration:none;border:1px solid #d1d5db;border-radius:8px;background:#f3f4f6;color:#374151;display:flex;align-items:center;">Clear</a>
             <?php endif; ?>
         </form>
 
-        <a href="AddEmployee?isAddEmployee=true" class="btn btn-primary" style="text-decoration:none">+ Add Employee</a>
+        <a href="AddEmployee?isAddEmployee=true" class="btn btn-primary" style="text-decoration:none;background:#2563EB;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;">+ Add Employee</a>
     </div>
 </div>
 
