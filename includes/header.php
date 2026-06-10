@@ -3,6 +3,7 @@
 include 'db_client.php';
 $userId = $_SESSION['user_id'] ?? null;
 $username = $_SESSION['username'] ?? 'Admin';
+$_SESSION['employee_name'] = $_SESSION['employee_name'] ?? '';
 $email = $_SESSION['email'] ?? 'admin@example.com';
 $role = $_SESSION['role'] ?? 'user';
 $client_code = $_SESSION['client_code'] ?? 'N/A';
@@ -27,6 +28,18 @@ if ($result->num_rows > 0) {
 } else {
     $company_logo = 'uploads/default.png';
 }
+
+$sql = "SELECT `id`, `client_id`, `client_code`, `employee_code`, `employee_name`, `username`, `email`, `password_hash`, `role`, `status`, `last_login_at`, `created_at`, `updated_at` FROM `users` WHERE status = 'active' AND username = ? LIMIT 1";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("s", $username);
+$stmt->execute();
+$result = $stmt->get_result();
+if ($result->num_rows > 0) {
+    $usr = $result->fetch_assoc();
+    $employee_name = $usr['employee_name'] ?? '';
+    $employee_code = $usr['employee_code'] ?? '';
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -91,24 +104,48 @@ if ($result->num_rows > 0) {
 
                     <!-- USER DROPDOWN -->
                     <div class="user-menu-wrap" id="userMenuWrap">
-                        <div class="user-trigger" id="userTrigger" onclick="toggleUserDropdown(event)">
-                            <div class="avatar">AD</div>
-                            <span class="user-name">Admin</span>
-                            <svg class="user-arrow" width="16" height="16" viewBox="0 0 20 20" fill="none">
-                                <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8"
-                                    stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                        </div>
+                        <?php
+    $name = trim($employee_name);
+    $initials = '?'; // Fallback in case the name is completely empty
 
+    if (!empty($name)) {
+        if (stripos($name, 'Admin') === 0) {
+            $initials = 'AD';
+        } else {
+            $words = preg_split('/\s+/', $name);
+
+            if (count($words) >= 2) {
+                // First letter of the first word + first letter of the last word
+                $initials = strtoupper(substr($words[0], 0, 1) . substr($words[count($words)-1], 0, 1));
+            } else {
+                // FIXED: Added '$initials =' here
+                $initials = strtoupper(substr($name, 0, 1));
+            }
+        }
+    }
+?>
+
+<div class="user-trigger" id="userTrigger" onclick="toggleUserDropdown(event)">
+    <div class="avatar"><?= htmlspecialchars($initials) ?></div>
+
+    <span class="user-name"><?= htmlspecialchars($employee_name) ?></span>
+
+    <svg class="user-arrow" width="16" height="16" viewBox="0 0 20 20" fill="none">
+        <path d="M5 7.5L10 12.5L15 7.5"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round" />
+    </svg>
+</div>
                         <div class="user-dropdown" id="userDropdown">
                             <div class="user-dropdown-header">
-                                <div class="avatar large">AD</div>
+                                <div class="avatar large"><?= $initials ?></div>
                                 <div>
-                                    <div class="dropdown-user-title">Admin</div>
-                                    <div class="dropdown-user-sub">Administrator</div>
+                                    <div class="dropdown-user-title"><?= $employee_name ?></div>
+                                    <div class="dropdown-user-sub"><?= $role ?? 'User' ?></div>
                                 </div>
                             </div>
-
                             <div class="dropdown-divider"></div>
 
                             <a href="ViewProfile" class="dropdown-item" style="text-decoration:none"

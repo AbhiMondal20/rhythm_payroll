@@ -82,8 +82,8 @@ $offset = ($current_page - 1) * $per_page;
 
 // Fetch Employee Data (Using LEFT JOIN so employees without templates still show up)
 $sql = "
-    SELECT `e`.`id`, `e`.`employee_code`, `e`.`employee_name`, `e`.`department`, 
-           `e`.`personal_email`, `e`.`location`,`e`.`designation`, `e`.`ctc_monthly`, 
+    SELECT `e`.`id`,  `e`.`profile_photo`, `e`.`employee_code`, `e`.`employee_name`, `e`.`department`, 
+           `e`.`personal_email`, `e`.`location`,`e`.`designation`, `e`.`emp_type`, `e`.`ctc_monthly`, 
            `e`.`emp_type`, `ct`.`name` AS `ctc_template_name`, `e`.`status`, 
            `e`.`created_at`, `e`.`updated_at`
     FROM `employees` AS `e`
@@ -117,19 +117,28 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
 {
     ob_start();
     ?>
+
+<style>
+    .ur-del-btn, .ur-chevron-btn { background: none; border: none; cursor: pointer; color: #94A3B8; transition: color .12s; padding: 4px; }
+    .ur-del-btn:hover { color: #EF4444; }
+    .ur-del-btn, .ur-chevron-btn { background: none; border: none; cursor: pointer; color: #94A3B8; transition: color .12s; padding: 4px; }
+    .ur-chevron-btn:hover { color: #2563EB; }
+
+</style>
+
 <div class="section-card">
     <div id="empTableScroll" style="max-height:400px;overflow-y:auto;overflow-x:auto;border-radius:12px;">
         <table id="empTable" style="width:100%;border-collapse:separate;border-spacing:0;">
             <thead>
                 <tr>
-                    <th>Employee</th>
+                    <th>Code</th>
+                    <th>Name</th>
+                    <th>Email ID</th>
+                    <th>Location</th>
                     <th>Department</th>
-                    <th style="text-align:right">CTC (Monthly)</th>
-                    <th>Template</th>
-                    <th>Created At</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                    <th>Designation</th>
+                    <th>Group</th>
+                    <!-- <th>Actions</th> -->
                 </tr>
             </thead>
             <tbody>
@@ -167,55 +176,57 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
                 <tr>
                     <td>
                         <div style="display:flex;align-items:center;gap:10px">
-                            <div class="avatar" style="background:<?= esc($bg) ?>;color:<?= esc($fg) ?>;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:50%;font-weight:bold;">
-                                <?= esc($ini) ?>
-                            </div>
                             <div>
-                                <div style="font-weight:600;color:#1a1a2e"><?= esc($e['employee_name']) ?></div>
-                                <div style="font-size:11px;color:#6B7280">
-                                    EMP-<?= esc($e['employee_code']) ?>
-                                </div>
+                                <div style="font-weight:600;color:#1a1a2e"><?= esc($e['employee_code']) ?></div>
                             </div>
                         </div>
                     </td>
-
                     <td>
-                        <span class="badge" style="background:<?= esc($bg) ?>;color:<?= esc($fg) ?>;padding:2px 8px;border-radius:12px;font-size:12px;">
-                            <?= esc($dept) ?>
-                        </span>
-                    </td>
-
-                    <td style="text-align:right;font-weight:600">
-                        <?= function_exists('fmt_inr') ? fmt_inr($e['ctc_monthly']) : esc($e['ctc_monthly']) ?>
-                    </td>
-                    <td style="color:#6B7280"><?= esc($e['ctc_template_name'] ?: 'N/A') ?></td>
-                    <td style="color:#6B7280"><?= !empty($e['created_at']) ? date('d M Y', strtotime($e['created_at'])) : 'N/A' ?></td>
-                    <td style="color:#6B7280"><?= !empty($e['emp_type']) ? esc($e['emp_type']) : 'N/A' ?></td>
-
-                    <td>
-                        <?php if ($isActive): ?>
-                            <span class="badge" style="background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:12px;font-size:12px;">● Active</span>
-                        <?php else: ?>
-                            <span class="badge" style="background:#FEE2E2;color:#991B1B;padding:2px 8px;border-radius:12px;font-size:12px;">● Inactive</span>
-                        <?php endif; ?>
-                    </td>
-
-                    <td>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap">
+                        <div style="display:flex;align-items:center;gap:10px;">
                             <a href="AddEmployee?isEditEmployee=true&id=<?= (int)$e['id'] ?>"
-                               class="btn"
-                               style="padding:4px 10px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">Edit</a>
+                            style="display:flex;align-items:center;gap:8px;font-weight:600;color:#1a1a2e;text-decoration:none;">
+                            
+                                <img src="<?= esc($e['profile_photo']) ?>"
+                                    alt="Profile"
+                                    style="width:32px;height:32px;border-radius:50%;object-fit:cover;">
 
-                            <form method="POST" style="display:inline" onsubmit="return confirm('Delete this employee?')">
+                                <span><?= esc($e['employee_name']) ?></span>
+                            </a>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="font-weight:600;color:#1a1a2e"><?= esc($e['personal_email']) ?></div>
+                    </td>
+                    <td>
+                        <div style="font-weight:600;color:#1a1a2e"><?= esc($e['location']) ?></div>
+                    </td>
+                    <td>
+                        <div style="font-weight:600;color:#1a1a2e"><?= esc($e['department']) ?></div>
+                    </td>
+                    <td>
+                        <div style="font-weight:600;color:#1a1a2e"><?= esc($e['designation']) ?></div>
+                    </td>
+                    <td>
+                        <div style="font-weight:600;color:#1a1a2e"><?= esc($e['emp_type']) ?></div>
+                    </td>
+
+                    <!-- <td>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            <form method="POST" style="display:inline" class="delete-employee-form">
                                 <input type="hidden" name="action" value="delete_employee">
                                 <input type="hidden" name="employee_id" value="<?= (int)$e['id'] ?>">
-                                <button type="submit" class="btn"
-                                    style="padding:4px 10px;font-size:12px;color:#DC2626;border:1px solid #FEE2E2;background:#fff;border-radius:6px;cursor:pointer;">
-                                    Delete
+
+                                <button type="submit" class="ur-del-btn">
+                                    ✕
                                 </button>
                             </form>
+
+                            <a href="AddEmployee?isEditEmployee=true&id=<?= (int)$e['id'] ?>" class="ur-chevron-btn">
+                                <i class="fa-solid fa-chevron-right loc-item-chevron"></i>
+                            </a>
+
                         </div>
-                    </td>
+                    </td> -->
                 </tr>
                 <?php endforeach; ?>
 
@@ -228,7 +239,8 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
         </table>
     </div>
 
-    <div style="padding:12px 20px;border-top:1px solid #F3F4F6;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <div
+        style="padding:12px 20px;border-top:1px solid #F3F4F6;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
         <span style="font-size:12px;color:#6B7280">
             Showing <?= count($employees_page) ?> of <?= (int)$total_employees ?> employees
         </span>
@@ -236,10 +248,13 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
 
             <?php if ($current_page > 1): ?>
-            <a href="<?= esc(pageUrl($current_page - 1, $search)) ?>" class="btn page-link" data-page="<?= $current_page - 1 ?>"
+            <a href="<?= esc(pageUrl($current_page - 1, $search)) ?>" class="btn page-link"
+                data-page="<?= $current_page - 1 ?>"
                 style="padding:6px 12px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">Prev</a>
             <?php else: ?>
-            <button class="btn" style="padding:6px 12px;font-size:12px;opacity:.5;border:1px solid #d1d5db;border-radius:6px;color:#374151;" disabled>Prev</button>
+            <button class="btn"
+                style="padding:6px 12px;font-size:12px;opacity:.5;border:1px solid #d1d5db;border-radius:6px;color:#374151;"
+                disabled>Prev</button>
             <?php endif; ?>
 
             <?php
@@ -253,35 +268,38 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
             ?>
 
             <?php for ($i = $start; $i <= $end; $i++): ?>
-                <?php if ($i == $current_page): ?>
-                    <a href="<?= esc(pageUrl($i, $search)) ?>" class="btn page-link" data-page="<?= $i ?>"
-                       style="padding:6px 12px;font-size:12px;background:#2563EB;color:#fff;border:1px solid #2563EB;border-radius:6px;text-decoration:none">
-                        <?= $i ?>
-                    </a>
-                <?php else: ?>
-                    <a href="<?= esc(pageUrl($i, $search)) ?>" class="btn page-link" data-page="<?= $i ?>"
-                       style="padding:6px 12px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">
-                        <?= $i ?>
-                    </a>
-                <?php endif; ?>
+            <?php if ($i == $current_page): ?>
+            <a href="<?= esc(pageUrl($i, $search)) ?>" class="btn page-link" data-page="<?= $i ?>"
+                style="padding:6px 12px;font-size:12px;background:#2563EB;color:#fff;border:1px solid #2563EB;border-radius:6px;text-decoration:none">
+                <?= $i ?>
+            </a>
+            <?php else: ?>
+            <a href="<?= esc(pageUrl($i, $search)) ?>" class="btn page-link" data-page="<?= $i ?>"
+                style="padding:6px 12px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">
+                <?= $i ?>
+            </a>
+            <?php endif; ?>
             <?php endfor; ?>
 
             <?php if ($end < $total_pages - 1): ?>
-                <span style="padding:6px 6px;font-size:12px;color:#6B7280">...</span>
+            <span style="padding:6px 6px;font-size:12px;color:#6B7280">...</span>
             <?php endif; ?>
 
             <?php if ($end < $total_pages): ?>
-                <a href="<?= esc(pageUrl($total_pages, $search)) ?>" class="btn page-link" data-page="<?= $total_pages ?>"
-                   style="padding:6px 12px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">
-                    <?= $total_pages ?>
-                </a>
+            <a href="<?= esc(pageUrl($total_pages, $search)) ?>" class="btn page-link" data-page="<?= $total_pages ?>"
+                style="padding:6px 12px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">
+                <?= $total_pages ?>
+            </a>
             <?php endif; ?>
 
             <?php if ($current_page < $total_pages): ?>
-            <a href="<?= esc(pageUrl($current_page + 1, $search)) ?>" class="btn page-link" data-page="<?= $current_page + 1 ?>"
+            <a href="<?= esc(pageUrl($current_page + 1, $search)) ?>" class="btn page-link"
+                data-page="<?= $current_page + 1 ?>"
                 style="padding:6px 12px;font-size:12px;text-decoration:none;border:1px solid #d1d5db;border-radius:6px;color:#374151;">Next</a>
             <?php else: ?>
-            <button class="btn" style="padding:6px 12px;font-size:12px;opacity:.5;border:1px solid #d1d5db;border-radius:6px;color:#374151;" disabled>Next</button>
+            <button class="btn"
+                style="padding:6px 12px;font-size:12px;opacity:.5;border:1px solid #d1d5db;border-radius:6px;color:#374151;"
+                disabled>Next</button>
             <?php endif; ?>
 
         </div>
@@ -364,7 +382,7 @@ ob_start();
     display: flex;
     align-items: center;
     gap: 8px;
-    box-shadow: 0 8px 28px rgba(0,0,0,.2);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, .2);
     transition: transform .3s ease;
     white-space: nowrap;
 }
@@ -383,23 +401,27 @@ ob_start();
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px">
     <div>
         <h1 class="page-title" style="margin:0;font-size:24px;color:#111827;">Employees</h1>
-        <p class="page-sub" style="margin:4px 0 0;font-size:14px;color:#6B7280;">Total <?= (int)$total_employees ?> employees</p>
+        <p class="page-sub" style="margin:4px 0 0;font-size:14px;color:#6B7280;">Total <?= (int)$total_employees ?>
+            employees</p>
     </div>
 
     <div style="display:flex;gap:8px;flex-wrap:wrap">
         <form method="GET" style="display:flex;gap:8px;flex-wrap:wrap">
-            <input type="text" name="search" id="empSearch" value="<?= esc($search) ?>"
-                placeholder="Search employee..."
+            <input type="text" name="search" id="empSearch" value="<?= esc($search) ?>" placeholder="Search employee..."
                 style="padding:8px 14px;border:1px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none;width:220px">
 
-            <button type="submit" class="btn" style="padding:8px 14px;font-size:13px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;">Search</button>
+            <button type="submit" class="btn"
+                style="padding:8px 14px;font-size:13px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;">Search</button>
 
             <?php if ($search !== ''): ?>
-                <a href="?" class="btn" style="padding:8px 14px;font-size:13px;text-decoration:none;border:1px solid #d1d5db;border-radius:8px;background:#f3f4f6;color:#374151;display:flex;align-items:center;">Clear</a>
+            <a href="?" class="btn"
+                style="padding:8px 14px;font-size:13px;text-decoration:none;border:1px solid #d1d5db;border-radius:8px;background:#f3f4f6;color:#374151;display:flex;align-items:center;">Clear</a>
             <?php endif; ?>
         </form>
 
-        <a href="AddEmployee?isAddEmployee=true" class="btn btn-primary" style="text-decoration:none;background:#2563EB;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;">+ Add Employee</a>
+        <a href="AddEmployee?isAddEmployee=true" class="btn btn-primary"
+            style="text-decoration:none;background:#2563EB;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;">+
+            Add Employee</a>
     </div>
 </div>
 
@@ -512,6 +534,29 @@ window.addEventListener('popstate', function() {
             wrap.innerHTML = html;
             bindPagination();
         });
+});
+</script>
+
+<script>
+document.querySelectorAll('.delete-employee-form').forEach(form => {
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        Swal.fire({
+            title: 'Delete Employee?',
+            text: 'This action cannot be undone.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, Delete',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                form.submit();
+            }
+        });
+    });
 });
 </script>
 

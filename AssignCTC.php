@@ -7,13 +7,12 @@ function esc($v){
     return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8'); 
 }
 
-
 /* ─────────────────────────────────────────
    FETCH CTC TEMPLATES
 ───────────────────────────────────────── */
 $templates = [];
 
-$resTpl = $conn->query("
+$resTpl = mysqli_query($conn, "
     SELECT id, name 
     FROM ctc_templates 
     WHERE status='active' 
@@ -21,7 +20,7 @@ $resTpl = $conn->query("
 ");
 
 if ($resTpl) {
-    while ($row = $resTpl->fetch_assoc()) {
+    while ($row = mysqli_fetch_assoc($resTpl)) {
         $templates[] = [
             'id' => (int)$row['id'],
             'name' => $row['name']
@@ -66,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['_action'] ?? '') === 'upda
 
             if ($new_ctc !== '' && $tpl_id > 0) {
 
-                $stmt = $conn->prepare("
+                $stmt = mysqli_prepare($conn, "
                     UPDATE employees 
                     SET ctc_monthly = ?, ctc_template_id = ?, updated_at = NOW()
                     WHERE id = ?
@@ -74,13 +73,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['_action'] ?? '') === 'upda
 
                 if ($stmt) {
                     $new_ctc_val = (float)$new_ctc;
-                    $stmt->bind_param("dii", $new_ctc_val, $tpl_id, $emp_id);
-                    if ($stmt->execute()) $updated++;
+                    mysqli_stmt_bind_param($stmt, "dii", $new_ctc_val, $tpl_id, $emp_id);
+                    if (mysqli_stmt_execute($stmt)) $updated++;
+                    mysqli_stmt_close($stmt);
                 }
 
             } elseif ($new_ctc !== '') {
 
-                $stmt = $conn->prepare("
+                $stmt = mysqli_prepare($conn, "
                     UPDATE employees 
                     SET ctc_monthly = ?, updated_at = NOW()
                     WHERE id = ?
@@ -88,21 +88,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['_action'] ?? '') === 'upda
 
                 if ($stmt) {
                     $new_ctc_val = (float)$new_ctc;
-                    $stmt->bind_param("di", $new_ctc_val, $emp_id);
-                    if ($stmt->execute()) $updated++;
+                    mysqli_stmt_bind_param($stmt, "di", $new_ctc_val, $emp_id);
+                    if (mysqli_stmt_execute($stmt)) $updated++;
+                    mysqli_stmt_close($stmt);
                 }
 
             } elseif ($tpl_id > 0) {
 
-                $stmt = $conn->prepare("
+                $stmt = mysqli_prepare($conn, "
                     UPDATE employees 
                     SET ctc_template_id = ?, updated_at = NOW()
                     WHERE id = ?
                 ");
 
                 if ($stmt) {
-                    $stmt->bind_param("ii", $tpl_id, $emp_id);
-                    if ($stmt->execute()) $updated++;
+                    mysqli_stmt_bind_param($stmt, "ii", $tpl_id, $emp_id);
+                    if (mysqli_stmt_execute($stmt)) $updated++;
+                    mysqli_stmt_close($stmt);
                 }
             }
         }
@@ -155,16 +157,16 @@ if ($filter_tpl > 0) {
 $sql .= " ORDER BY e.employee_name ASC";
 
 if (!empty($params)) {
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param($types, ...$params);
-    $stmt->execute();
-    $resEmp = $stmt->get_result();
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, $types, ...$params);
+    mysqli_stmt_execute($stmt);
+    $resEmp = mysqli_stmt_get_result($stmt);
 } else {
-    $resEmp = $conn->query($sql);
+    $resEmp = mysqli_query($conn, $sql);
 }
 
 if ($resEmp) {
-    while ($row = $resEmp->fetch_assoc()) {
+    while ($row = mysqli_fetch_assoc($resEmp)) {
         $all_employees[] = [
             'id' => (int)$row['id'],
             'code' => $row['code'],
@@ -204,20 +206,23 @@ foreach ($all_employees as $e) {
     }
 }
 
-/* Departments for filter */
+/* ─────────────────────────────────────────
+   DEPARTMENTS FOR FILTER
+───────────────────────────────────────── */
 $departments = [];
 
-$resDept = $conn->query("
-    SELECT DISTINCT department 
-    FROM employees 
+// Refactored to use the org_departments table schema provided
+$resDept = mysqli_query($conn, "
+    SELECT DISTINCT dept_name AS department 
+    FROM org_departments 
     WHERE status='active' 
-    AND department IS NOT NULL 
-    AND department <> ''
-    ORDER BY department ASC
+    AND dept_name IS NOT NULL 
+    AND dept_name <> ''
+    ORDER BY dept_name ASC
 ");
 
 if ($resDept) {
-    while ($d = $resDept->fetch_assoc()) {
+    while ($d = mysqli_fetch_assoc($resDept)) {
         $departments[] = $d['department'];
     }
 }
@@ -425,7 +430,7 @@ ob_start();
 
 /* toast */
 .uc-toast {
-    position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);
+    position:fixed;bottom:24px;left:80%;transform:translateX(-50%) translateY(80px);
     background:#111827;color:#fff;padding:11px 20px;border-radius:10px;
     font-size:13px;font-weight:500;z-index:999;display:flex;align-items:center;
     gap:8px;box-shadow:0 8px 28px rgba(0,0,0,.2);transition:transform .3s ease;white-space:nowrap;
@@ -613,8 +618,8 @@ document.addEventListener('DOMContentLoaded',function(){
                 </td>
                 <td>
                     <span class="uc-curr-ctc">
-                        <?= fmt_inr($e['ctc_monthly']) ?>
-                        (<?= fmt_inr($e['ctc_monthly'] * 12) ?> yearly)
+                        <?= function_exists('fmt_inr') ? fmt_inr($e['ctc_monthly']) : '₹ ' . number_format($e['ctc_monthly'], 2) ?>
+                        (<?= function_exists('fmt_inr') ? fmt_inr($e['ctc_monthly'] * 12) : '₹ ' . number_format($e['ctc_monthly'] * 12, 2) ?> yearly)
                     </span>
                 </td>
                 <td>

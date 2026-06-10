@@ -245,7 +245,6 @@ $firstType = !empty($types) ? $types[0] : null;
 
 ob_start();
 ?>
-
 <link rel="stylesheet" href="includes/assets/style.css">
 <style>
 /* config tab bar */
@@ -479,9 +478,7 @@ ob_start();
 </div>
 
 <div class="section-card" style="padding:0;overflow:hidden;">
-
     <div class="cfg-tabs">
-
         <?php foreach([
             'AccountInfo'=>'Account Info',
             'Organization'=>'Organization',

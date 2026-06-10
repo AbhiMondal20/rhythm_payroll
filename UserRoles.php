@@ -98,91 +98,91 @@ ob_start();
         <a href="configuration#<?= $k ?>" class="cfg-tab <?= $k==='Others'?'active':'' ?>"><?= $l ?></a>
         <?php endforeach; ?>
     </div>
-</div>
 
-<div class="ur-view" id="viewList">
-    <div class="ur-list-header">
-        <span class="ur-list-title">Roles</span>
-        <button class="ur-btn-primary" onclick="UR.openNewForm()"><span>+</span> Add New Role</button>
+
+    <div class="ur-view" id="viewList">
+        <div class="ur-list-header">
+            <span class="ur-list-title">Roles</span>
+            <button class="ur-btn-primary" onclick="UR.openNewForm()"><span>+</span> Add New Role</button>
+        </div>
+        <div class="ur-table-wrap">
+            <table class="ur-table">
+                <thead>
+                    <tr>
+                        <th class="ur-th-sno">S NO.</th>
+                        <th>ROLE CODE</th>
+                        <th>ROLE NAME</th>
+                        <th>REMARKS</th>
+                        <th style="width:90px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="urTbody">
+                    <tr><td colspan="5" class="ur-loading-row">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="ur-pagination">
+            <div class="ur-page-info" id="urPageInfo">Showing 0 entries</div>
+            <div class="ur-page-show">Show <select class="ur-per-page" onchange="UR.setPerPage(this.value)"><option>5</option><option>10</option><option>25</option></select> entries</div>
+            <div class="ur-page-nav" id="urPageNav"></div>
+        </div>
     </div>
-    <div class="ur-table-wrap">
-        <table class="ur-table">
-            <thead>
-                <tr>
-                    <th class="ur-th-sno">S NO.</th>
-                    <th>ROLE CODE</th>
-                    <th>ROLE NAME</th>
-                    <th>REMARKS</th>
-                    <th style="width:90px;"></th>
-                </tr>
-            </thead>
-            <tbody id="urTbody">
-                <tr><td colspan="5" class="ur-loading-row">Loading…</td></tr>
-            </tbody>
-        </table>
+
+    <div class="ur-view" id="viewDetail" style="display:none;">
+        <div class="ur-detail-header">
+            <span id="dRoleNameHeading"></span>
+            <button class="ur-btn-edit" onclick="UR.openEditForm()">Edit Details</button>
+        </div>
+        <div class="ur-detail-fields">
+            <div><span class="ur-field-label">Role Code</span><div class="ur-field-value" id="dRoleCode"></div></div>
+            <div><span class="ur-field-label">Role Name</span><div class="ur-field-value" id="dRoleName"></div></div>
+            <div class="ur-full-width"><span class="ur-field-label">Remarks</span><div class="ur-field-value" id="dRemarks"></div></div>
+        </div>
+        <div class="ur-permissions-section">
+            <div class="ur-section-label">ACCESS PERMISSIONS</div>
+            <table class="ur-matrix-table">
+                <thead>
+                    <tr>
+                        <th>Module / Page Name</th>
+                        <th>View</th>
+                        <th>Add</th>
+                        <th>Edit</th>
+                        <th>Delete</th>
+                    </tr>
+                </thead>
+                <tbody id="dMatrixBody"></tbody>
+            </table>
+        </div>
     </div>
-    <div class="ur-pagination">
-        <div class="ur-page-info" id="urPageInfo">Showing 0 entries</div>
-        <div class="ur-page-show">Show <select class="ur-per-page" onchange="UR.setPerPage(this.value)"><option>5</option><option>10</option><option>25</option></select> entries</div>
-        <div class="ur-page-nav" id="urPageNav"></div>
+
+    <div class="ur-view" id="viewForm" style="display:none;">
+        <div class="ur-form-heading" id="fFormHeading">New Role</div>
+        <div class="ur-form-fields">
+            <div><label class="ur-form-label">Role Code</label><input type="text" class="ur-form-input" id="fRoleCode"></div>
+            <div><label class="ur-form-label">Role Name</label><input type="text" class="ur-form-input" id="fRoleName"></div>
+            <div class="ur-full-width"><label class="ur-form-label">Remarks</label><input type="text" class="ur-form-input" id="fRemarks"></div>
+        </div>
+        <div class="ur-permissions-section">
+            <div class="ur-section-label">ACCESS PERMISSIONS</div>
+            <table class="ur-matrix-table">
+                <thead>
+                    <tr>
+                        <th>Module / Page Name</th>
+                        <th><label class="ur-chk-lbl"><input type="checkbox" class="ur-matrix-checkbox" onchange="UR.toggleCol('can_view', this.checked)"> View</label></th>
+                        <th><label class="ur-chk-lbl"><input type="checkbox" class="ur-matrix-checkbox" onchange="UR.toggleCol('can_add', this.checked)"> Add</label></th>
+                        <th><label class="ur-chk-lbl"><input type="checkbox" class="ur-matrix-checkbox" onchange="UR.toggleCol('can_edit', this.checked)"> Edit</label></th>
+                        <th><label class="ur-chk-lbl"><input type="checkbox" class="ur-matrix-checkbox" onchange="UR.toggleCol('can_delete', this.checked)"> Delete</label></th>
+                    </tr>
+                </thead>
+                <tbody id="fMatrixBody"></tbody>
+            </table>
+        </div>
+        <div class="ur-form-actions">
+            <button class="ur-btn-cancel" onclick="UR.cancelForm()">Cancel</button>
+            <button class="ur-btn-primary" id="fBtnSubmit" onclick="UR.submitForm()">Submit</button>
+        </div>
     </div>
 </div>
-
-<div class="ur-view" id="viewDetail" style="display:none;">
-    <div class="ur-detail-header">
-        <span id="dRoleNameHeading"></span>
-        <button class="ur-btn-edit" onclick="UR.openEditForm()">Edit Details</button>
-    </div>
-    <div class="ur-detail-fields">
-        <div><span class="ur-field-label">Role Code</span><div class="ur-field-value" id="dRoleCode"></div></div>
-        <div><span class="ur-field-label">Role Name</span><div class="ur-field-value" id="dRoleName"></div></div>
-        <div class="ur-full-width"><span class="ur-field-label">Remarks</span><div class="ur-field-value" id="dRemarks"></div></div>
-    </div>
-    <div class="ur-permissions-section">
-        <div class="ur-section-label">ACCESS PERMISSIONS</div>
-        <table class="ur-matrix-table">
-            <thead>
-                <tr>
-                    <th>Module / Page Name</th>
-                    <th>View</th>
-                    <th>Add</th>
-                    <th>Edit</th>
-                    <th>Delete</th>
-                </tr>
-            </thead>
-            <tbody id="dMatrixBody"></tbody>
-        </table>
-    </div>
-</div>
-
-<div class="ur-view" id="viewForm" style="display:none;">
-    <div class="ur-form-heading" id="fFormHeading">New Role</div>
-    <div class="ur-form-fields">
-        <div><label class="ur-form-label">Role Code</label><input type="text" class="ur-form-input" id="fRoleCode"></div>
-        <div><label class="ur-form-label">Role Name</label><input type="text" class="ur-form-input" id="fRoleName"></div>
-        <div class="ur-full-width"><label class="ur-form-label">Remarks</label><input type="text" class="ur-form-input" id="fRemarks"></div>
-    </div>
-    <div class="ur-permissions-section">
-        <div class="ur-section-label">ACCESS PERMISSIONS</div>
-        <table class="ur-matrix-table">
-            <thead>
-                <tr>
-                    <th>Module / Page Name</th>
-                    <th><label class="ur-chk-lbl"><input type="checkbox" class="ur-matrix-checkbox" onchange="UR.toggleCol('can_view', this.checked)"> View</label></th>
-                    <th><label class="ur-chk-lbl"><input type="checkbox" class="ur-matrix-checkbox" onchange="UR.toggleCol('can_add', this.checked)"> Add</label></th>
-                    <th><label class="ur-chk-lbl"><input type="checkbox" class="ur-matrix-checkbox" onchange="UR.toggleCol('can_edit', this.checked)"> Edit</label></th>
-                    <th><label class="ur-chk-lbl"><input type="checkbox" class="ur-matrix-checkbox" onchange="UR.toggleCol('can_delete', this.checked)"> Delete</label></th>
-                </tr>
-            </thead>
-            <tbody id="fMatrixBody"></tbody>
-        </table>
-    </div>
-    <div class="ur-form-actions">
-        <button class="ur-btn-cancel" onclick="UR.cancelForm()">Cancel</button>
-        <button class="ur-btn-primary" id="fBtnSubmit" onclick="UR.submitForm()">Submit</button>
-    </div>
-</div>
-
 <script>
 const UR = (() => {
     'use strict';
@@ -275,7 +275,6 @@ const UR = (() => {
             showView('viewDetail');
         });
     }
-
     function openNewForm() {
         editingId = null;
         $('fFormHeading').textContent = 'New Role';

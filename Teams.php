@@ -229,10 +229,20 @@ if ($action) {
 $page_title = 'Teams';
 ob_start();
 ?>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <link rel="stylesheet" href="includes/assets/style.css">
 <style>
-.cfg-tabs { display: flex; align-items: center; border-bottom: 1px solid #E5E7EB; background: #fff; overflow-x: auto; scrollbar-width: none; }
+.cfg-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    border-bottom: 1px solid #E5E7EB;
+    background: #fff;
+    padding: 0 0 0 0;
+    margin-bottom: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* flex-direction: row-reverse; */
+}
 .cfg-tabs::-webkit-scrollbar { display: none; }
 .cfg-tab { padding: 14px 20px; font-size: 13.5px; font-weight: 500; color: #6B7280; cursor: pointer; border: none; background: transparent; border-bottom: 2.5px solid transparent; white-space: nowrap; transition: color .15s, border-color .15s; text-decoration: none; display: block; margin-bottom: -1px; }
 .cfg-tab:hover  { color: #111827; }
@@ -348,100 +358,100 @@ ob_start();
         <a href="configuration#<?= $k ?>" class="cfg-tab <?= $k === 'Others' ? 'active' : '' ?>"><?= $l ?></a>
         <?php endforeach; ?>
     </div>
-</div>
 
-<div class="tm-wrapper">
 
-    <div class="tm-topbar">
-        <div class="tm-breadcrumb">
-            <span class="tm-bc-parent">Others</span>
-            <span class="tm-bc-arrow">›</span>
-            <span class="tm-bc-current">Teams</span>
-        </div>
-        <button class="tm-btn-create" id="btnCreateTeam" onclick="TM.openForm()">
-            <span>+</span> Create New Team
-        </button>
-    </div>
+    <div class="tm-wrapper">
 
-    <div class="tm-empty" id="tmEmpty">
-        <div class="tm-empty-art">
-            <svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="50" cy="50" r="50" fill="#EEF2FF"/>
-                <rect x="24" y="20" width="52" height="60" rx="5" fill="#CBD5E1"/>
-                <rect x="24" y="20" width="52" height="16" rx="5" fill="#94A3B8"/>
-                <rect x="33" y="44" width="26" height="4" rx="2" fill="#3B82F6"/>
-                <rect x="33" y="52" width="20" height="4" rx="2" fill="#3B82F6"/>
-                <rect x="33" y="60" width="14" height="4" rx="2" fill="#93C5FD"/>
-            </svg>
-        </div>
-        <p class="tm-empty-text">There are No Teams!</p>
-    </div>
-
-    <div class="tm-list-grid" id="tmListGrid" style="display:none;"></div>
-
-    <div class="tm-form-wrap" id="tmFormWrap" style="display:none;">
-        <h2 class="tm-form-heading" id="tmFormHeading">NEW TEAM</h2>
-        <div class="tm-field-group">
-            <label class="tm-label required">Team Name</label>
-            <input type="text" class="tm-input" id="fTeamName" placeholder="Enter team name" maxlength="100">
-        </div>
-
-        <div class="tm-section-card">
-            <div class="tm-section-header">
-                <span class="tm-section-title">ADD OWNER(S)</span>
-                <button class="tm-sec-edit-btn" onclick="TM.openPicker('owners')">
-                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M10.5 1.5L13.5 4.5L5 13H2V10L10.5 1.5Z" stroke="#64748B" stroke-width="1.4" stroke-linejoin="round"/></svg>
-                </button>
+        <div class="tm-topbar">
+            <div class="tm-breadcrumb">
+                <span class="tm-bc-parent">Others</span>
+                <span class="tm-bc-arrow">›</span>
+                <span class="tm-bc-current">Teams</span>
             </div>
-            <div class="tm-owners-grid" id="tmOwnersGrid"></div>
+            <button class="tm-btn-create" id="btnCreateTeam" onclick="TM.openForm()">
+                <span>+</span> Create New Team
+            </button>
         </div>
 
-        <div class="tm-section-card">
-            <div class="tm-section-header">
-                <span class="tm-section-title">ADD TEAM MEMBERS</span>
-                <button class="tm-sec-edit-btn" onclick="TM.openPicker('members')">
-                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M10.5 1.5L13.5 4.5L5 13H2V10L10.5 1.5Z" stroke="#64748B" stroke-width="1.4" stroke-linejoin="round"/></svg>
-                </button>
+        <div class="tm-empty" id="tmEmpty">
+            <div class="tm-empty-art">
+                <svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="50" fill="#EEF2FF"/>
+                    <rect x="24" y="20" width="52" height="60" rx="5" fill="#CBD5E1"/>
+                    <rect x="24" y="20" width="52" height="16" rx="5" fill="#94A3B8"/>
+                    <rect x="33" y="44" width="26" height="4" rx="2" fill="#3B82F6"/>
+                    <rect x="33" y="52" width="20" height="4" rx="2" fill="#3B82F6"/>
+                    <rect x="33" y="60" width="14" height="4" rx="2" fill="#93C5FD"/>
+                </svg>
             </div>
-            <div class="tm-members-wrap" id="tmMembersWrap"></div>
+            <p class="tm-empty-text">There are No Teams!</p>
         </div>
 
-        <div class="tm-form-actions">
-            <button class="tm-btn-cancel" onclick="TM.cancelForm()">Cancel</button>
-            <button class="tm-btn-save" id="btnSaveTeam" onclick="TM.saveTeam()">Add</button>
+        <div class="tm-list-grid" id="tmListGrid" style="display:none;"></div>
+
+        <div class="tm-form-wrap" id="tmFormWrap" style="display:none;">
+            <h2 class="tm-form-heading" id="tmFormHeading">NEW TEAM</h2>
+            <div class="tm-field-group">
+                <label class="tm-label required">Team Name</label>
+                <input type="text" class="tm-input" id="fTeamName" placeholder="Enter team name" maxlength="100">
+            </div>
+
+            <div class="tm-section-card">
+                <div class="tm-section-header">
+                    <span class="tm-section-title">ADD OWNER(S)</span>
+                    <button class="tm-sec-edit-btn" onclick="TM.openPicker('owners')">
+                        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M10.5 1.5L13.5 4.5L5 13H2V10L10.5 1.5Z" stroke="#64748B" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                    </button>
+                </div>
+                <div class="tm-owners-grid" id="tmOwnersGrid"></div>
+            </div>
+
+            <div class="tm-section-card">
+                <div class="tm-section-header">
+                    <span class="tm-section-title">ADD TEAM MEMBERS</span>
+                    <button class="tm-sec-edit-btn" onclick="TM.openPicker('members')">
+                        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M10.5 1.5L13.5 4.5L5 13H2V10L10.5 1.5Z" stroke="#64748B" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                    </button>
+                </div>
+                <div class="tm-members-wrap" id="tmMembersWrap"></div>
+            </div>
+
+            <div class="tm-form-actions">
+                <button class="tm-btn-cancel" onclick="TM.cancelForm()">Cancel</button>
+                <button class="tm-btn-save" id="btnSaveTeam" onclick="TM.saveTeam()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="tm-overlay" id="tmOverlay" onclick="TM.closePicker()" style="display:none;"></div>
+    <div class="tm-picker" id="tmPicker" style="display:none;">
+        <div class="tm-picker-header">
+            <h3 class="tm-picker-title" id="tmPickerTitle">Select Owners</h3>
+            <button class="tm-picker-close" onclick="TM.closePicker()">✕</button>
+        </div>
+        <div class="tm-picker-search">
+            <input type="text" class="tm-search-input" id="tmSearchInput" placeholder="Search employees…" oninput="TM.filterEmployees(this.value)">
+        </div>
+        <div class="tm-picker-list" id="tmPickerList"></div>
+        <div class="tm-picker-footer">
+            <button class="tm-btn-cancel" onclick="TM.closePicker()">Cancel</button>
+            <button class="tm-btn-save" onclick="TM.confirmPicker()">Confirm</button>
+        </div>
+    </div>
+
+    <div class="tm-overlay" id="tmDetailOverlay" onclick="TM.closeDetail()" style="display:none;"></div>
+    <div class="tm-detail-modal" id="tmDetailModal" style="display:none;">
+        <div class="tm-picker-header">
+            <h3 class="tm-picker-title" id="dTeamName">Team Details</h3>
+            <button class="tm-picker-close" onclick="TM.closeDetail()">✕</button>
+        </div>
+        <div class="tm-detail-body" id="tmDetailBody"></div>
+        <div class="tm-picker-footer">
+            <button class="tm-btn-del" onclick="TM.deleteTeam()">Delete Team</button>
+            <button class="tm-btn-save" onclick="TM.editTeam()">Edit Team</button>
         </div>
     </div>
 </div>
-
-<div class="tm-overlay" id="tmOverlay" onclick="TM.closePicker()" style="display:none;"></div>
-<div class="tm-picker" id="tmPicker" style="display:none;">
-    <div class="tm-picker-header">
-        <h3 class="tm-picker-title" id="tmPickerTitle">Select Owners</h3>
-        <button class="tm-picker-close" onclick="TM.closePicker()">✕</button>
-    </div>
-    <div class="tm-picker-search">
-        <input type="text" class="tm-search-input" id="tmSearchInput" placeholder="Search employees…" oninput="TM.filterEmployees(this.value)">
-    </div>
-    <div class="tm-picker-list" id="tmPickerList"></div>
-    <div class="tm-picker-footer">
-        <button class="tm-btn-cancel" onclick="TM.closePicker()">Cancel</button>
-        <button class="tm-btn-save" onclick="TM.confirmPicker()">Confirm</button>
-    </div>
-</div>
-
-<div class="tm-overlay" id="tmDetailOverlay" onclick="TM.closeDetail()" style="display:none;"></div>
-<div class="tm-detail-modal" id="tmDetailModal" style="display:none;">
-    <div class="tm-picker-header">
-        <h3 class="tm-picker-title" id="dTeamName">Team Details</h3>
-        <button class="tm-picker-close" onclick="TM.closeDetail()">✕</button>
-    </div>
-    <div class="tm-detail-body" id="tmDetailBody"></div>
-    <div class="tm-picker-footer">
-        <button class="tm-btn-del" onclick="TM.deleteTeam()">Delete Team</button>
-        <button class="tm-btn-save" onclick="TM.editTeam()">Edit Team</button>
-    </div>
-</div>
-
 <script>
 const TM = (() => {
   'use strict';

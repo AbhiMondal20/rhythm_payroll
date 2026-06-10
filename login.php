@@ -1,8 +1,6 @@
 <?php
 session_start();
-
 require_once 'includes/db_conn.php';
-// Do NOT include auth.php on login page
 
 $error = '';
 $success = '';
@@ -20,14 +18,14 @@ function getRedirectPageLocal(): string {
     $access = $_SESSION['user_access'] ?? [];
 
     if (in_array('dashboard', $access, true)) {
-        return 'dashboard';
+        return 'dashboard/';
     }
 
     if (!empty($access[0])) {
         return 'dashboard/' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $access[0]);
     }
 
-    return 'dashboard';
+    return 'dashboard/';
 }
 
 if (!empty($_SESSION['login'])) {
@@ -52,72 +50,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Master database not connected.";
     } else {
 
-        $stmt = mysqli_prepare($master, "
+        // Sanitize inputs for master DB
+        $client_code_esc = mysqli_real_escape_string($master, $client_code);
+        $module_key_esc  = mysqli_real_escape_string($master, $module_key);
+
+        $dbQuery = "
             SELECT 
-                id,
-                client_id,
-                client_code,
-                module_key,
-                db_host,
-                db_name,
-                db_user,
-                db_pass,
-                port,
-                status
+                id, client_id, client_code, module_key, db_host, 
+                db_name, db_user, db_pass, port, status
             FROM client_databases
-            WHERE client_code = ?
-              AND module_key = ?
+            WHERE client_code = '$client_code_esc'
+              AND module_key = '$module_key_esc'
               AND status = 'active'
             LIMIT 1
-        ");
+        ";
 
-        if (!$stmt) {
+        $dbRes = mysqli_query($master, $dbQuery);
+
+        if (!$dbRes) {
             $error = "Master query failed: " . mysqli_error($master);
         } else {
-            mysqli_stmt_bind_param($stmt, "ss", $client_code, $module_key);
-            mysqli_stmt_execute($stmt);
-            $res = mysqli_stmt_get_result($stmt);
-            $db  = mysqli_fetch_assoc($res);
-            mysqli_stmt_close($stmt);
+            $db = mysqli_fetch_assoc($dbRes);
 
             if (!$db) {
                 $error = "Invalid Client Code or inactive module.";
             } else {
 
                 /* ─────────────────────────────────────────
-                   LICENSE CHECK FROM MASTER DB
+                    LICENSE CHECK FROM MASTER DB
                 ───────────────────────────────────────── */
-                $licStmt = mysqli_prepare($master, "
-                    SELECT 
-                        id,
-                        client_id,
-                        module_key,
-                        license_key,
-                        license_type,
-                        start_date,
-                        expiry_date,
-                        max_users,
-                        status,
-                        notes,
-                        created_at,
-                        updated_at
-                    FROM licenses
-                    WHERE client_id = ?
-                      AND module_key = ?
-                    LIMIT 1
-                ");
+                $clientIdForLicense = (int)($db['client_id'] ?? 0);
 
-                if (!$licStmt) {
+                $licQuery = "
+                    SELECT 
+                        id, client_id, module_key, license_key, license_type, 
+                        start_date, expiry_date, max_users, status, notes, 
+                        created_at, updated_at
+                    FROM licenses
+                    WHERE client_id = $clientIdForLicense
+                      AND module_key = '$module_key_esc'
+                    LIMIT 1
+                ";
+
+                $licRes = mysqli_query($master, $licQuery);
+
+                if (!$licRes) {
                     $error = "License check failed: " . mysqli_error($master);
                 } else {
-
-                    $clientIdForLicense = (int)($db['client_id'] ?? 0);
-
-                    mysqli_stmt_bind_param($licStmt, "is", $clientIdForLicense, $module_key);
-                    mysqli_stmt_execute($licStmt);
-                    $licRes  = mysqli_stmt_get_result($licStmt);
                     $license = mysqli_fetch_assoc($licRes);
-                    mysqli_stmt_close($licStmt);
 
                     if (!$license) {
                         $error = "No license found for this client/module.";
@@ -134,33 +114,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } else {
 
                             if ($licenseType === 'trial') {
-
                                 if (empty($license['start_date'])) {
                                     $error = "Trial license start date not found.";
                                 } else {
                                     $trialEndDate = date('Y-m-d', strtotime($license['start_date'] . ' +14 days'));
-
                                     if ($today > $trialEndDate) {
                                         $error = "Your 14 days trial expired on " . date('d M Y', strtotime($trialEndDate)) . ". Please upgrade your plan.";
                                     }
                                 }
-
-                            } elseif ($licenseType === 'monthly') {
-
+                            } elseif ($licenseType === 'monthly' || $licenseType === 'yearly') {
                                 if (empty($license['expiry_date'])) {
-                                    $error = "Monthly license expiry date not found.";
+                                    $error = ucfirst($licenseType) . " license expiry date not found.";
                                 } elseif ($today > $license['expiry_date']) {
-                                    $error = "Your monthly license expired on " . date('d M Y', strtotime($license['expiry_date'])) . ". Please renew to continue.";
+                                    $error = "Your " . $licenseType . " license expired on " . date('d M Y', strtotime($license['expiry_date'])) . ". Please renew to continue.";
                                 }
-
-                            } elseif ($licenseType === 'yearly') {
-
-                                if (empty($license['expiry_date'])) {
-                                    $error = "Yearly license expiry date not found.";
-                                } elseif ($today > $license['expiry_date']) {
-                                    $error = "Your yearly license expired on " . date('d M Y', strtotime($license['expiry_date'])) . ". Please renew to continue.";
-                                }
-
                             } elseif ($licenseType === 'lifetime') {
                                 // Lifetime license never expires.
                                 $error = "";
@@ -190,28 +157,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } else {
                         mysqli_set_charset($conn, "utf8mb4");
 
-                        $u = mysqli_prepare($conn, "
-                            SELECT 
-                                id,
-                                username,
-                                email,
-                                password_hash,
-                                role,
-                                status,
-                                client_code
-                            FROM users
-                            WHERE username = ? OR email = ?
-                            LIMIT 1
-                        ");
+                        // Sanitize username for client DB
+                        $username_esc = mysqli_real_escape_string($conn, $username);
 
-                        if (!$u) {
+                        $userQuery = "
+                            SELECT 
+                                id, username, employee_name, email, password_hash, role, status, client_code
+                            FROM users
+                            WHERE username = '$username_esc' OR email = '$username_esc'
+                            AND client_code = '{$db['client_code']}'
+                            AND (status = 'active')
+                            LIMIT 1
+                        ";
+
+                        $userRes = mysqli_query($conn, $userQuery);
+
+                        if (!$userRes) {
                             $error = "User query failed: " . mysqli_error($conn);
                         } else {
-                            mysqli_stmt_bind_param($u, "ss", $username, $username);
-                            mysqli_stmt_execute($u);
-                            $ures = mysqli_stmt_get_result($u);
-                            $user = mysqli_fetch_assoc($ures);
-                            mysqli_stmt_close($u);
+                            $user = mysqli_fetch_assoc($userRes);
 
                             if (!$user) {
                                 $error = "User not found.";
@@ -221,25 +185,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $error = "Wrong password.";
                             } else {
 
-                                $accStmt = mysqli_prepare($conn, "
+                                $user_id = (int)$user['id'];
+                                
+                                /* ─────────────────────────────────────────
+                                    USER ACCESS ARRAY HANDLING
+                                ───────────────────────────────────────── */
+                                // This replaces brackets and quotes to ensure FIND_IN_SET works 
+                                // whether the array is standard CSV, JSON numeric [1,2], or JSON string ["1","2"]
+                                $accQuery = "
                                     SELECT page_name
                                     FROM user_access
-                                    WHERE user_id = ?
-                                      AND (
-                                          can_view = 1
-                                          OR can_add = 1
-                                          OR can_edit = 1
-                                          OR can_delete = 1
-                                      )
-                                ");
+                                    WHERE FIND_IN_SET('$user_id', REPLACE(REPLACE(REPLACE(user_id, '[', ''), ']', ''), '\"', '')) > 0
+                                      AND (can_view = 1 OR can_add = 1 OR can_edit = 1 OR can_delete = 1)
+                                ";
 
-                                if (!$accStmt) {
+                                $accRes = mysqli_query($conn, $accQuery);
+
+                                if (!$accRes) {
                                     $error = "Access query failed: " . mysqli_error($conn);
                                 } else {
-                                    mysqli_stmt_bind_param($accStmt, "i", $user['id']);
-                                    mysqli_stmt_execute($accStmt);
-                                    $accRes = mysqli_stmt_get_result($accStmt);
-
                                     $user_access = [];
 
                                     while ($row = mysqli_fetch_assoc($accRes)) {
@@ -248,18 +212,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         }
                                     }
 
-                                    mysqli_stmt_close($accStmt);
-
                                     if (empty($user_access)) {
                                         $error = "Login blocked. You do not have access to any page.";
                                     } else {
                                         session_regenerate_id(true);
 
                                         $_SESSION['login']       = true;
-                                        $_SESSION['user_id']     = (int)$user['id'];
+                                        $_SESSION['user_id']     = $user_id;
                                         $_SESSION['username']    = $user['username'];
                                         $_SESSION['email']       = $user['email'] ?? '';
                                         $_SESSION['role']        = $user['role'] ?? 'user';
+                                        $_SESSION['employee_name'] = $user['employee_name'] ?? '';
                                         $_SESSION['client_code'] = $client_code;
                                         $_SESSION['module_key']  = $module_key;
                                         $_SESSION['client_db']   = $db['db_name'];
@@ -286,12 +249,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             'port' => (int)$db_port,
                                         ];
 
-                                        $up = mysqli_prepare($conn, "UPDATE users SET last_login_at = NOW() WHERE id = ?");
-                                        if ($up) {
-                                            mysqli_stmt_bind_param($up, "i", $_SESSION['user_id']);
-                                            mysqli_stmt_execute($up);
-                                            mysqli_stmt_close($up);
-                                        }
+                                        // Update last login
+                                        $updateLogin = "UPDATE users SET last_login_at = NOW() WHERE id = $user_id";
+                                        mysqli_query($conn, $updateLogin);
 
                                         setcookie("client_code", $client_code, time() + (30 * 24 * 60 * 60), "/", "", false, true);
 

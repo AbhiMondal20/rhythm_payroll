@@ -1,0 +1,40 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+</head>
+
+<body>
+
+<table class="header-table">
+<tr>
+<td width="60%">
+<b>Name:</b> OMAR FARUK 25Y/M<br>
+<b>Age / Gender:</b> 25 / M<br>
+<b>Investigation:</b> JR Abdomen Plain+Contrast(Adult)</td>
+
+<td width="40%" align="right">
+<b>Date:</b> 02-02-2026<br>
+<b>Reg ID:</b> JWH-10702<br>
+<b>Ref. Doctor:</b> </td>
+</tr>
+</table>
+
+<hr>
+
+<!-- REPORT CONTENT -->
+<div>
+<p>asdf</p></div>
+
+
+<!-- SIGNATURE -->
+
+<div style="text-align:right;">
+  <img src="https://rhythm.abhitechbot.in/opd/admin/upload/sign_696d0329c3de67.09740043.png" width="150" height="120">
+</div>
+
+
+
+</body>
+</html>

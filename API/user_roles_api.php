@@ -116,8 +116,8 @@ try {
                         $modKey = mysqli_real_escape_string($conn, $row['module_key']);
                         $pageName = mysqli_real_escape_string($conn, $row['page_name']);
                         
-                        $insertAccess = "INSERT INTO user_access (user_id, client_code, module_key, page_name, can_view, can_add, can_edit, can_delete, created_at, updated_at) 
-                                         VALUES ($roleId, '$clientCode', '$modKey', '$pageName', $can_view, $can_add, $can_edit, $can_delete, NOW(), NOW())";
+                        $insertAccess = "INSERT INTO user_access (user_id, client_code, role_code, role_name,  module_key, page_name, can_view, can_add, can_edit, can_delete, created_at, updated_at) 
+                                         VALUES ($roleId, '$clientCode', '$code', '$name', '$modKey', '$pageName', $can_view, $can_add, $can_edit, $can_delete, NOW(), NOW())";
                         
                         if (!mysqli_query($conn, $insertAccess)) throw new Exception(mysqli_error($conn));
                     }
@@ -168,8 +168,8 @@ try {
                         $modKey = mysqli_real_escape_string($conn, $row['module_key']);
                         $pageName = mysqli_real_escape_string($conn, $row['page_name']);
                         
-                        $insertAccess = "INSERT INTO user_access (user_id, client_code, module_key, page_name, can_view, can_add, can_edit, can_delete, created_at, updated_at) 
-                                         VALUES ($id, '$clientCode', '$modKey', '$pageName', $can_view, $can_add, $can_edit, $can_delete, NOW(), NOW())";
+                        $insertAccess = "INSERT INTO user_access (user_id, client_code, role_code, role_name, module_key, page_name, can_view, can_add, can_edit, can_delete, created_at, updated_at) 
+                                         VALUES ($id, '$clientCode', '$code', '$name', '$modKey', '$pageName', $can_view, $can_add, $can_edit, $can_delete, NOW(), NOW())";
                         
                         if (!mysqli_query($conn, $insertAccess)) throw new Exception(mysqli_error($conn));
                     }

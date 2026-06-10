@@ -14,8 +14,9 @@ $page_title = 'Users';
 /* ─────────────────────────────────────────
    POST HANDLERS (DB INSERTS / UPDATES)
 ───────────────────────────────────────── */
-$save_success = false;
-$save_msg     = '';
+$show_toast = false;
+$toast_icon = '';
+$toast_msg  = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['_action'] ?? '';
@@ -35,10 +36,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 VALUES ('$username', '$employee_code', '$employee_name', '$status', '$role', '$password_hash', NOW(), NOW())";
         
         if (mysqli_query($conn, $sql)) {
-            $save_success = true;
-            $save_msg = 'User added successfully!';
+            $show_toast = true;
+            $toast_icon = '✅';
+            $toast_msg  = 'User added successfully!';
         } else {
-            die("Error adding user: " . mysqli_error($conn));
+            $show_toast = true;
+            $toast_icon = '❌';
+            $toast_msg  = "Error adding user: " . mysqli_error($conn);
         }
     }
 
@@ -68,10 +72,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 WHERE `id` = $user_id";
 
         if (mysqli_query($conn, $sql)) {
-            $save_success = true;
-            $save_msg = 'User updated successfully!';
+            $show_toast = true;
+            $toast_icon = '✅';
+            $toast_msg  = 'User updated successfully!';
         } else {
-            die("Error updating user: " . mysqli_error($conn));
+            $show_toast = true;
+            $toast_icon = '❌';
+            $toast_msg  = "Error updating user: " . mysqli_error($conn);
         }
     }
 
@@ -81,16 +88,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $selected_users = $_POST['selected_users'] ?? [];
 
         if (!empty($selected_users) && is_array($selected_users) && !empty($selected_role)) {
-            $ids     = array_map('intval', $selected_users);
+
+            $ids = array_map('intval', $selected_users);
             $ids_str = implode(',', $ids);
 
-            $sql = "UPDATE `users` SET `role` = '$selected_role', `updated_at` = NOW() WHERE `id` IN ($ids_str)";
-            
+            // Update role in users table
+            $sql = "UPDATE `users`
+                    SET `role` = '$selected_role',
+                        `updated_at` = NOW()
+                    WHERE `id` IN ($ids_str)";
+
             if (mysqli_query($conn, $sql)) {
-                $save_success = true;
-                $save_msg = 'Roles assigned successfully!';
+
+                // Save user IDs as JSON array in user_access
+                $user_ids_json = mysqli_real_escape_string(
+                    $conn,
+                    json_encode($ids)
+                );
+
+                $sql = "UPDATE `user_access`
+                        SET `user_id` = '$user_ids_json'
+                        WHERE `role_name` = '$selected_role'";
+
+                mysqli_query($conn, $sql);
+
+                $show_toast = true;
+                $toast_icon = '✅';
+                $toast_msg  = 'Roles assigned successfully!';
             } else {
-                die("Error assigning roles: " . mysqli_error($conn));
+                $show_toast = true;
+                $toast_icon = '❌';
+                $toast_msg  = "Error assigning roles: " . mysqli_error($conn);
             }
         }
     }
@@ -175,6 +203,8 @@ function esc($v) {
 
 ob_start();
 ?>
+
+
 <link rel="stylesheet" href="includes/assets/style.css">
 
 <style>
@@ -267,7 +297,7 @@ ob_start();
 .ud-add-btn { padding:9px 30px;background:#2563EB;color:#fff;border:none;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s; }
 .ud-add-btn:hover { background:#1D4ED8; }
 
-.usr-toast { position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:999;display:flex;align-items:center;gap:8px;box-shadow:0 8px 28px rgba(0,0,0,.2);transition:transform .3s ease;white-space:nowrap; }
+.usr-toast { position:fixed;bottom:24px;left:80%;transform:translateX(-50%) translateY(80px);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:999;display:flex;align-items:center;gap:8px;box-shadow:0 8px 28px rgba(0,0,0,.2);transition:transform .3s ease;white-space:nowrap; }
 .usr-toast.show { transform:translateX(-50%) translateY(0); }
 
 @media(max-width:900px){ .ar-layout { grid-template-columns:1fr; } .ar-roles-panel { border-radius:10px;border:1px solid #E5E7EB; } }
@@ -275,10 +305,11 @@ ob_start();
 @media(max-width:420px){ .ud-row.c4,.ud-row.c3 { grid-template-columns:1fr; } }
 </style>
 
-<?php if($save_success): ?>
+<?php if($show_toast): ?>
 <script>
 document.addEventListener('DOMContentLoaded',function(){
-    usrToast('✅','<?= esc($save_msg) ?>');
+    // json_encode safely handles quotes and newlines from database errors
+    usrToast('<?= $toast_icon ?>', <?= json_encode($toast_msg) ?>);
 });
 </script>
 <?php endif; ?>
@@ -343,7 +374,7 @@ document.addEventListener('DOMContentLoaded',function(){
                     <tr data-search="<?= strtolower(esc($u['employee_code'])) ?> <?= strtolower(esc($u['employee_name'])) ?> <?= strtolower(esc($u['client_code'])) ?>">
                         <td style="color:#6B7280"><?= $offset + $i + 1 ?></td>
                         <td style="color:#374151;font-weight:500"><?= esc($u['employee_code']) ?></td>
-                        <td style="color:#374151"><?= esc($u['client_code']) ?>@RKIVFCentre.com</td>
+                        <td style="color:#374151"><?= esc($u['username']) ?></td>
                         <td style="font-weight:500;color:#111827"><?= esc($u['employee_name']) ?></td>
                         <td style="color:#374151"><?= esc($u['role']) ?></td>
                         <td>

@@ -99,22 +99,68 @@
         <?php render_nav($nav_system, $_SERVER['PHP_SELF'], $icons); ?>
     </nav>
 
+                    <?php
+                         if (strtolower(trim($employee_name)) === 'admin') {
+                            $initials = 'AD';
+                        } else {
+                            $words = array_values(array_filter(explode(' ', trim($employee_name))));
+
+                            if (count($words) >= 2) {
+                                $initials = strtoupper(
+                                    substr($words[0], 0, 1) .
+                                    substr(end($words), 0, 1)
+                                );
+                            } else {
+                                $initials = strtoupper(substr($employee_name, 0, 1));
+                            }
+                        }
+                            ?>
+
     <div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.06)">
         <div style="display:flex;align-items:center;gap:10px">
-            <div class="avatar" style="background:var(--yellow);color:var(--navy);font-size:12px;flex-shrink:0">AD</div>
+            <div class="avatar" style="background:var(--yellow);color:var(--navy);font-size:12px;flex-shrink:0"><?= $initials ?></div>
             <div style="flex:1;min-width:0">
-                <div style="color:#fff;font-size:13px;font-weight:600">Admin</div>
+                <div style="color:#fff;font-size:13px;font-weight:600"><?= $role ?></div>
                 <div style="color:#6B6F8E;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                    ramkrishnaivf@perk.in</div>
+                    <?= $username ?>
+                </div>
             </div>
         </div>
-        <div
-            style="margin-top:10px;background:rgba(255,224,0,.1);border:1px solid rgba(255,224,0,.2);border-radius:8px;padding:8px 10px">
-            <div style="color:#FFE000;font-size:10px;font-weight:700;letter-spacing:.5px">SUBSCRIPTION</div>
-            <div style="color:#9DA3C8;font-size:11px;margin-top:2px">Expires <?= $expiry_date ?></div>
-            <div class="progress-bar" style="margin-top:6px">
-                <div class="progress-fill" style="width:92%;background:var(--yellow)"></div>
-            </div>
-        </div>
+<?php
+// Retrieve dates 
+$start_date_str = $_SESSION['license']['start_date'] ?? date('Y-m-d', strtotime('-30 days')); 
+$expiry_date_str = $expiry_date ?? $_SESSION['expiry_date'] ?? date('Y-m-d');
+
+// Convert string dates to timestamps
+$start_ts = strtotime($start_date_str);
+$expiry_ts = strtotime($expiry_date_str);
+$now_ts = time();
+
+// Calculate total duration and REMAINING duration
+$total_duration = $expiry_ts - $start_ts;
+$remaining_duration = $expiry_ts - $now_ts;
+
+// Calculate remaining percentage
+if ($total_duration > 0) {
+    $percentage = ($remaining_duration / $total_duration) * 100;
+} else {
+    $percentage = 0; // If start and expiry are the same, 0% remaining
+}
+
+// Ensure the percentage stays strictly between 0% and 100% (so it doesn't go negative after expiry)
+$percentage = max(0, min(100, $percentage));
+$percentage_rounded = round($percentage);
+
+// Format the display date nicely (e.g., "15 Aug 2024")
+$display_date = date('d M Y', $expiry_ts);
+?>
+
+<div style="margin-top:10px;background:rgba(255,224,0,.1);border:1px solid rgba(255,224,0,.2);border-radius:8px;padding:8px 10px">
+    <div style="color:#FFE000;font-size:10px;font-weight:700;letter-spacing:.5px">SUBSCRIPTION</div>
+    <div style="color:#9DA3C8;font-size:11px;margin-top:2px">Expires <?= htmlspecialchars($display_date) ?></div>
+    <div class="progress-bar" style="margin-top:6px;background:rgba(255,255,255,0.1);border-radius:4px;height:4px;overflow:hidden;">
+        <div class="progress-fill" style="width:<?= $percentage_rounded ?>%;background:var(--yellow);height:100%; transition: width 0.3s ease;"></div>
+    </div>
+</div>
     </div>
 </aside>

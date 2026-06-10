@@ -478,7 +478,10 @@ ob_start();
     .toast{min-width:0;width:100%}
 }
 </style>
-
+<!-- ── Page header ── -->
+<div class="cfg-page-head">
+    <h1 class="page-title">Configuration</h1>
+</div>
 <div class="toast-container" id="toastContainer"></div>
 
 <div class="section-card" style="padding:0;overflow:hidden">

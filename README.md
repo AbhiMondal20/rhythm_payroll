@@ -33,6 +33,7 @@ Reimbursement - Working
 Team - Done
 FaceEnrolment - Done
 UserRoles - Done
+AppRegistration - Working
 
 
 
