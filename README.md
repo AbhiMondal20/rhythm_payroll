@@ -35,6 +35,10 @@ FaceEnrolment - Done
 UserRoles - Done
 AppRegistration - Working
 
+<!-- 15-06-26 -->
+HRPolicy - Done
+<!-- 16-06-2026 -->
+AdditionalFields - Done
 
 
 CRM add tag filter in list view
@@ -53,9 +57,12 @@ Successfully published 2 GMB posts for each location:
 Siliguri, Coochbehar, and Raiganj.
 
 Payroll Module Progress
-News/Announcement - Working
-Leave Accumulations - Working
-Leave Auto Assing Leave Policies - Done
+Reimbursement - done
+Approval Rules - Working
+AppRegistration - Working
+
+
+
 
 
 
