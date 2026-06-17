@@ -39,6 +39,9 @@ AppRegistration - Working
 HRPolicy - Done
 <!-- 16-06-2026 -->
 AdditionalFields - Done
+Training - Done
+QuickLinks - Done
+AssetManagement - Done
 
 
 CRM add tag filter in list view
