@@ -1,493 +1,217 @@
 <?php
 session_start();
-
 if (!isset($_SESSION['login'])) {
     header('Location: login');
     exit();
 }
-
 require_once 'includes/config.php';
-
 $page_title = 'Payroll';
-
-/* -----------------------------
-   Inputs
------------------------------ */
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
-$page   = isset($_GET['page']) ? (int) $_GET['page'] : 1;
-$month  = $_GET['month'] ?? 'April 2026';
-
-/* -----------------------------
-   Filter payroll
------------------------------ */
-$filtered_payroll = array_values(array_filter($payroll, function ($r) use ($search) {
-    if ($search === '') {
-        return true;
-    }
-
-    $haystack = strtolower(
-        ($r['name'] ?? '') . ' ' .
-        ($r['dept'] ?? '') . ' ' .
-        ($r['status'] ?? '') . ' ' .
-        ($r['gross'] ?? '') . ' ' .
-        ($r['net'] ?? '')
-    );
-
-    return str_contains($haystack, strtolower($search));
-}));
-
-/* -----------------------------
-   Payroll summary from full data
------------------------------ */
-$processed = array_filter($payroll, fn($r) => strtolower((string)($r['status'] ?? '')) === 'processed');
-$pending   = array_filter($payroll, fn($r) => strtolower((string)($r['status'] ?? '')) === 'pending');
-
-$total_gross = array_sum(array_map(fn($r) => (float)($r['gross'] ?? 0), $payroll));
-$total_net   = array_sum(array_map(fn($r) => (float)($r['net'] ?? 0), $payroll));
-$total_pf    = array_sum(array_map(fn($r) => (float)($r['pf'] ?? 0), $payroll));
-$total_esi   = array_sum(array_map(fn($r) => (float)($r['esi'] ?? 0), $payroll));
-$total_pt    = array_sum(array_map(fn($r) => (float)($r['pt'] ?? 0), $payroll));
-
-/* -----------------------------
-   Pagination
------------------------------ */
-$per_page     = 10;
-$total_items  = count($filtered_payroll);
-$total_pages  = max(1, (int) ceil($total_items / $per_page));
-$current_page = max(1, min($page, $total_pages));
-$offset       = ($current_page - 1) * $per_page;
-$payroll_page = array_slice($filtered_payroll, $offset, $per_page);
-
-/* -----------------------------
-   Render payroll table block
------------------------------ */
-function renderPayrollTable($payroll_page, $total_items, $current_page, $total_pages, $offset, $month)
-{
-    ob_start();
-    ?>
-    <div class="section-card">
-      <div style="padding:16px 20px;border-bottom:1px solid #F3F4F6;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <h2 style="font-size:15px;font-weight:700">Payroll Register — <?= htmlspecialchars($month) ?></h2>
-        <span style="font-size:12px;color:#6B7280">
-          Showing <?= count($payroll_page) ?> of <?= $total_items ?> items
-        </span>
-      </div>
-
-      <div id="payrollTableWrap">
-        <table id="payrollTable">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>EMPLOYEE</th>
-              <th>DEPT</th>
-              <th style="text-align:right">GROSS</th>
-              <th style="text-align:right">PF</th>
-              <th style="text-align:right">ESI</th>
-              <th style="text-align:right">PT</th>
-              <th style="text-align:right">NET PAY</th>
-              <th style="text-align:center">STATUS</th>
-              <th>PAYSLIP</th>
-            </tr>
-          </thead>
-          <tbody>
-          <?php if (!empty($payroll_page)): ?>
-            <?php foreach ($payroll_page as $index => $r): ?>
-              <?php
-                $row_no        = $offset + $index + 1;
-                $name          = $r['name'] ?? '';
-                $dept          = $r['dept'] ?? '';
-                $gross         = (float)($r['gross'] ?? 0);
-                $pf            = (float)($r['pf'] ?? 0);
-                $esi           = (float)($r['esi'] ?? 0);
-                $pt            = (float)($r['pt'] ?? 0);
-                $net           = (float)($r['net'] ?? 0);
-                $status        = strtolower(trim((string)($r['status'] ?? 'pending')));
-                $processed_row = $status === 'processed';
-              ?>
-              <tr>
-                <td style="color:#9CA3AF;font-size:12px"><?= $row_no ?></td>
-
-                <td>
-                  <div style="display:flex;align-items:center;gap:10px">
-                    <div class="avatar" style="background:#EDE9FE;color:#7C3AED;font-size:11px">
-                      <?= htmlspecialchars(initials($name)) ?>
-                    </div>
-                    <span style="font-weight:500"><?= htmlspecialchars($name) ?></span>
-                  </div>
-                </td>
-
-                <td style="color:#6B7280"><?= htmlspecialchars($dept) ?></td>
-                <td style="text-align:right"><?= fmt_inr($gross) ?></td>
-                <td style="text-align:right;color:#7C3AED"><?= fmt_inr($pf) ?></td>
-                <td style="text-align:right;color:#2563EB"><?= fmt_inr($esi) ?></td>
-                <td style="text-align:right;color:#EA580C"><?= fmt_inr($pt) ?></td>
-                <td style="text-align:right;font-weight:700;color:#059669"><?= fmt_inr($net) ?></td>
-
-                <td style="text-align:center">
-                  <span class="badge" style="background:<?= $processed_row ? '#D1FAE5' : '#FEF3C7' ?>;color:<?= $processed_row ? '#065F46' : '#92400E' ?>">
-                    <?= $processed_row ? '✓ Processed' : '⏳ Pending' ?>
-                  </span>
-                </td>
-
-                <td>
-                  <?php if ($processed_row): ?>
-                    <button class="btn" style="padding:5px 12px;font-size:12px">📄 Download</button>
-                  <?php else: ?>
-                    <button class="btn btn-primary" style="padding:5px 12px;font-size:12px">Process</button>
-                  <?php endif; ?>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          <?php else: ?>
-            <tr>
-              <td colspan="10" style="text-align:center;padding:24px;color:#6B7280">No payroll records found</td>
-            </tr>
-          <?php endif; ?>
-          </tbody>
-
-          <?php if (!empty($payroll_page)): ?>
-          <tfoot>
-            <tr style="background:#F9FAFB;font-weight:700">
-              <td colspan="3" style="padding:12px 16px;color:#374151">PAGE TOTAL</td>
-              <td style="text-align:right;padding:12px 16px">
-                <?= fmt_inr(array_sum(array_map(fn($r) => (float)($r['gross'] ?? 0), $payroll_page))) ?>
-              </td>
-              <td style="text-align:right;padding:12px 16px;color:#7C3AED">
-                <?= fmt_inr(array_sum(array_map(fn($r) => (float)($r['pf'] ?? 0), $payroll_page))) ?>
-              </td>
-              <td style="text-align:right;padding:12px 16px;color:#2563EB">
-                <?= fmt_inr(array_sum(array_map(fn($r) => (float)($r['esi'] ?? 0), $payroll_page))) ?>
-              </td>
-              <td style="text-align:right;padding:12px 16px;color:#EA580C">
-                <?= fmt_inr(array_sum(array_map(fn($r) => (float)($r['pt'] ?? 0), $payroll_page))) ?>
-              </td>
-              <td style="text-align:right;padding:12px 16px;color:#059669">
-                <?= fmt_inr(array_sum(array_map(fn($r) => (float)($r['net'] ?? 0), $payroll_page))) ?>
-              </td>
-              <td colspan="2"></td>
-            </tr>
-          </tfoot>
-          <?php endif; ?>
-        </table>
-      </div>
-
-      <div style="padding:12px 20px;border-top:1px solid #F3F4F6;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <span style="font-size:12px;color:#6B7280">
-          Page <?= $current_page ?> of <?= $total_pages ?>
-        </span>
-
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <?php if ($current_page > 1): ?>
-            <a href="?page=<?= $current_page - 1 ?>&month=<?= urlencode($month) ?>" class="btn pagination-link ajax-page-link" data-page="<?= $current_page - 1 ?>">← Prev</a>
-          <?php else: ?>
-            <button class="btn" style="padding:5px 12px;font-size:12px;opacity:.5" disabled>← Prev</button>
-          <?php endif; ?>
-
-          <?php
-          $visible = 5;
-          $start = max(1, $current_page - 2);
-          $end   = min($total_pages, $start + $visible - 1);
-
-          if (($end - $start + 1) < $visible) {
-              $start = max(1, $end - $visible + 1);
-          }
-          ?>
-
-          <?php if ($start > 1): ?>
-            <a href="?page=1&month=<?= urlencode($month) ?>" class="btn pagination-link ajax-page-link" data-page="1">1</a>
-            <?php if ($start > 2): ?>
-              <span style="padding:0 4px;color:#6B7280">...</span>
-            <?php endif; ?>
-          <?php endif; ?>
-
-          <?php for ($i = $start; $i <= $end; $i++): ?>
-            <?php if ($i == $current_page): ?>
-              <a href="?page=<?= $i ?>&month=<?= urlencode($month) ?>" class="btn pagination-link active ajax-page-link" data-page="<?= $i ?>"><?= $i ?></a>
-            <?php else: ?>
-              <a href="?page=<?= $i ?>&month=<?= urlencode($month) ?>" class="btn pagination-link ajax-page-link" data-page="<?= $i ?>"><?= $i ?></a>
-            <?php endif; ?>
-          <?php endfor; ?>
-
-          <?php if ($end < $total_pages): ?>
-            <?php if ($end < $total_pages - 1): ?>
-              <span style="padding:0 4px;color:#6B7280">...</span>
-            <?php endif; ?>
-            <a href="?page=<?= $total_pages ?>&month=<?= urlencode($month) ?>" class="btn pagination-link ajax-page-link" data-page="<?= $total_pages ?>"><?= $total_pages ?></a>
-          <?php endif; ?>
-
-          <?php if ($current_page < $total_pages): ?>
-            <a href="?page=<?= $current_page + 1 ?>&month=<?= urlencode($month) ?>" class="btn pagination-link ajax-page-link" data-page="<?= $current_page + 1 ?>">Next →</a>
-          <?php else: ?>
-            <button class="btn" style="padding:5px 12px;font-size:12px;opacity:.5" disabled>Next →</button>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-    <?php
-    return ob_get_clean();
-}
-
-/* -----------------------------
-   AJAX response
------------------------------ */
-if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
-    echo renderPayrollTable($payroll_page, $total_items, $current_page, $total_pages, $offset, $month);
-    exit;
-}
-
 ob_start();
 ?>
 <link rel="stylesheet" href="includes/assets/style.css">
-
 <style>
-#payrollTableWrap{
-  max-height:420px;
-  overflow-y:auto;
-  overflow-x:auto;
-  border-radius:0 0 12px 12px;
+    /* Back button */
+    .btn-back {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    color: #6B7280;
+    background: #fff;
+    border: 1px solid #D1D5DB;
+    text-decoration: none;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+.btn-back:hover {
+    background: #F3F4F6;
+    color: #111827;
+    border-color: #9CA3AF;
+}
+/* ── Page header & Top Links ── */
+.payroll-header-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    gap: 15px;
 }
 
-#payrollTable{
-  width:100%;
-  border-collapse:separate;
-  border-spacing:0;
-  min-width:1200px;
+.page-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+    
 }
 
-#payrollTable thead th{
-  position:sticky;
-  top:0;
-  background:#fff;
-  z-index:5;
-  box-shadow:0 1px 0 #E5E7EB;
+.payroll-top-links {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
 }
 
-#payrollTable th,
-#payrollTable td{
-  padding:14px 16px;
-  vertical-align:middle;
+.payroll-top-links a {
+    font-size: 13px;
+    color: #6B7280;
+    text-decoration: none;
+    transition: color 0.15s;
 }
 
-#payrollTable tbody tr:nth-child(even){
-  background:#fcfcfd;
+.payroll-top-links a:hover {
+    color: #2563EB;
 }
 
-#payrollTable tbody tr:hover{
-  background:#f9fafb;
+.payroll-top-links .separator {
+    color: #D1D5DB;
+    font-size: 14px;
 }
 
-#payrollTableWrap::-webkit-scrollbar{
-  width:8px;
-  height:8px;
+/* ── Page wrapper card ── */
+.payroll-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    padding: 20px 0;
 }
 
-#payrollTableWrap::-webkit-scrollbar-thumb{
-  background:#d1d5db;
-  border-radius:10px;
+/* ── Grid ── */
+.cfg-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    padding: 10px 20px;
 }
 
-#payrollTableWrap::-webkit-scrollbar-track{
-  background:#f3f4f6;
+/* ── Config item ── */
+.cfg-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 15px 10px;
+    cursor: pointer;
+    text-decoration: none;
+    border-radius: 8px;
+    transition: background 0.15s, transform 0.1s;
 }
 
-.pagination-link{
-  padding:5px 12px;
-  font-size:12px;
-  text-decoration:none;
+.cfg-item:hover {
+    background: #F9FAFB;
 }
 
-.pagination-link.active{
-  background:#EDE9FE;
-  color:#7C3AED;
+.cfg-item:hover .cfg-item-title {
+    color: #2563EB;
 }
 
-.table-loading{
-  opacity:.6;
-  pointer-events:none;
+/* ── Config icon ── */
+.cfg-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: #F3F6FF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border: 1px solid #E5E7EB;
+    transition: background 0.15s, border-color 0.15s;
 }
 
-@media (max-width:768px){
-  .payroll-toolbar{
-    flex-direction:column;
-    align-items:stretch !important;
-  }
+.cfg-item:hover .cfg-icon {
+    background: #EBF0FF;
+    border-color: #BFDBFE;
+}
 
-  .payroll-toolbar .search-box{
-    width:100%;
-  }
+.cfg-icon svg {
+    width: 22px;
+    height: 22px;
+    stroke: #4B5563;
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: stroke 0.15s;
+}
 
-  .payroll-toolbar input[type="text"]{
-    width:100% !important;
-  }
+.cfg-item:hover .cfg-icon svg { stroke: #2563EB; }
 
-  .payroll-toolbar .right-actions{
-    width:100%;
-    justify-content:space-between;
-  }
+.cfg-item-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+    margin-bottom: 6px;
+    line-height: 1.3;
+    transition: color 0.15s;
+}
+
+.cfg-item-desc {
+    font-size: 12px;
+    color: #6B7280;
+    line-height: 1.5;
+}
+
+/* ── Divider Line Style ── */
+.payroll-divider {
+    border: none;
+    border-top: 1px solid #D1D5DB; /* Change color here if needed */
+    margin: 25px 0; /* Adjust spacing around the line here */
+}
+
+/* ── Responsive ── */
+@media (max-width: 1100px) {
+    .cfg-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 768px) {
+    .cfg-grid { grid-template-columns: repeat(2, 1fr); }
+    .payroll-header-wrapper { flex-direction: column; align-items: flex-start; }
+}
+
+@media (max-width: 480px) {
+    .cfg-grid { grid-template-columns: 1fr; }
 }
 </style>
 
-<div class="payroll-toolbar" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-  <div>
+<div class="payroll-header-wrapper">
     <h1 class="page-title">Payroll</h1>
-    <p class="page-sub" id="payrollSubText">
-      <?= $total_items ?> payroll items<?= $search !== '' ? ' for "' . htmlspecialchars($search) . '"' : '' ?>
-    </p>
-  </div>
-
-  <div class="right-actions" style="display:flex;gap:8px;flex-wrap:wrap">
-    <button class="btn" type="button">Export CSV</button>
-    <button class="btn btn-primary" type="button">▶ Run Payroll</button>
-  </div>
-</div>
-
-<div class="search-box" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
-  <input
-    type="text"
-    id="payrollSearch"
-    value="<?= htmlspecialchars($search) ?>"
-    placeholder="Search employee, dept, status..."
-    autocomplete="off"
-    style="padding:8px 14px;border:1px solid #E5E7EB;border-radius:8px;font-size:13px;outline:none;width:260px"
-  >
-</div>
-
-<div class="grid-4" style="margin-bottom:20px">
-  <?php
-  $pstats = [
-    ['l'=>'TOTAL NET PAID','v'=>fmt_inr($total_net)],
-    ['l'=>'PF DEDUCTED','v'=>fmt_inr($total_pf)],
-    ['l'=>'ESI DEDUCTED','v'=>fmt_inr($total_esi)],
-    ['l'=>'PT DEDUCTED','v'=>fmt_inr($total_pt)],
-    ['l'=>'PROCESSED','v'=>count($processed)],
-    ['l'=>'PENDING','v'=>count($pending)],
-  ];
-  foreach ($pstats as $s): ?>
-    <div class="stat-card">
-      <p style="font-size:11px;font-weight:600;color:#6B7280;letter-spacing:.3px"><?= htmlspecialchars($s['l']) ?></p>
-      <p style="font-size:24px;font-weight:700;color:#1a1a2e;margin-top:4px"><?= htmlspecialchars((string)$s['v']) ?></p>
+    <div class="payroll-top-links">
+        <a href="PaymentDeduction">Payment/Deduction</a> <span class="separator">|</span>
+        <a href="HoldSalary">Hold Salary</a> <span class="separator">|</span>
+        <a href="ApprovePayslip">Approve Payslip</a> <span class="separator">|</span>
+        <a href="EditPayslip">Edit Payslip</a> <span class="separator">|</span>
+        <a href="Loans">Loans</a> <span class="separator">|</span>
+        <a href="ProcessPayslip">Process Payslip</a> <span class="separator">|</span>
+        <a href="FullFinal">Final Settlement</a> <span class="separator">|</span>
+        <a href="SalaryStructure">Salary Structure</a> <span class="separator">|</span>
+        <a href="Timesheet">Timesheet</a>
     </div>
-  <?php endforeach; ?>
+    <!-- <hr class="payroll-divider"> -->
 </div>
 
-<div id="payrollContent">
-  <?= renderPayrollTable($payroll_page, $total_items, $current_page, $total_pages, $offset, $month); ?>
+<div class="payroll-card">
+    <div class="cfg-grid">
+        <?php foreach ($payroll_cards as $card): ?>
+        <a href="<?= htmlspecialchars($card['href']) ?>" class="cfg-item">
+            <div class="cfg-icon">
+                <?= get_payroll_icon($card['icon']) ?>
+            </div>
+            <div>
+                <div class="cfg-item-title"><?= htmlspecialchars($card['title']) ?></div>
+                <div class="cfg-item-desc"><?= htmlspecialchars($card['desc']) ?></div>
+            </div>
+        </a>
+        <?php endforeach; ?>
+    </div>
 </div>
+
+
 
 <?php
-$extra_scripts = <<<JS
-<script>
-let payrollSearchTimer = null;
 
-function bindPayrollPagination() {
-  document.querySelectorAll('.ajax-page-link').forEach(link => {
-    link.addEventListener('click', function(e) {
-      e.preventDefault();
-      const page = this.dataset.page || 1;
-      loadPayroll(page);
-    });
-  });
-}
-
-function updatePayrollUrl(page, search, month) {
-  const params = new URLSearchParams();
-
-  if (page && Number(page) > 1) {
-    params.set('page', page);
-  }
-  if (search && search.trim() !== '') {
-    params.set('search', search.trim());
-  }
-  if (month && month.trim() !== '') {
-    params.set('month', month.trim());
-  }
-
-  const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-  history.pushState({page, search, month}, '', newUrl);
-}
-
-function loadPayroll(page = 1, pushState = true) {
-  const wrap = document.getElementById('payrollContent');
-  const input = document.getElementById('payrollSearch');
-  const subText = document.getElementById('payrollSubText');
-  const search = input ? input.value.trim() : '';
-  const month = new URLSearchParams(window.location.search).get('month') || 'April 2026';
-
-  if (!wrap) return;
-
-  wrap.classList.add('table-loading');
-
-  const params = new URLSearchParams();
-  params.set('ajax', '1');
-  params.set('page', page);
-  params.set('month', month);
-
-  if (search !== '') {
-    params.set('search', search);
-  }
-
-  fetch(window.location.pathname + '?' + params.toString(), {
-    headers: {
-      'X-Requested-With': 'XMLHttpRequest'
-    }
-  })
-  .then(res => res.text())
-  .then(html => {
-    wrap.innerHTML = html;
-    wrap.classList.remove('table-loading');
-    bindPayrollPagination();
-
-    if (subText) {
-      if (search !== '') {
-        subText.innerHTML = 'Filtered payroll results for "' + search.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '"';
-      } else {
-        subText.innerHTML = 'Payroll list';
-      }
-    }
-
-    const scroller = document.getElementById('payrollTableWrap');
-    if (scroller) {
-      scroller.scrollTop = 0;
-      scroller.scrollLeft = 0;
-    }
-
-    if (pushState) {
-      updatePayrollUrl(page, search, month);
-    }
-  })
-  .catch(() => {
-    wrap.classList.remove('table-loading');
-  });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  bindPayrollPagination();
-
-  const input = document.getElementById('payrollSearch');
-  if (input) {
-    input.addEventListener('input', function() {
-      clearTimeout(payrollSearchTimer);
-      payrollSearchTimer = setTimeout(() => {
-        loadPayroll(1);
-      }, 250);
-    });
-  }
-});
-
-window.addEventListener('popstate', function() {
-  const params = new URLSearchParams(window.location.search);
-  const page = params.get('page') || 1;
-  const search = params.get('search') || '';
-  const input = document.getElementById('payrollSearch');
-
-  if (input) {
-    input.value = search;
-  }
-
-  loadPayroll(page, false);
-});
-</script>
-JS;
 
 $page_content = ob_get_clean();
 include 'includes/header.php';
@@ -496,4 +220,3 @@ include 'includes/footer.php';
 ?>
 
 <script src="includes/assets/scripts.js"></script>
-<?= $extra_scripts ?>

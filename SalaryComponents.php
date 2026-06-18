@@ -1,4 +1,9 @@
 <?php
+session_start();
+if (!isset($_SESSION['login'])) {
+    header('Location: login');
+    exit();
+}
 require_once 'includes/config.php';
 require_once 'includes/db_client.php';
 
@@ -6,11 +11,16 @@ $page_title = 'Salary Components';
 
 function esc($v){ return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8'); }
 
-$categories = [
-    'Earning'  => ['Allowances','Basic','HRA','Bonus','Special Pay','Overtime','Variable Pay'],
-    'Deduction'=> ['Tax Deductions','Loan Deductions','PF Deductions','ESI Deductions','Other Deductions'],
-    'Employer' => ['PF Contributions','ESI Contributions','Admin Charges','Pension Fund'],
-];
+/* ─────────────────────────────────────────
+   FETCH ALL CATEGORIES FOR DROPDOWNS
+───────────────────────────────────────── */
+$allCategories = [];
+$catQuery = mysqli_query($conn, "SELECT `id`, `name` FROM `salary_component_categories` WHERE status = 'active' ORDER BY name");
+if ($catQuery) {
+    while ($row = mysqli_fetch_assoc($catQuery)) {
+        $allCategories[] = $row['name'];
+    }
+}
 
 /* ── mode & tab ── */
 $active_tab = $_GET['tab']  ?? 'earnings';
@@ -225,11 +235,9 @@ if ($mode === 'edit' && $edit_code !== '') {
         }
     }
 }
-
 ob_start();
 ?>
 <link rel="stylesheet" href="includes/assets/style.css">
-
 <style>
 /* ════════════════════════════════════════
    SALARY COMPONENTS PAGE
@@ -526,14 +534,14 @@ document.addEventListener('DOMContentLoaded',function(){
 
     <div class="sc-form-wrap">
         <div class="sc-form-title">NEW SALARY COMPONENT</div>
-
         <form method="POST" id="addScForm" novalidate>
         <input type="hidden" name="_action" value="add">
 
         <div class="sc-row c2">
             <div class="sc-fg">
                 <label>Salary Type</label>
-                <select name="salary_type" id="addSalaryType" onchange="updateCategories()">
+                <!-- Removed onchange event -->
+                <select name="salary_type" id="addSalaryType">
                     <option value="Earning">Earning</option>
                     <option value="Deduction">Deduction</option>
                     <option value="Employer Contribution">Employer Contribution</option>
@@ -542,9 +550,16 @@ document.addEventListener('DOMContentLoaded',function(){
             <div class="sc-fg">
                 <label>Component Category</label>
                 <select name="component_category" id="addCategory">
-                    <?php foreach($categories['Earning'] as $cat): ?>
-                    <option><?= esc($cat) ?></option>
-                    <?php endforeach; ?>
+                    <?php
+                    // Load all categories
+                    if (!empty($allCategories)) {
+                        foreach ($allCategories as $cat) {
+                            echo '<option value="'.esc($cat).'">'.esc($cat).'</option>';
+                        }
+                    } else {
+                        echo '<option value="">No categories available</option>';
+                    }
+                    ?>
                 </select>
             </div>
         </div>
@@ -607,7 +622,8 @@ document.addEventListener('DOMContentLoaded',function(){
             <div class="sc-row c2">
                 <div class="sc-fg">
                     <label>Salary Type</label>
-                    <select name="salary_type" id="editSalaryType" onchange="updateCategories(this)">
+                    <!-- Removed onchange event -->
+                    <select name="salary_type" id="editSalaryType">
                         <option value="Earning" <?= ($edit_rec['type']??'')==='Earning'?'selected':'' ?>>Earning</option>
                         <option value="Deduction" <?= ($edit_rec['type']??'')==='Deduction'?'selected':'' ?>>Deduction</option>
                         <option value="Employer Contribution" <?= ($edit_rec['type']??'')==='Employer'?'selected':'' ?>>Employer Contribution</option>
@@ -617,14 +633,16 @@ document.addEventListener('DOMContentLoaded',function(){
                     <label>Component Category</label>
                     <select name="component_category" id="editCategory">
                         <?php
-                        $catKey = $edit_rec['type'] === 'Employer' ? 'Employer' : $edit_rec['type'];
-                        $catList = $categories[$catKey] ?? $categories['Earning'];
-                        foreach($catList as $cat):
+                        // Load all categories
+                        if (!empty($allCategories)) {
+                            foreach ($allCategories as $cat) {
+                                $selected = (($edit_rec['category'] ?? '') === $cat) ? 'selected' : '';
+                                echo '<option value="'.esc($cat).'" '.$selected.'>'.esc($cat).'</option>';
+                            }
+                        } else {
+                            echo '<option value="">No categories available</option>';
+                        }
                         ?>
-                        <option value="<?= esc($cat) ?>" <?= ($edit_rec['category'] ?? '') === $cat ? 'selected' : '' ?>>
-                            <?= esc($cat) ?>
-                        </option>
-                        <?php endforeach; ?>
                     </select>
                 </div>
             </div>
@@ -674,7 +692,7 @@ document.addEventListener('DOMContentLoaded',function(){
             <form method="POST" id="deleteForm" style="display:inline">
                 <input type="hidden" name="_action" value="delete">
                 <input type="hidden" name="code" value="<?= esc($edit_rec['code']) ?>">
-                <button type="submit" class="sc-delete-btn" onclick="return confirmDelete('<?= esc($edit_rec['name']) ?>')">Delete</button>
+                <button type="submit" class="sc-delete-btn" onclick="return confirmDelete('<?= esc(addslashes($edit_rec['name'])) ?>')">Delete</button>
             </form>
 
             <a href="?tab=<?= esc($active_tab) ?>&mode=list" class="sc-cancel-btn">Cancel</a>
@@ -718,23 +736,6 @@ function toggleStat() {
     if(!head||!body) return;
     head.classList.toggle('open');
     body.classList.toggle('open');
-}
-
-var catOptions = {
-    'Earning': ['Allowances','Basic','HRA','Bonus','Special Pay','Overtime','Variable Pay'],
-    'Deduction': ['Tax Deductions','Loan Deductions','PF Deductions','ESI Deductions','Other Deductions'],
-    'Employer Contribution': ['PF Contributions','ESI Contributions','Admin Charges','Pension Fund']
-};
-
-function updateCategories(selEl) {
-    var type = (selEl || document.getElementById('addSalaryType'))?.value || 'Earning';
-    var catSel = document.getElementById('addCategory') || document.getElementById('editCategory') || document.querySelector('select[name="component_category"]');
-    if (!catSel) return;
-
-    var opts = catOptions[type] || catOptions['Earning'];
-    catSel.innerHTML = opts.map(function(o){
-        return '<option>'+o+'</option>';
-    }).join('');
 }
 
 function validateScForm() {

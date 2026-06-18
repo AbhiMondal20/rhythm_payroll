@@ -4,10 +4,8 @@ if (!isset($_SESSION['login'])) {
     header('Location: login');
     exit();
 }
-
 require_once 'includes/db_client.php';
 require_once 'includes/config.php';
-
 $page_title = 'Shift Details';
 ob_start();
 
@@ -229,7 +227,6 @@ foreach ($shifts as $s) {
     }
 }
 ?>
-
 <link rel="stylesheet" href="includes/assets/style.css">
 
 <style>

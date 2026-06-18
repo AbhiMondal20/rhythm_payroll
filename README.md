@@ -19,21 +19,20 @@ Rounding rule - Completed
 Department - Completed 
 Approvals - Completed
 Employee - Completed
-AddEmployee - Working
+AddEmployee - Completed
 Designation - Completed
 Devices - Completed
 Holidays - Completed
-LeaveType - Working
-Leave Accumulations - Working
+LeaveType - Completed
 Leave Auto Assing Leave Policies - Done
-News/Announcement - Working
-Approval Rules - Working
-Reimbursement - Working
+News/Announcement - Completed
+Approval Rules - Completed
+Reimbursement - Completed
 
 Team - Done
 FaceEnrolment - Done
 UserRoles - Done
-AppRegistration - Working
+AppRegistration - Completed
 
 <!-- 15-06-26 -->
 HRPolicy - Done
@@ -41,7 +40,30 @@ HRPolicy - Done
 AdditionalFields - Done
 Training - Done
 QuickLinks - Done
+<!-- 17-06-2026 -->
 AssetManagement - Done
+Payroll - Working
+
+<!-- 18-06-2026 -->
+Payroll
+PaymentDeduction - Completed
+HoldSalary - Pending
+ApprovePayslip - Pending
+EditPayslip - Pending
+Loans - Pending
+ProcessPayslip - Pending
+FullFinal - Pending
+SalaryStructure - Pending
+Timesheet - Pending
+
+Leave Accumulations - Pending (not urgent)
+Apply Leave - Pending (urgent)
+Attendanced - Pending (urgent)
+Leave - Pending (urgent)
+Payroll - Pending (urgent)
+Taxes - Pending (urgent)
+Reports - Pending (not urgent)
+
 
 
 CRM add tag filter in list view

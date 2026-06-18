@@ -849,10 +849,23 @@ ob_start();
                             <div class="fg">
                                 <label>SHIFT</label>
                                 <select name="shift">
-                                    <option value="">Select</option>
-                                    <?php foreach (['General (9AM–5PM)','Morning (7AM–3PM)','Evening (3PM–11PM)','Night (11PM–7AM)','Rotational'] as $sh): ?>
-                                        <option value="<?= esc($sh) ?>" <?= sel($emp['shift'], $sh) ?>><?= esc($sh) ?></option>
+                                    <?php
+                                    $shifts = [];
+
+                                    $res = $conn->query("SELECT * FROM att_shifts WHERE status='active' ORDER BY shift_name ASC");
+                                    if ($res) {
+                                        while ($row = $res->fetch_assoc()) {
+                                            $shifts[] = $row['shift_name'];
+                                        }
+                                    }
+
+                                    foreach ($shifts as $sh):
+                                    ?>
+                                        <option value="<?= esc($sh) ?>" <?= sel($emp['shift'], $sh) ?>>
+                                            <?= esc($sh) ?>
+                                        </option>
                                     <?php endforeach; ?>
+
                                 </select>
                             </div>
                         </div>
