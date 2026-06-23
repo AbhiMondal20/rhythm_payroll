@@ -39,9 +39,9 @@ ob_start();
 ?>
 <link rel="stylesheet" href="includes/assets/style.css">
 <style>
-    /* Common Styles */
-    /* Back button */
-    .btn-back {
+/* Common Styles */
+/* Back button */
+.btn-back {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -55,19 +55,21 @@ ob_start();
     transition: all 0.2s;
     cursor: pointer;
 }
+
 .btn-back:hover {
     background: #F3F4F6;
     color: #111827;
     border-color: #9CA3AF;
 }
+
 /* ── Page header & Top Links ── */
 .payroll-header-wrapper {
     display: flex;
-    align-items: center;
+    /* align-items: center; */
     justify-content: space-between;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
     flex-wrap: wrap;
-    gap: 15px;
+    gap: 5px;
 }
 
 .page-title {
@@ -75,7 +77,7 @@ ob_start();
     font-weight: 700;
     color: #111827;
     margin: 0;
-    
+
 }
 
 .payroll-top-links {
@@ -104,27 +106,50 @@ ob_start();
 /* ── Divider Line Style ── */
 .payroll-divider {
     border: none;
-    border-top: 1px solid #D1D5DB; /* Change color here if needed */
-    margin: 25px 0; /* Adjust spacing around the line here */
+    border-top: 1px solid #D1D5DB;
+    /* Change color here if needed */
+    margin: 25px 0;
+    /* Adjust spacing around the line here */
 }
+
+.payroll-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #E5E7EB;
+    padding: 24px;
+    min-height: 400px;;
+}
+.payroll-tab{
+    padding: 5px 2px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #6B7280;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    border-bottom: 2.5px solid transparent;
+    white-space: nowrap;
+    transition: color .15s, border-color .15s;
+    font-family: inherit;
+    text-decoration: none;
+    display: block;
+    margin-bottom: -1px;
+}
+.payroll-tab:hover {
+    color: #111827;
+    border-bottom-color: #111827;
+}
+.payroll-tab.active {
+    color: #2563EB;
+    border-bottom-color: #2563EB;
+    font-weight: 600;
+}
+
 /* End Common Styles */
 
 
-.page-title { font-size: 20px; font-weight: 700; color: #111827; margin: 0; }
-.payroll-tabs { display: flex; align-items: center; gap: 5px; overflow-x: auto; scrollbar-width: none; }
-.payroll-tabs::-webkit-scrollbar { display: none; }
-.payroll-tab {
-    font-size: 14px; color: #6B7280; text-decoration: none; padding: 12px 16px;
-    border-bottom: 3px solid transparent; white-space: nowrap; transition: all 0.2s; font-weight: 500;
-}
-.payroll-tab:hover { color: #111827; }
-.payroll-tab.active { color: #0066FF; border-bottom-color: #0066FF; font-weight: 600; }
-
 /* ── Content Card ── */
-.payroll-card {
-    background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    border: 1px solid #E5E7EB; padding: 24px;
-}
 
 /* ── Card Header ── */
 .card-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
@@ -132,7 +157,7 @@ ob_start();
 .breadcrumb strong { color: #111827; font-weight: 600; }
 
 .btn-outline-primary {
-    background: #fff; color: #0066FF; border: 1px solid #0066FF; padding: 8px 16px;
+    background: #fff; color: #2563EB; border: 1px solid #2563EB; padding: 8px 16px;
     border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer;
     display: flex; align-items: center; gap: 6px; transition: all 0.2s;
 }
@@ -148,7 +173,7 @@ ob_start();
     width: 100%; padding: 8px 0; border: none; border-bottom: 1px solid #D1D5DB;
     font-size: 14px; color: #111827; background: transparent; outline: none; transition: border-color 0.2s;
 }
-.line-input:focus { border-bottom-color: #0066FF; }
+.line-input:focus { border-bottom-color: #2563EB; }
 select.line-input {
     cursor: pointer; appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
@@ -164,7 +189,7 @@ select.line-input {
 
 .form-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 40px; }
 .btn-primary {
-    background: #0066FF; color: #fff; border: none; padding: 10px 24px;
+    background: #2563EB; color: #fff; border: none; padding: 10px 24px;
     border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer;
 }
 .btn-primary:hover { background: #0052cc; }
@@ -206,25 +231,25 @@ select.line-input {
 <div class="payroll-header-wrapper">
     <div class="title-wrapper">
         <a href="javascript:history.back()" class="btn-back" title="Go Back">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"
+                stroke-linecap="round" stroke-linejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12"></line>
                 <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
         </a>
     </div>
-        <h1 class="page-title">Payroll</h1>
-        <div class="payroll-top-links">
-            <a href="PaymentDeduction">Payment/Deduction</a> <span class="separator">|</span>
-            <a href="HoldSalary">Hold Salary</a> <span class="separator">|</span>
-            <a href="ApprovePayslip">Approve Payslip</a> <span class="separator">|</span>
-            <a href="EditPayslip">Edit Payslip</a> <span class="separator">|</span>
-            <a href="Loans">Loans</a> <span class="separator">|</span>
-            <a href="ProcessPayslip">Process Payslip</a> <span class="separator">|</span>
-            <a href="FullFinal">Final Settlement</a> <span class="separator">|</span>
-            <a href="SalaryStructure">Salary Structure</a> <span class="separator">|</span>
-            <a href="Timesheet">Timesheet</a>
-        </div>
-        <!-- <hr class="payroll-divider"> -->
+    <h1 class="page-title">Payroll</h1>
+     <div class="payroll-top-links">
+        <a href="PaymentDeduction" class="payroll-tab active">Payment/Deduction</a> <span class="separator">|</span>
+        <a href="HoldSalary">Hold Salary</a> <span class="separator">|</span>
+        <a href="ApprovePayslip">Approve Payslip</a> <span class="separator">|</span>
+        <a href="EditPayslip" class="payroll-tab">Edit Payslip</a> <span class="separator">|</span>
+        <a href="Loans">Loans</a> <span class="separator">|</span>
+        <a href="ProcessPayslip">Process Payslip</a> <span class="separator">|</span>
+        <a href="FullFinal">Final Settlement</a> <span class="separator">|</span>
+        <a href="SalaryStructure">Salary Structure</a> <span class="separator">|</span>
+        <a href="Timesheet">Timesheet</a>
+    </div>
 </div>
 
 <div class="payroll-card">    
@@ -373,9 +398,9 @@ select.line-input {
                     <rect x="35" y="30" width="30" height="40" rx="2" fill="#fff" stroke="#D1D5DB" stroke-width="2"/>
                     <path d="M35 34C35 32.8954 35.8954 32 37 32H63C64.1046 32 65 32.8954 65 34V42H35V34Z" fill="#4B5563"/>
                     <rect x="40" y="35" width="12" height="2" fill="#9CA3AF"/>
-                    <rect x="40" y="48" width="14" height="2" fill="#0066FF"/>
+                    <rect x="40" y="48" width="14" height="2" fill="#2563EB"/>
                     <rect x="40" y="52" width="20" height="2" fill="#E5E7EB"/>
-                    <rect x="40" y="58" width="14" height="2" fill="#0066FF"/>
+                    <rect x="40" y="58" width="14" height="2" fill="#2563EB"/>
                     <rect x="40" y="62" width="10" height="2" fill="#E5E7EB"/>
                 </svg>
                 <p>No Advance Payment/Deduction is there!</p>

@@ -44,14 +44,15 @@ QuickLinks - Done
 AssetManagement - Done
 Payroll - Working
 
+
 <!-- 18-06-2026 -->
 Payroll
 PaymentDeduction - Completed
-HoldSalary - Pending
-ApprovePayslip - Pending
-EditPayslip - Pending
-Loans - Pending
-ProcessPayslip - Pending
+HoldSalary - Completed
+ApprovePayslip - Completed
+EditPayslip - Completed
+Loans - Working
+ProcessPayslip - Working
 FullFinal - Pending
 SalaryStructure - Pending
 Timesheet - Pending
@@ -64,11 +65,8 @@ Payroll - Pending (urgent)
 Taxes - Pending (urgent)
 Reports - Pending (not urgent)
 
-
-
 CRM add tag filter in list view
 CRM add Extra Imformation
-
 dont chnage style write db table and fetch from table write full page code write also dami data
 toast alert add karo
 
@@ -91,3 +89,17 @@ AppRegistration - Working
 
 
 
+
+
+Insert
+ check
+ chars
+ image
+ table
+ page break
+ New Page
+ Ctrl + Z (undo)
+
+
+
+teleReportPDF4 
