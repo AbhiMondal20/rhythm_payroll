@@ -19,6 +19,7 @@ if (isset($_POST['ajax_action'])) {
         $org     = mysqli_real_escape_string($conn, $_POST['org'] ?? '');
         $loc     = mysqli_real_escape_string($conn, $_POST['loc'] ?? '');
         $dept    = mysqli_real_escape_string($conn, $_POST['dept'] ?? '');
+        $desig   = mysqli_real_escape_string($conn, $_POST['desig'] ?? '');
         $status  = mysqli_real_escape_string($conn, $_POST['status'] ?? '');
         $group   = mysqli_real_escape_string($conn, $_POST['group'] ?? '');
         $subGroup = mysqli_real_escape_string($conn, $_POST['subGroup'] ?? '');
@@ -35,6 +36,9 @@ if (isset($_POST['ajax_action'])) {
         }
         if (!empty($dept)) {
             $sql .= " AND `department` = '$dept'";
+        }
+        if (!empty($desig)) {
+            $sql .= " AND `designation` = '$desig'";
         }
         if (!empty($status)) {
             $sql .= " AND `status` = '$status'";
@@ -122,13 +126,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
             $insert = "INSERT INTO held_salaries (employee_code, employee_name, pay_month, remarks, status) VALUES ('$emp_code', '$emp_name', '$pay_month', '$remarks', 'held')";
             @mysqli_query($conn, $insert);
         }
+        $_SESSION['toast'] = ['type' => 'success', 'msg' => 'Salaries successfully put on hold.'];
+
     } 
     elseif ($_POST['action'] == 'release' && isset($_POST['record_id'])) {
         $record_id = (int)$_POST['record_id'];
         $update = "UPDATE held_salaries SET status='released', released_on=NOW() WHERE id=$record_id";
         @mysqli_query($conn, $update);
+        $_SESSION['toast'] = ['type' => 'success', 'msg' => 'Salary released successfully.'];
     }
-    header("Location: " . $_SERVER['PHP_SELF']);
+    // header("Location: " . $_SERVER['PHP_SELF']);
+    ?>
+<script>
+    window.location.href = window.location.href; // Refresh the page to reflect changes";
+</script>
+
+<?php
     exit();
 }
 
@@ -170,6 +183,14 @@ $departments = [];
 $dept_result = @mysqli_query($conn, "SELECT `id`, `dept_name` FROM `org_departments` WHERE `status` = 'Active' OR `status` = 1");
 if ($dept_result) { while ($row = mysqli_fetch_assoc($dept_result)) { $departments[] = $row; } }
 
+// Fetch Designations (Checking standard names: designations or org_designations)
+$designations = [];
+$desig_result = @mysqli_query($conn, "SELECT `id`, desig_name as `designation_name` FROM `designations` WHERE `status` = 'Active' OR `status` = 1");
+if (!$desig_result) { 
+    $desig_result = @mysqli_query($conn, "SELECT `id`, desig_name as `designation_name` FROM `org_designations` WHERE `status` = 'Active' OR `status` = 1"); 
+}
+if ($desig_result) { while ($row = mysqli_fetch_assoc($desig_result)) { $designations[] = $row; } }
+
 $groups = [];
 $group_result = @mysqli_query($conn, "SELECT `id`, `group_name` FROM `org_groups` WHERE `status` = 'Active' OR `status` = 1");
 if ($group_result) { while ($row = mysqli_fetch_assoc($group_result)) { $groups[] = $row; } }
@@ -177,215 +198,65 @@ if ($group_result) { while ($row = mysqli_fetch_assoc($group_result)) { $groups[
 $sub_groups = [];
 $sub_group_result = @mysqli_query($conn, "SELECT `id`, `sub_group_name` FROM `org_sub_groups` WHERE `status` = 'Active' OR `status` = 1");
 if ($sub_group_result) { while ($row = mysqli_fetch_assoc($sub_group_result)) { $sub_groups[] = $row; } }
+
 ob_start();
 ?>
 <link rel="stylesheet" href="includes/assets/style.css">
 <style>
 /* Common Styles */
-/* Back button */
-.btn-back {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-    color: #6B7280;
-    background: #fff;
-    border: 1px solid #D1D5DB;
-    text-decoration: none;
-    transition: all 0.2s;
-    cursor: pointer;
-}
-
-.btn-back:hover {
-    background: #F3F4F6;
-    color: #111827;
-    border-color: #9CA3AF;
-}
-
-/* ── Page header & Top Links ── */
-.payroll-header-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
-    gap: 5px;
-}
-
-.page-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: #111827;
-    margin: 0;
-}
-
-.payroll-top-links {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.payroll-top-links a {
-    font-size: 13px;
-    color: #6B7280;
-    text-decoration: none;
-    transition: color 0.15s;
-}
-
-.payroll-top-links a:hover {
-    color: #2563EB;
-}
-
-.payroll-top-links .separator {
-    color: #D1D5DB;
-    font-size: 14px;
-}
-
-/* ── Divider Line Style ── */
-.payroll-divider {
-    border: none;
-    border-top: 1px solid #D1D5DB;
-    /* Change color here if needed */
-    margin: 25px 0;
-    /* Adjust spacing around the line here */
-}
-
-.payroll-card {
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    border: 1px solid #E5E7EB;
-    padding: 24px;
-    min-height: 400px;
-}
-.payroll-tab{
-    padding: 5px 2px;
-    font-size: 13.5px;
-    font-weight: 500;
-    color: #6B7280;
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    border-bottom: 2.5px solid transparent;
-    white-space: nowrap;
-    transition: color .15s, border-color .15s;
-    font-family: inherit;
-    text-decoration: none;
-    display: block;
-    margin-bottom: -1px;
-}
-.payroll-tab:hover {
-    color: #111827;
-    border-bottom-color: #111827;
-}
-.payroll-tab.active {
-    color: #2563EB;
-    border-bottom-color: #2563EB;
-    font-weight: 600;
-}
-
-/* End Common Styles */
-
+.btn-back { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: #6B7280; background: #fff; border: 1px solid #D1D5DB; text-decoration: none; transition: all 0.2s; cursor: pointer; }
+.btn-back:hover { background: #F3F4F6; color: #111827; border-color: #9CA3AF; }
+.payroll-header-wrapper { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 5px; }
+.page-title { font-size: 20px; font-weight: 700; color: #111827; margin: 0; }
+.payroll-top-links { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.payroll-top-links a { font-size: 13px; color: #6B7280; text-decoration: none; transition: color 0.15s; }
+.payroll-top-links a:hover { color: #2563EB; }
+.payroll-top-links .separator { color: #D1D5DB; font-size: 14px; }
+.payroll-divider { border: none; border-top: 1px solid #D1D5DB; margin: 25px 0; }
+.payroll-card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); border: 1px solid #E5E7EB; padding: 24px; min-height: 400px; }
+.payroll-tab{ padding: 5px 2px; font-size: 13.5px; font-weight: 500; color: #6B7280; cursor: pointer; border: none; background: transparent; border-bottom: 2.5px solid transparent; white-space: nowrap; transition: color .15s, border-color .15s; font-family: inherit; text-decoration: none; display: block; margin-bottom: -1px; }
+.payroll-tab:hover { color: #111827; border-bottom-color: #111827; }
+.payroll-tab.active { color: #2563EB; border-bottom-color: #2563EB; font-weight: 600; }
 .card-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .breadcrumb { font-size: 15px; color: #4B5563; }
 .breadcrumb strong { color: #111827; font-weight: 600; }
-
 .inner-tabs { display: flex; gap: 20px; border-bottom: 1px solid #E5E7EB; margin-bottom: 25px; }
-.inner-tab {
-    font-size: 14px; color: #6B7280; text-decoration: none; padding-bottom: 10px;
-    border-bottom: 2px solid transparent; font-weight: 500; transition: all 0.2s; cursor: pointer;
-}
+.inner-tab { font-size: 14px; color: #6B7280; text-decoration: none; padding-bottom: 10px; border-bottom: 2px solid transparent; font-weight: 500; transition: all 0.2s; cursor: pointer; }
 .inner-tab:hover { color: #111827; }
 .inner-tab.active { color: #2563EB; border-bottom-color: #2563EB; font-weight: 600; }
-
-.section-heading {
-    font-size: 12px; font-weight: 700; color: #111827; margin-bottom: 12px;
-    text-transform: uppercase; margin-top: 25px;
-}
-
+.section-heading { font-size: 12px; font-weight: 700; color: #111827; margin-bottom: 12px; text-transform: uppercase; margin-top: 25px; }
 .search-filter-row { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; max-width: 500px; }
 .search-line-wrapper { position: relative; flex: 1; }
-.search-line-wrapper svg {
-    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-    width: 16px; height: 16px; stroke: #9CA3AF; fill: none; stroke-width: 2;
-}
-.search-line-wrapper input {
-    width: 100%; padding: 8px 10px 8px 32px; border: 1px solid #D1D5DB; border-radius: 4px;
-    font-size: 14px; outline: none; transition: border-color 0.2s; box-sizing: border-box;
-}
+.search-line-wrapper svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: #9CA3AF; fill: none; stroke-width: 2; }
+.search-line-wrapper input { width: 100%; padding: 8px 10px 8px 32px; border: 1px solid #D1D5DB; border-radius: 4px; font-size: 14px; outline: none; transition: border-color 0.2s; box-sizing: border-box; }
 .search-line-wrapper input:focus { border-color: #2563EB; }
-
-.btn-filters {
-    display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #D1D5DB;
-    color: #4B5563; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500;
-    cursor: pointer; transition: all 0.2s; height: 36px;
-}
+.btn-filters { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #D1D5DB; color: #4B5563; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; height: 36px; }
 .btn-filters:hover { background: #F9FAFB; border-color: #9CA3AF; }
-
-.selected-employee-box {
-    border: 1px solid #D1D5DB; border-radius: 4px; padding: 15px; max-width: 800px;
-    min-height: 50px; display: flex; flex-wrap: wrap; gap: 15px;
-}
-
+.selected-employee-box { border: 1px solid #D1D5DB; border-radius: 4px; padding: 15px; max-width: 800px; min-height: 50px; display: flex; flex-wrap: wrap; gap: 15px; }
 .pay-period-row { display: flex; gap: 40px; align-items: flex-end; max-width: 600px; margin-bottom: 30px; }
 .form-group { flex: 1; }
 .form-group label { display: block; font-size: 12px; color: #4B5563; margin-bottom: 8px; }
-
-.line-input {
-    width: 100%; padding: 8px 0; border: none; border-bottom: 1px solid #D1D5DB;
-    font-size: 14px; color: #111827; background: transparent; outline: none; transition: border-color 0.2s;
-}
+.line-input { width: 100%; padding: 8px 0; border: none; border-bottom: 1px solid #D1D5DB; font-size: 14px; color: #111827; background: transparent; outline: none; transition: border-color 0.2s; }
 .line-input::placeholder { color: #9CA3AF; }
 .line-input:focus { border-bottom-color: #2563EB; }
-
-select.line-input {
-    cursor: pointer; appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right center; padding-right: 20px;
-}
+select.line-input { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right center; padding-right: 20px; }
 .form-actions { display: flex; justify-content: flex-end; margin-top: 20px; gap: 10px; }
-.btn-primary {
-    background: #2563EB; color: #fff; border: none; padding: 8px 24px; border-radius: 4px;
-    font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s;
-}
+.btn-primary { background: #2563EB; color: #fff; border: none; padding: 8px 24px; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
 .btn-primary:hover { background: #0052cc; }
-.btn-outline {
-    background: #fff; color: #4B5563; border: 1px solid #D1D5DB; padding: 8px 24px;
-    border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s;
-}
+.btn-outline { background: #fff; color: #4B5563; border: 1px solid #D1D5DB; padding: 8px 24px; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
 .btn-outline:hover { background: #F3F4F6; }
-
 .table-responsive { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
 .data-table th, .data-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #E5E7EB; font-size: 14px; }
 .data-table th { background-color: #F9FAFB; color: #4B5563; font-weight: 600; }
 .btn-success { background: #10B981; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; font-size: 13px; cursor: pointer; }
-
 .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #111827; cursor: pointer; }
 .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: #2563EB; margin: 0; }
-
-/* Modal Design Setup */
-.modal-overlay {
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0, 0, 0, 0.4); display: none; align-items: center; justify-content: center;
-    z-index: 1000; padding: 20px; box-sizing: border-box;
-}
-.modal-content {
-    background: #fff; width: 100%; max-width: 900px; max-height: 90vh; border-radius: 8px;
-    display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-}
-.modal-header {
-    display: flex; justify-content: space-between; align-items: center; padding: 20px 24px;
-    border-bottom: 1px solid #E5E7EB;
-}
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; box-sizing: border-box; }
+.modal-content { background: #fff; width: 100%; max-width: 900px; max-height: 90vh; border-radius: 8px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid #E5E7EB; }
 .modal-header h2 { margin: 0; font-size: 16px; font-weight: 600; color: #111827; }
-.modal-close {
-    background: none; border: 1px solid #D1D5DB; font-size: 20px; cursor: pointer; color: #6B7280;
-    width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-}
+.modal-close { background: none; border: 1px solid #D1D5DB; font-size: 20px; cursor: pointer; color: #6B7280; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
 .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
 .modal-filter-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 20px; }
 .modal-search-row { display: flex; justify-content: space-between; align-items: center; }
@@ -398,14 +269,22 @@ select.line-input {
 .recent-tab { padding: 6px 12px; font-size: 12px; color: #6B7280; cursor: pointer; border-bottom: 2px solid transparent; }
 .recent-tab.active { color: #2563EB; border-bottom-color: #2563EB; font-weight: 500; }
 .recent-list { list-style: none; padding: 0; margin: 0; }
-.recent-list li {
-    display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #4B5563;
-    padding: 8px 0; border-bottom: 1px dashed #E5E7EB; cursor: pointer;
-}
+.recent-list li { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #4B5563; padding: 8px 0; border-bottom: 1px dashed #E5E7EB; cursor: pointer; }
 .recent-list li:hover { background: #F9FAFB; }
 .recent-list li button { background: none; border: 1px solid #D1D5DB; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; color: #EF4444; }
 .modal-footer { padding: 16px 24px; border-top: 1px solid #E5E7EB; display: flex; justify-content: flex-end; gap: 10px; background: #F9FAFB; }
+
+/* Custom Toast Alerts CSS */
+.toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+.toast { min-width: 250px; background: #fff; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-left: 4px solid #2563EB; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: #111827; transform: translateX(110%); opacity: 0; transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
+.toast.show { transform: translateX(0); opacity: 1; }
+.toast.success { border-left-color: #10B981; }
+.toast.error { border-left-color: #EF4444; }
+.toast-close-btn { background: none; border: none; font-size: 18px; cursor: pointer; color: #9CA3AF; display: flex; align-items: center; }
+.toast-close-btn:hover { color: #4B5563; }
 </style>
+
+<div class="toast-container" id="toastContainer"></div>
 
 <datalist id="employeeList">
     <?php foreach ($employees as $emp): ?>
@@ -470,9 +349,15 @@ select.line-input {
                 <div class="form-group">
                     <label>Month</label>
                     <select name="pay_month" class="line-input" required>
-                        <option value="May-2026" selected>May-2026</option>
-                        <option value="Apr-2026">Apr-2026</option>
-                        <option value="Mar-2026">Mar-2026</option>
+                        <?php
+                        for ($i = -2; $i <= 2; $i++) {
+                            $timestamp = strtotime("$i month");
+                            $value = date('M-Y', $timestamp);
+                            $selected = ($i == 0) ? 'selected' : '';
+
+                            echo "<option value='$value' $selected>$value</option>";
+                        }
+                        ?>
                     </select>
                 </div>
                 <div class="form-group" style="flex: 2;">
@@ -520,7 +405,6 @@ select.line-input {
     </div>
 </div>
 
-<!-- FILTER SEARCH MODAL -->
 <div id="filterModal" class="modal-overlay">
     <div class="modal-content">
         <div class="modal-header">
@@ -537,7 +421,17 @@ select.line-input {
                 <div class="form-group"><label>Organization</label><select id="filterOrg" class="line-input"><option value="">Select Organization</option><?php foreach($organizations as $org): ?><option value="<?= $org['id'] ?>"><?= htmlspecialchars($org['client_name']) ?></option><?php endforeach; ?></select></div>
                 <div class="form-group"><label>Locations</label><select id="filterLoc" class="line-input"><option value="">Select Location</option><?php foreach($locations as $loc): ?><option value="<?= $loc['id'] ?>"><?= htmlspecialchars($loc['location_name']) ?></option><?php endforeach; ?></select></div>
                 <div class="form-group"><label>Department</label><select id="filterDept" class="line-input"><option value="">Select Department</option><?php foreach($departments as $dept): ?><option value="<?= $dept['id'] ?>"><?= htmlspecialchars($dept['dept_name']) ?></option><?php endforeach; ?></select></div>
-                <div class="form-group"><label>Designation</label><select id="filterDesig" class="line-input"><option value="">Select Designation</option></select></div>
+                
+                <div class="form-group">
+                    <label>Designation</label>
+                    <select id="filterDesig" class="line-input">
+                        <option value="">Select Designation</option>
+                        <?php foreach($designations as $desig): ?>
+                            <option value="<?= $desig['id'] ?>"><?= htmlspecialchars($desig['designation_name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
                 <div class="form-group"><label>Status</label><select id="filterStatus" class="line-input"><option value="">Select Status</option><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
                 <div class="form-group"><label>Group</label><select id="filterGroup" class="line-input"><option value="">Select Group</option><?php foreach($groups as $grp): ?><option value="<?= $grp['id'] ?>"><?= htmlspecialchars($grp['group_name']) ?></option><?php endforeach; ?></select></div>
                 <div class="form-group"><label>Sub Group</label><select id="filterSubGroup" class="line-input"><option value="">Select Sub Group</option><?php foreach($sub_groups as $sgrp): ?><option value="<?= $sgrp['id'] ?>"><?= htmlspecialchars($sgrp['sub_group_name']) ?></option><?php endforeach; ?></select></div>
@@ -588,6 +482,36 @@ select.line-input {
 ?>
 
 <script>
+// Custom Toast Trigger Function
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <span>${message}</span>
+        <button class="toast-close-btn" onclick="this.parentElement.remove()">&times;</button>
+    `;
+    container.appendChild(toast);
+
+    // Trigger reflow to animate
+    void toast.offsetWidth;
+    toast.classList.add('show');
+
+    // Auto remove after 3.5 seconds
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+
+// PHP Session Toast Alert Interceptor
+<?php if(isset($_SESSION['toast'])): ?>
+document.addEventListener('DOMContentLoaded', () => {
+    showToast(<?= json_encode($_SESSION['toast']['msg']) ?>, <?= json_encode($_SESSION['toast']['type']) ?>);
+});
+<?php unset($_SESSION['toast']); endif; ?>
+
+
 function switchTab(tab) {
     document.getElementById('tabHold').classList.remove('active');
     document.getElementById('tabRelease').classList.remove('active');
@@ -641,6 +565,7 @@ function applySearchState(data) {
     document.getElementById('filterOrg').value = data.org || '';
     document.getElementById('filterLoc').value = data.loc || '';
     document.getElementById('filterDept').value = data.dept || '';
+    document.getElementById('filterDesig').value = data.desig || ''; 
     document.getElementById('filterStatus').value = data.status || '';
     document.getElementById('filterGroup').value = data.group || '';
     document.getElementById('filterSubGroup').value = data.subGroup || '';
@@ -653,6 +578,7 @@ function captureSearchState() {
         org: document.getElementById('filterOrg').value,
         loc: document.getElementById('filterLoc').value,
         dept: document.getElementById('filterDept').value,
+        desig: document.getElementById('filterDesig').value, 
         status: document.getElementById('filterStatus').value,
         group: document.getElementById('filterGroup').value,
         subGroup: document.getElementById('filterSubGroup').value
@@ -721,6 +647,7 @@ function saveCurrentSearch() {
                     savedSearches = res.saved;
                     renderSidebarLists();
                     switchSidebarTab('saved');
+                    showToast('Search criteria saved successfully!', 'success');
                 }
             });
     }
@@ -753,28 +680,13 @@ function deleteSearchItem(id, event) {
                     recentSearches = res.recent;
                     savedSearches = res.saved;
                     renderSidebarLists();
-
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Deleted!',
-                        text: 'The search has been removed.',
-                        timer: 1500,
-                        showConfirmButton: false
-                    });
+                    showToast('Search item deleted successfully', 'success');
                 } else {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: 'Failed to delete the search.'
-                    });
+                    showToast('Failed to delete the search item.', 'error');
                 }
             })
             .catch(() => {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error',
-                    text: 'Something went wrong.'
-                });
+                showToast('Something went wrong during deletion.', 'error');
             });
         }
     });

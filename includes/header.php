@@ -16,24 +16,33 @@ if ($expiry_date !== 'N/A') {
     $expiry_date = date('d M Y', strtotime($expiry_date));
 }
 
-$sql = "SELECT `id`, `client_code`, `client_name`, `logo`, `phone`, `email`, `website`, `address`, `status`, `created_at`, `updated_at` FROM `companies` WHERE client_code = ? LIMIT 1";
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("s", $client_code);
-$stmt->execute();
-$result = $stmt->get_result();
-if ($result->num_rows > 0) {
-    $row = $result->fetch_assoc();
+$client_code = mysqli_real_escape_string($conn, $client_code);
+
+$sql = "SELECT id, client_code, client_name, logo, phone, email, website, address, status, created_at, updated_at
+        FROM companies
+        WHERE client_code='$client_code'
+        LIMIT 1";
+
+$result = mysqli_query($conn, $sql);
+
+if (mysqli_num_rows($result) > 0) {
+    $row = mysqli_fetch_assoc($result);
     $company_name = $row['client_name'];
     $company_logo = $row['logo'];
 } else {
     $company_logo = 'uploads/default.png';
 }
 
-$sql = "SELECT `id`, `client_id`, `client_code`, `employee_code`, `employee_name`, `username`, `email`, `password_hash`, `role`, `status`, `last_login_at`, `created_at`, `updated_at` FROM `users` WHERE status = 'active' AND username = ? LIMIT 1";
+$sql = "SELECT `id`, `client_id`, `client_code`, `employee_code`, `employee_name`, `username`, `email`, `password_hash`, `role`, `status`, `last_login_at`, `created_at`, `updated_at`
+        FROM `users`
+        WHERE status='active' AND username=?
+        LIMIT 1";
+
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("s", $username);
 $stmt->execute();
 $result = $stmt->get_result();
+
 if ($result->num_rows > 0) {
     $usr = $result->fetch_assoc();
     $employee_name = $usr['employee_name'] ?? '';
@@ -89,7 +98,6 @@ if ($result->num_rows > 0) {
                         </svg>
                         <span class="notif-dot"></span>
                     </button>
-
                     <a href="support" style="position:relative;padding:7px 9px" class="btn" title="Support">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2"
@@ -101,43 +109,42 @@ if ($result->num_rows > 0) {
                             <path d="M18 19a6 6 0 0 1-6 3" />
                         </svg>
                     </a>
-
                     <!-- USER DROPDOWN -->
                     <div class="user-menu-wrap" id="userMenuWrap">
                         <?php
-    $name = trim($employee_name);
-    $initials = '?'; // Fallback in case the name is completely empty
+                        $name = trim($employee_name);
+                        $initials = '?';
 
-    if (!empty($name)) {
-        if (stripos($name, 'Admin') === 0) {
-            $initials = 'AD';
-        } else {
-            $words = preg_split('/\s+/', $name);
+                        if (!empty($name)) {
+                            if (stripos($name, 'Admin') === 0) {
+                                $initials = 'AD';
+                            } else {
+                                $words = preg_split('/\s+/', $name);
 
-            if (count($words) >= 2) {
-                // First letter of the first word + first letter of the last word
-                $initials = strtoupper(substr($words[0], 0, 1) . substr($words[count($words)-1], 0, 1));
-            } else {
-                // FIXED: Added '$initials =' here
-                $initials = strtoupper(substr($name, 0, 1));
-            }
-        }
-    }
-?>
+                                if (count($words) >= 2) {
+                                    // First letter of the first word + first letter of the last word
+                                    $initials = strtoupper(substr($words[0], 0, 1) . substr($words[count($words)-1], 0, 1));
+                                } else {
+                                    // FIXED: Added '$initials =' here
+                                    $initials = strtoupper(substr($name, 0, 1));
+                                }
+                            }
+                        }
+                    ?>
 
-<div class="user-trigger" id="userTrigger" onclick="toggleUserDropdown(event)">
-    <div class="avatar"><?= htmlspecialchars($initials) ?></div>
+                        <div class="user-trigger" id="userTrigger" onclick="toggleUserDropdown(event)">
+                            <div class="avatar"><?= htmlspecialchars($initials) ?></div>
 
-    <span class="user-name"><?= htmlspecialchars($employee_name) ?></span>
+                            <span class="user-name"><?= htmlspecialchars($employee_name) ?></span>
 
-    <svg class="user-arrow" width="16" height="16" viewBox="0 0 20 20" fill="none">
-        <path d="M5 7.5L10 12.5L15 7.5"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round" />
-    </svg>
-</div>
+                            <svg class="user-arrow" width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                <path d="M5 7.5L10 12.5L15 7.5"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                            </svg>
+                        </div>
                         <div class="user-dropdown" id="userDropdown">
                             <div class="user-dropdown-header">
                                 <div class="avatar large"><?= $initials ?></div>
@@ -175,9 +182,7 @@ if ($result->num_rows > 0) {
                                 <i class="fa-solid fa-circle-question dropdown-icon"></i>
                                 <span>Help & Support</span>
                             </a>
-
                             <div class="dropdown-divider"></div>
-
                             <a href="logout" class="dropdown-item danger" style="text-decoration:none">
                                 <i class="fa-solid fa-right-from-bracket dropdown-icon"></i>
                                 <span>Logout</span>

@@ -47,7 +47,7 @@ Payroll - Working
 
 <!-- 18-06-2026 -->
 Payroll
-PaymentDeduction - Completed
+PaymentDeduction - Working 
 HoldSalary - Completed
 ApprovePayslip - Completed
 EditPayslip - Completed
@@ -56,6 +56,12 @@ ProcessPayslip - Working
 FullFinal - Pending
 SalaryStructure - Pending
 Timesheet - Pending
+
+<!-- 01-07-2026 -->
+FullFinal - Working
+
+
+
 
 Leave Accumulations - Pending (not urgent)
 Apply Leave - Pending (urgent)
@@ -70,19 +76,17 @@ CRM add Extra Imformation
 dont chnage style write db table and fetch from table write full page code write also dami data
 toast alert add karo
 
-
 Dont chnage style write db table and fetch from table write full page code 
 toast alert add karo
-
 
 GMB Updates
 Successfully published 2 GMB posts for each location: 
 Siliguri, Coochbehar, and Raiganj.
 
 Payroll Module Progress
-Reimbursement - done
-Approval Rules - Working
-AppRegistration - Working
+Hold Salary - done
+Approve Payslip - Working
+Edit Payslip - Working
 
 
 

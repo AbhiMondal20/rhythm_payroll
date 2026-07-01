@@ -9,8 +9,58 @@ require_once 'includes/db_client.php';
 
 $page_title = 'Payroll - Advance Payment/Deduction';
 
+$msg = '';
+$error = '';
+
 // ==========================================
-// FETCH EMPLOYEES FOR SEARCH DROPDOWN
+// HANDLE TOAST NOTIFICATION
+// ==========================================
+$toast_data = null;
+if (isset($_SESSION['toast'])) {
+    $toast_data = $_SESSION['toast'];
+    unset($_SESSION['toast']);
+}
+
+// ==========================================
+// HANDLE FORM SUBMISSION (Same Page Save)
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record'])) {
+    $employee_name  = mysqli_real_escape_string($conn, $_POST['employee_name']);
+    $financial_year = mysqli_real_escape_string($conn, $_POST['financial_year']);
+    $pay_period     = mysqli_real_escape_string($conn, $_POST['pay_period']);
+    $component_type = mysqli_real_escape_string($conn, $_POST['component_type']);
+    $component      = mysqli_real_escape_string($conn, $_POST['component']);
+    $amount         = floatval($_POST['amount']);
+    $remarks        = mysqli_real_escape_string($conn, $_POST['remarks']);
+
+    $insert_sql = "INSERT INTO `advance_payments` 
+                   (`employee_name`, `financial_year`, `pay_period`, `component_type`, `component`, `amount`, `remarks`) 
+                   VALUES 
+                   ('$employee_name', '$financial_year', '$pay_period', '$component_type', '$component', '$amount', '$remarks')";
+    
+    if (mysqli_query($conn, $insert_sql)) {
+        $_SESSION['toast'] = ['type' => 'success', 'msg' => 'Record saved successfully.'];
+        header("Location: " . $_SERVER['PHP_SELF']); // Redirect to clear POST data
+        exit();
+    } else {
+        $error = "Error saving record: " . mysqli_error($conn);
+        $_SESSION['toast'] = ['type' => 'error', 'msg' => 'Failed to save record.'];
+        header("Location: " . $_SERVER['PHP_SELF']); // Redirect to show toast
+        exit();
+    }
+}
+
+// ==========================================
+// DYNAMIC FINANCIAL YEARS (-2 to +2 years)
+// ==========================================
+$current_year = (int)date('Y');
+$financial_years = [];
+for ($y = $current_year - 2; $y <= $current_year + 2; $y++) {
+    $financial_years[] = $y;
+}
+
+// ==========================================
+// FETCH EMPLOYEES
 // ==========================================
 $employees = [];
 $emp_sql = "SELECT `employee_code`, `employee_name` FROM `employees`"; 
@@ -23,10 +73,10 @@ if ($emp_result && mysqli_num_rows($emp_result) > 0) {
 }
 
 // ==========================================
-// FETCH SALARY COMPONENTS FOR DROPDOWN
+// FETCH SALARY COMPONENTS (New Table)
 // ==========================================
 $components = [];
-$comp_sql = "SELECT `id`, `name` FROM `salary_component_categories`"; 
+$comp_sql = "SELECT `id`, `salary_type`, `component_name` FROM `salary_components` WHERE `status` = 'Active' OR `status` = 1"; 
 $comp_result = @mysqli_query($conn, $comp_sql);
 
 if ($comp_result && mysqli_num_rows($comp_result) > 0) {
@@ -40,161 +90,37 @@ ob_start();
 <link rel="stylesheet" href="includes/assets/style.css">
 <style>
 /* Common Styles */
-/* Back button */
-.btn-back {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-    color: #6B7280;
-    background: #fff;
-    border: 1px solid #D1D5DB;
-    text-decoration: none;
-    transition: all 0.2s;
-    cursor: pointer;
-}
-
-.btn-back:hover {
-    background: #F3F4F6;
-    color: #111827;
-    border-color: #9CA3AF;
-}
-
-/* ── Page header & Top Links ── */
-.payroll-header-wrapper {
-    display: flex;
-    /* align-items: center; */
-    justify-content: space-between;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
-    gap: 5px;
-}
-
-.page-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: #111827;
-    margin: 0;
-
-}
-
-.payroll-top-links {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.payroll-top-links a {
-    font-size: 13px;
-    color: #6B7280;
-    text-decoration: none;
-    transition: color 0.15s;
-}
-
-.payroll-top-links a:hover {
-    color: #2563EB;
-}
-
-.payroll-top-links .separator {
-    color: #D1D5DB;
-    font-size: 14px;
-}
-
-/* ── Divider Line Style ── */
-.payroll-divider {
-    border: none;
-    border-top: 1px solid #D1D5DB;
-    /* Change color here if needed */
-    margin: 25px 0;
-    /* Adjust spacing around the line here */
-}
-
-.payroll-card {
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    border: 1px solid #E5E7EB;
-    padding: 24px;
-    min-height: 400px;;
-}
-.payroll-tab{
-    padding: 5px 2px;
-    font-size: 13.5px;
-    font-weight: 500;
-    color: #6B7280;
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    border-bottom: 2.5px solid transparent;
-    white-space: nowrap;
-    transition: color .15s, border-color .15s;
-    font-family: inherit;
-    text-decoration: none;
-    display: block;
-    margin-bottom: -1px;
-}
-.payroll-tab:hover {
-    color: #111827;
-    border-bottom-color: #111827;
-}
-.payroll-tab.active {
-    color: #2563EB;
-    border-bottom-color: #2563EB;
-    font-weight: 600;
-}
-
-/* End Common Styles */
-
-
-/* ── Content Card ── */
-
-/* ── Card Header ── */
+.btn-back { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: #6B7280; background: #fff; border: 1px solid #D1D5DB; text-decoration: none; transition: all 0.2s; cursor: pointer; }
+.btn-back:hover { background: #F3F4F6; color: #111827; border-color: #9CA3AF; }
+.payroll-header-wrapper { display: flex; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 5px; }
+.page-title { font-size: 20px; font-weight: 700; color: #111827; margin: 0; }
+.payroll-top-links { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.payroll-top-links a { font-size: 13px; color: #6B7280; text-decoration: none; transition: color 0.15s; }
+.payroll-top-links a:hover { color: #2563EB; }
+.payroll-top-links .separator { color: #D1D5DB; font-size: 14px; }
+.payroll-divider { border: none; border-top: 1px solid #D1D5DB; margin: 25px 0; }
+.payroll-card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); border: 1px solid #E5E7EB; padding: 24px; min-height: 400px;; }
+.payroll-tab{ padding: 5px 2px; font-size: 13.5px; font-weight: 500; color: #6B7280; cursor: pointer; border: none; background: transparent; border-bottom: 2.5px solid transparent; white-space: nowrap; transition: color .15s, border-color .15s; font-family: inherit; text-decoration: none; display: block; margin-bottom: -1px; }
+.payroll-tab:hover { color: #111827; border-bottom-color: #111827; }
+.payroll-tab.active { color: #2563EB; border-bottom-color: #2563EB; font-weight: 600; }
 .card-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
 .breadcrumb { font-size: 15px; color: #4B5563; }
 .breadcrumb strong { color: #111827; font-weight: 600; }
-
-.btn-outline-primary {
-    background: #fff; color: #2563EB; border: 1px solid #2563EB; padding: 8px 16px;
-    border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer;
-    display: flex; align-items: center; gap: 6px; transition: all 0.2s;
-}
+.btn-outline-primary { background: #fff; color: #2563EB; border: 1px solid #2563EB; padding: 8px 16px; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
 .btn-outline-primary:hover { background: #F0F5FF; }
-
-/* ── New Add Form Styles ── */
 .add-form-section { display: none; }
 .form-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 30px; margin-bottom: 25px; }
 .form-row.two-col { grid-template-columns: 1fr 1fr 2fr; }
 .form-group label { display: block; font-size: 12px; font-weight: 600; color: #111827; margin-bottom: 8px; }
-
-.line-input {
-    width: 100%; padding: 8px 0; border: none; border-bottom: 1px solid #D1D5DB;
-    font-size: 14px; color: #111827; background: transparent; outline: none; transition: border-color 0.2s;
-}
+.line-input { width: 100%; padding: 8px 0; border: none; border-bottom: 1px solid #D1D5DB; font-size: 14px; color: #111827; background: transparent; outline: none; transition: border-color 0.2s; }
 .line-input:focus { border-bottom-color: #2563EB; }
-select.line-input {
-    cursor: pointer; appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right center; padding-right: 20px;
-}
-
+select.line-input { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right center; padding-right: 20px; }
 .search-line-wrapper { position: relative; }
-.search-line-wrapper svg {
-    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-    width: 16px; height: 16px; stroke: #9CA3AF; fill: none; stroke-width: 2;
-}
+.search-line-wrapper svg { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: #9CA3AF; fill: none; stroke-width: 2; }
 .search-line-wrapper input { padding-left: 24px; }
-
 .form-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 40px; }
-.btn-primary {
-    background: #2563EB; color: #fff; border: none; padding: 10px 24px;
-    border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer;
-}
+.btn-primary { background: #2563EB; color: #fff; border: none; padding: 10px 24px; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; }
 .btn-primary:hover { background: #0052cc; }
-
-/* ── Filters Section (List View) ── */
 .list-view-section { display: block; }
 .filters-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 40px; margin-bottom: 40px; }
 .filters-grid label { display: block; font-size: 12px; font-weight: 600; color: #111827; margin-bottom: 12px; text-transform: uppercase; }
@@ -203,24 +129,65 @@ select.line-input {
 .search-input { width: 100%; padding: 10px 10px 10px 36px; border: 1px solid #D1D5DB; border-radius: 4px; font-size: 14px; }
 .pay-period-controls { display: flex; align-items: flex-end; gap: 20px; }
 .select-group { flex: 1; min-width: 120px; }
-
-/* ── Table Styles ── */
 .table-responsive { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
 .data-table th, .data-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #E5E7EB; font-size: 14px; }
 .data-table th { background-color: #F9FAFB; color: #4B5563; font-weight: 600; }
 .data-table tbody tr:hover { background-color: #F9FAFB; }
-
-/* ── Empty State ── */
 .empty-state { text-align: center; padding: 60px 0; }
 .empty-state-svg { width: 120px; height: 120px; margin: 0 auto 16px; }
 .empty-state p { color: #9CA3AF; font-size: 14px; margin: 0; }
+@media (max-width: 900px) { .form-row, .form-row.two-col { grid-template-columns: 1fr 1fr; } .filters-grid { grid-template-columns: 1fr; } }
 
-@media (max-width: 900px) {
-    .form-row, .form-row.two-col { grid-template-columns: 1fr 1fr; }
-    .filters-grid { grid-template-columns: 1fr; }
+/* ================================
+   Toast Notification Styles
+=================================== */
+#toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
+.toast {
+    min-width: 280px;
+    padding: 14px 20px;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transform: translateX(120%);
+    opacity: 0;
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+.toast.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+.toast.success { background-color: #10B981; border-left: 4px solid #047857; }
+.toast.error { background-color: #EF4444; border-left: 4px solid #B91C1C; }
+.toast-close {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 18px;
+    margin-left: 12px;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.8;
+}
+.toast-close:hover { opacity: 1; }
 </style>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
 
 <datalist id="employeeList">
     <?php foreach ($employees as $emp): ?>
@@ -231,8 +198,7 @@ select.line-input {
 <div class="payroll-header-wrapper">
     <div class="title-wrapper">
         <a href="javascript:history.back()" class="btn-back" title="Go Back">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"
-                stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12"></line>
                 <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
@@ -264,7 +230,7 @@ select.line-input {
     </div>
 
     <div class="add-form-section" id="addFormSection">
-        <form action="process_payment_deduction.php" method="POST">
+        <form method="POST">
             <div class="form-row">
                 <div class="form-group">
                     <label>Name</label>
@@ -275,22 +241,20 @@ select.line-input {
                 </div>
                 <div class="form-group">
                     <label>Financial Year</label>
-                    <select name="financial_year" class="line-input">
-                        <option value="2026">2026</option>
-                        <option value="2025">2025</option>
+                    <select name="financial_year" id="financialYearSelect" class="line-input" onchange="updatePayPeriods('financialYearSelect', 'payPeriodSelect')">
+                        <?php foreach($financial_years as $fy): ?>
+                            <option value="<?= $fy ?>" <?= $fy == $current_year ? 'selected' : '' ?>><?= $fy ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="form-group">
                     <label>Pay Period</label>
-                    <select name="pay_period" class="line-input">
-                        <option value="Jun-2026">Jun-2026</option>
-                        <option value="May-2026">May-2026</option>
-                        <option value="Apr-2026">Apr-2026</option>
-                    </select>
+                    <select name="pay_period" id="payPeriodSelect" class="line-input" required>
+                        </select>
                 </div>
                 <div class="form-group">
                     <label>Component Type</label>
-                    <select name="component_type" class="line-input" required>
+                    <select name="component_type" id="componentTypeSelect" class="line-input" onchange="updateComponents()" required>
                         <option value="">Select Type</option>
                         <option value="Earning">Earning</option>
                         <option value="Deduction">Deduction</option>
@@ -301,14 +265,9 @@ select.line-input {
             <div class="form-row two-col">
                 <div class="form-group">
                     <label>Component</label>
-                    <select name="component" class="line-input" required>
+                    <select name="component" id="componentSelect" class="line-input" required>
                         <option value="">Select Component</option>
-                        <?php foreach ($components as $comp): ?>
-                            <option value="<?= htmlspecialchars($comp['name']) ?>">
-                                <?= htmlspecialchars($comp['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                        </select>
                 </div>
                 <div class="form-group">
                     <label>Amount</label>
@@ -342,17 +301,16 @@ select.line-input {
                 <div class="pay-period-controls">
                     <div class="select-group">
                         <label style="text-transform:none;">Year</label>
-                        <select class="line-input">
-                            <option>2026</option>
-                            <option>2025</option>
+                        <select class="line-input" id="filterYearSelect" onchange="updatePayPeriods('filterYearSelect', 'filterMonthSelect', true)">
+                            <?php foreach($financial_years as $fy): ?>
+                                <option value="<?= $fy ?>" <?= $fy == $current_year ? 'selected' : '' ?>><?= $fy ?></option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="select-group">
                         <label style="text-transform:none;">Month</label>
-                        <select class="line-input">
-                            <option>May-2026</option>
-                            <option>Apr-2026</option>
-                        </select>
+                        <select class="line-input" id="filterMonthSelect">
+                             </select>
                     </div>
                     <button class="btn-primary" style="height: 38px;">Get Details</button>
                 </div>
@@ -408,7 +366,6 @@ select.line-input {
         <?php } ?>
 
     </div>
-
 </div>
 
 <?php
@@ -419,6 +376,41 @@ include 'includes/footer.php';
 ?>
 
 <script>
+// =====================================
+// TOAST NOTIFICATION LOGIC
+// =====================================
+function showToast(type, message) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    toast.innerHTML = `
+        <span>${message}</span>
+        <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
+    `;
+    
+    container.appendChild(toast);
+    
+    // Trigger slide-in animation
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 10);
+    
+    // Auto remove after 3.5 seconds
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300); // Wait for fade-out
+    }, 3500);
+}
+
+// Check for session toast data generated from PHP
+<?php if ($toast_data): ?>
+    document.addEventListener('DOMContentLoaded', () => {
+        showToast('<?= $toast_data['type'] ?>', '<?= addslashes($toast_data['msg']) ?>');
+    });
+<?php endif; ?>
+
+// Keep track of form visibility
 function toggleFormView(showForm) {
     const formSection = document.getElementById('addFormSection');
     const listSection = document.getElementById('listViewSection');
@@ -434,5 +426,57 @@ function toggleFormView(showForm) {
         btnAddNew.style.display = 'flex'; 
     }
 }
+
+// =====================================
+// DYNAMIC PAY PERIOD GENERATOR
+// =====================================
+const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function updatePayPeriods(yearSelectId, periodSelectId, isFilterOnly = false) {
+    const yearSelect = document.getElementById(yearSelectId);
+    const periodSelect = document.getElementById(periodSelectId);
+    const selectedYear = yearSelect.value;
+    
+    periodSelect.innerHTML = ''; // Clear dropdown
+
+    monthNames.forEach(month => {
+        const option = document.createElement('option');
+        // If it's the filter dropdown, just save the month name (or month-year as needed)
+        option.value = isFilterOnly ? `${month}-${selectedYear}` : `${month}-${selectedYear}`;
+        option.textContent = `${month}-${selectedYear}`;
+        periodSelect.appendChild(option);
+    });
+}
+
+// =====================================
+// DYNAMIC COMPONENT LISTING
+// =====================================
+const dbComponents = <?= json_encode($components); ?>;
+
+function updateComponents() {
+    const typeSelect = document.getElementById('componentTypeSelect');
+    const compSelect = document.getElementById('componentSelect');
+    const selectedType = typeSelect.value; 
+
+    compSelect.innerHTML = '<option value="">Select Component</option>';
+
+    if(selectedType !== '') {
+        dbComponents.forEach(comp => {
+            // Checks if the component matches Earning or Deduction
+            if (comp.salary_type === selectedType) {
+                const option = document.createElement('option');
+                option.value = comp.component_name;
+                option.textContent = comp.component_name;
+                compSelect.appendChild(option);
+            }
+        });
+    }
+}
+
+// Initialize Dropdowns on Page Load
+document.addEventListener('DOMContentLoaded', () => {
+    updatePayPeriods('financialYearSelect', 'payPeriodSelect');
+    updatePayPeriods('filterYearSelect', 'filterMonthSelect', true);
+});
 </script>
 <script src="includes/assets/scripts.js"></script>

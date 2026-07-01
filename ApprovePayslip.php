@@ -146,6 +146,16 @@ $departments = [];
 $dept_result = @mysqli_query($conn, "SELECT `id`, `dept_name` FROM `org_departments` WHERE `status` = 'Active' OR `status` = 1");
 if ($dept_result) { while ($row = mysqli_fetch_assoc($dept_result)) { $departments[] = $row; } }
 
+// Fetch Designations
+$designations = [];
+$desig_result = @mysqli_query($conn, "SELECT `id`, `desig_name` FROM `org_designations` WHERE `status` = 'Active' OR `status` = 1");
+if ($desig_result) { while ($row = mysqli_fetch_assoc($desig_result)) { $designations[] = $row; } }
+
+// Fetch Categories
+$categories = [];
+$cat_result = @mysqli_query($conn, "SELECT `id`, `cat_name` FROM `org_categories` WHERE `status` = 'Active' OR `status` = 1");
+if ($cat_result) { while ($row = mysqli_fetch_assoc($cat_result)) { $categories[] = $row; } }
+
 $groups = [];
 $group_result = @mysqli_query($conn, "SELECT `id`, `group_name` FROM `org_groups` WHERE `status` = 'Active' OR `status` = 1");
 if ($group_result) { while ($row = mysqli_fetch_assoc($group_result)) { $groups[] = $row; } }
@@ -237,9 +247,7 @@ ob_start();
 .payroll-divider {
     border: none;
     border-top: 1px solid #D1D5DB;
-    /* Change color here if needed */
     margin: 25px 0;
-    /* Adjust spacing around the line here */
 }
 
 .payroll-card {
@@ -356,6 +364,34 @@ select.line-input {
 .recent-list li button { background: none; border: 1px solid #D1D5DB; border-radius: 50%; cursor: pointer; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: #EF4444; transition: all 0.2s; margin-left: 10px; flex-shrink: 0; }
 .recent-list li button:hover { background: #FEE2E2; border-color: #EF4444; }
 .modal-footer { padding: 16px 24px; border-top: 1px solid #E5E7EB; display: flex; justify-content: flex-end; gap: 10px; background: #F9FAFB; border-radius: 0 0 8px 8px; }
+
+/* ── Custom Toast Styles ── */
+#customToast {
+    visibility: hidden;
+    min-width: 250px;
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 16px;
+    position: fixed;
+    z-index: 9999;
+    right: 20px;
+    bottom: -50px; /* Start hidden below viewport */
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out, bottom 0.3s ease-in-out, visibility 0.3s ease-in-out;
+}
+#customToast.show {
+    visibility: visible;
+    opacity: 1;
+    bottom: 30px;
+}
+#customToast.success { background-color: #10B981; } /* Tailwind Emerald-500 */
+#customToast.error { background-color: #EF4444; }   /* Tailwind Red-500 */
+#customToast.warning { background-color: #F59E0B; } /* Tailwind Amber-500 */
 </style>
 
 <datalist id="employeeList">
@@ -416,17 +452,18 @@ select.line-input {
         <div class="pay-period-row">
             <div class="form-group">
                 <label>Financial Year</label>
-                <select name="financial_year" class="line-input" required>
-                    <option value="2026" selected>2026</option>
-                    <option value="2025">2025</option>
+                <select name="financial_year" id="financialYear" class="line-input" required onchange="updateMonthsDropdown()">
+                    <?php 
+                        $currentYear = (int)date('Y');
+                        for ($y = $currentYear - 2; $y <= $currentYear + 2; $y++): 
+                    ?>
+                        <option value="<?= $y ?>" <?= $y == $currentYear ? 'selected' : '' ?>><?= $y ?></option>
+                    <?php endfor; ?>
                 </select>
             </div>
             <div class="form-group">
                 <label>Month</label>
-                <select name="pay_month" class="line-input" required>
-                    <option value="May-2026" selected>May-2026</option>
-                    <option value="Apr-2026">Apr-2026</option>
-                    <option value="Mar-2026">Mar-2026</option>
+                <select name="pay_month" id="payMonth" class="line-input" required>
                 </select>
             </div>
         </div>
@@ -454,11 +491,31 @@ select.line-input {
                 <div class="form-group"><label>Organization</label><select id="filterOrg" class="line-input"><option value="">Select Organization</option><?php foreach($organizations as $org): ?><option value="<?= $org['id'] ?>"><?= htmlspecialchars($org['client_name']) ?></option><?php endforeach; ?></select></div>
                 <div class="form-group"><label>Locations</label><select id="filterLoc" class="line-input"><option value="">Select Location</option><?php foreach($locations as $loc): ?><option value="<?= $loc['id'] ?>"><?= htmlspecialchars($loc['location_name']) ?></option><?php endforeach; ?></select></div>
                 <div class="form-group"><label>Department</label><select id="filterDept" class="line-input"><option value="">Select Department</option><?php foreach($departments as $dept): ?><option value="<?= $dept['id'] ?>"><?= htmlspecialchars($dept['dept_name']) ?></option><?php endforeach; ?></select></div>
-                <div class="form-group"><label>Designation</label><select id="filterDesig" class="line-input"><option value="">Select Designation</option></select></div>
+                
+                <div class="form-group">
+                    <label>Designation</label>
+                    <select id="filterDesig" class="line-input">
+                        <option value="">Select Designation</option>
+                        <?php foreach($designations as $desig): ?>
+                            <option value="<?= $desig['id'] ?>"><?= htmlspecialchars($desig['desig_name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                
                 <div class="form-group"><label>Status</label><select id="filterStatus" class="line-input"><option value="">Select Status</option><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
                 <div class="form-group"><label>Group</label><select id="filterGroup" class="line-input"><option value="">Select Group</option><?php foreach($groups as $grp): ?><option value="<?= $grp['id'] ?>"><?= htmlspecialchars($grp['group_name']) ?></option><?php endforeach; ?></select></div>
                 <div class="form-group"><label>Sub Group</label><select id="filterSubGroup" class="line-input"><option value="">Select Sub Group</option><?php foreach($sub_groups as $sgrp): ?><option value="<?= $sgrp['id'] ?>"><?= htmlspecialchars($sgrp['sub_group_name']) ?></option><?php endforeach; ?></select></div>
-                <div class="form-group"><label>Category</label><select id="filterCat" class="line-input"><option value="">Select Category</option></select></div>
+                
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="filterCat" class="line-input">
+                        <option value="">Select Category</option>
+                        <?php foreach($categories as $cat): ?>
+                            <option value="<?= $cat['id'] ?>"><?= htmlspecialchars($cat['cat_name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                
                 <div class="form-group"><label>Grade</label><select id="filterGrade" class="line-input"><option value="">Select Grade</option></select></div>
                 <div class="form-group"><label>Additional Field</label><select id="filterAddField" class="line-input"><option value="">Select Field</option></select></div>
                 <div class="form-group"><label>Field Value</label><select id="filterAddVal" class="line-input"><option value="">Select Value</option></select></div>
@@ -497,6 +554,8 @@ select.line-input {
     </div>
 </div>
 
+<div id="customToast"></div>
+
 <?php
     $page_content = ob_get_clean();
     include 'includes/header.php';
@@ -505,41 +564,75 @@ select.line-input {
 ?>
 
 <script>
+// ── CUSTOM TOAST NOTIFICATION LOGIC ──
+function showToast(message, type) {
+    const toast = document.getElementById("customToast");
+    toast.textContent = message;
+    toast.className = "show " + type;
+    
+    // Hide toast after 3.5 seconds
+    setTimeout(function(){ 
+        toast.className = toast.className.replace("show " + type, ""); 
+    }, 3500);
+}
+
+// ── DYNAMIC MONTHS GENERATOR ──
+function updateMonthsDropdown() {
+    const yearSelect = document.getElementById('financialYear');
+    const monthSelect = document.getElementById('payMonth');
+    const selectedYear = yearSelect.value;
+    
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    const currentMonthIndex = new Date().getMonth(); // 0 to 11
+    const currentYear = new Date().getFullYear().toString();
+
+    // Clear existing options
+    monthSelect.innerHTML = '';
+    
+    // Populate new options for the selected year
+    months.forEach((month, index) => {
+        const option = document.createElement('option');
+        const monthValue = `${month}-${selectedYear}`;
+        
+        option.value = monthValue;
+        option.textContent = monthValue;
+        
+        // Auto-select the current month if we are looking at the current year
+        if (selectedYear === currentYear && index === currentMonthIndex) {
+            option.selected = true;
+        } 
+        // If looking at a past/future year, default to January
+        else if (selectedYear !== currentYear && index === 0) {
+            option.selected = true;
+        }
+        
+        monthSelect.appendChild(option);
+    });
+}
+
 document.addEventListener("DOMContentLoaded", function () {
+    // Generate Months right when page loads
+    updateMonthsDropdown();
+
     const urlParams = new URLSearchParams(window.location.search);
     const status = urlParams.get("status");
     const type = urlParams.get("type");
 
+    // Handle Toast Alerts based on URL parameters
     if (status === "success") {
-        const textMsg =
-            type === "approve"
-                ? "Payslips have been approved successfully."
-                : "Payslips have been rejected successfully.";
+        const textMsg = type === "approve"
+            ? "Payslips have been approved successfully."
+            : "Payslips have been rejected successfully.";
 
-        const iconType = type === "approve" ? "success" : "warning";
+        const toastType = type === "approve" ? "success" : "warning";
+        showToast(textMsg, toastType);
 
-        Swal.fire({
-            title: "Success!",
-            text: textMsg,
-            icon: iconType,
-            confirmButtonColor: "#0066FF"
-        }).then(() => {
-            window.history.replaceState({}, document.title, window.location.pathname);
-            window.location.href = "ApprovePayslip";
-        });
+        window.history.replaceState({}, document.title, window.location.pathname);
 
     } else if (status === "empty") {
-
-        Swal.fire({
-            title: "Error!",
-            text: "Please select at least one employee.",
-            icon: "error",
-            confirmButtonColor: "#EF4444"
-        }).then(() => {
-            window.history.replaceState({}, document.title, window.location.pathname);
-            window.location.href = "ApprovePayslip";
-        });
-
+        showToast("Please select at least one employee.", "error");
+        window.history.replaceState({}, document.title, window.location.pathname);
     }
 });
 
@@ -645,83 +738,48 @@ async function performModalSearch() {
 }
 
 function saveCurrentSearch() {
-    Swal.fire({
-        title: 'Save Search',
-        input: 'text',
-        inputLabel: 'Enter a name to save this search filter:',
-        inputValue: 'My Saved Search',
-        showCancelButton: true,
-        confirmButtonColor: '#0066FF',
-        inputValidator: (value) => {
-            if (!value) {
-                return 'You need to write something!'
-            }
-        }
-    }).then((result) => {
-        if (result.isConfirmed) {
-            const name = result.value;
-            const searchData = captureSearchState();
-            const sfData = new FormData();
-            sfData.append('ajax_action', 'save_search');
-            sfData.append('type', 'saved');
-            sfData.append('name', name);
-            sfData.append('data', JSON.stringify(searchData));
-            
-            fetch(window.location.href, { method: 'POST', body: sfData })
-                .then(res => res.json())
-                .then(res => {
-                    if(res.status === 'success'){
-                        Swal.fire({
-                            title: 'Saved!',
-                            text: 'Your search has been saved.',
-                            icon: 'success',
-                            confirmButtonColor: '#0066FF'
-                        }).then(() => {
-                            recentSearches = res.recent;
-                            savedSearches = res.saved;
-                            renderSidebarLists();
-                            switchSidebarTab('saved');
-                        });
-                    }
-                });
-        }
-    });
+    // If you want to remove SweetAlert entirely, you can replace this with a standard prompt
+    const name = prompt("Enter a name to save this search filter:", "My Saved Search");
+    if (name) {
+        const searchData = captureSearchState();
+        const sfData = new FormData();
+        sfData.append('ajax_action', 'save_search');
+        sfData.append('type', 'saved');
+        sfData.append('name', name);
+        sfData.append('data', JSON.stringify(searchData));
+        
+        fetch(window.location.href, { method: 'POST', body: sfData })
+            .then(res => res.json())
+            .then(res => {
+                if(res.status === 'success'){
+                    showToast("Your search has been saved.", "success");
+                    recentSearches = res.recent;
+                    savedSearches = res.saved;
+                    renderSidebarLists();
+                    switchSidebarTab('saved');
+                }
+            });
+    }
 }
 
 function deleteSearchItem(id, event) {
     event.stopPropagation();
-    Swal.fire({
-        title: 'Are you sure?',
-        text: "You won't be able to revert this!",
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#6B7280',
-        confirmButtonText: 'Yes, delete it!'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            const formData = new FormData();
-            formData.append('ajax_action', 'delete_search');
-            formData.append('id', id);
-            
-            fetch(window.location.href, { method: 'POST', body: formData })
-                .then(res => res.json())
-                .then(res => {
-                    if(res.status === 'success') {
-                        Swal.fire({
-                            title: 'Deleted!',
-                            text: 'Your saved search has been deleted.',
-                            icon: 'success',
-                            confirmButtonColor: '#0066FF'
-                        }).then(() => {
-                            recentSearches = res.recent;
-                            savedSearches = res.saved;
-                            renderSidebarLists();
-                        });
-                    }
-                });
-        }
-    });
+    if(confirm("Are you sure you want to delete this saved search?")) {
+        const formData = new FormData();
+        formData.append('ajax_action', 'delete_search');
+        formData.append('id', id);
+        
+        fetch(window.location.href, { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(res => {
+                if(res.status === 'success') {
+                    showToast("Your saved search has been deleted.", "success");
+                    recentSearches = res.recent;
+                    savedSearches = res.saved;
+                    renderSidebarLists();
+                }
+            });
+    }
 }
 
 function openFilterModal() {

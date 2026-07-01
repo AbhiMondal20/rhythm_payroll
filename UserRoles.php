@@ -127,7 +127,6 @@ ob_start();
             <div class="ur-page-nav" id="urPageNav"></div>
         </div>
     </div>
-
     <div class="ur-view" id="viewDetail" style="display:none;">
         <div class="ur-detail-header">
             <span id="dRoleNameHeading"></span>

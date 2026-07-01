@@ -15,19 +15,23 @@ $action = $_POST['action'] ?? $_GET['action'] ?? '';
 /* ── Standard list of application modules/pages ─────────── */
 function allPages(): array {
     return [
-        ['module_key' => 'HR', 'page_name' => 'Organisation'],
-        ['module_key' => 'HR', 'page_name' => 'Location'],
-        ['module_key' => 'HR', 'page_name' => 'Department'],
-        ['module_key' => 'HR', 'page_name' => 'Designation'],
-        ['module_key' => 'HR', 'page_name' => 'Category'],
-        ['module_key' => 'HR',    'page_name' => 'Employee'],
-        ['module_key' => 'HR',    'page_name' => 'Payroll'],
-        ['module_key' => 'HR',    'page_name' => 'Attendance'],
-        ['module_key' => 'HR',    'page_name' => 'Leave'],
-        ['module_key' => 'HR',    'page_name' => 'Training'],
-        ['module_key' => 'HR','page_name' => 'Report'],
-        ['module_key' => 'HR','page_name' => 'Configuration'],
-        ['module_key' => 'HR','page_name' => 'User']
+        // Main Modules
+        ['module_key' => 'payroll', 'page_name' => 'Dashboard'],
+        ['module_key' => 'payroll', 'page_name' => 'Employee List'],
+        ['module_key' => 'payroll', 'page_name' => 'Approvals'],
+        ['module_key' => 'payroll', 'page_name' => 'Attendance'],
+        ['module_key' => 'payroll', 'page_name' => 'Leave'],
+        // FINANCE
+        ['module_key' => 'payroll', 'page_name' => 'Payroll'],
+        ['module_key' => 'payroll', 'page_name' => 'Reports'],
+        ['module_key' => 'payroll', 'page_name' => 'Taxes'],
+        // SYSTEM
+        ['module_key' => 'payroll', 'page_name' => 'Data Import'],
+        ['module_key' => 'payroll', 'page_name' => 'Users'],
+        ['module_key' => 'payroll', 'page_name' => 'Asset Management'],
+        ['module_key' => 'payroll', 'page_name' => 'Training'],
+        ['module_key' => 'payroll', 'page_name' => 'Configuration'],
+        ['module_key' => 'payroll', 'page_name' => 'Settings'],     
     ];
 }
 
