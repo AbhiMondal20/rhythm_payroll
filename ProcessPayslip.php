@@ -467,7 +467,7 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator { color: #0066F
             </div>
             <label class="reprocess-checkbox">
                 <input type="checkbox" name="reprocess" value="1">
-                Reprocess Payslip
+                Overwrite Manual Changes
             </label>
         </div>
 
@@ -577,6 +577,60 @@ document.addEventListener("DOMContentLoaded", function() {
         });
         window.history.replaceState({}, document.title, window.location.pathname);
     }
+});
+
+// ==========================================
+// FORM SUBMIT PROGRESS BAR LOGIC
+// ==========================================
+document.getElementById('processForm').addEventListener('submit', function(e) {
+    if (selectedEmployees.length === 0) {
+        e.preventDefault();
+        Swal.fire({
+            title: 'Error!',
+            text: 'Please select at least one employee.',
+            icon: 'error',
+            confirmButtonColor: '#EF4444'
+        });
+        return;
+    }
+
+    e.preventDefault(); // Stop normal submission to show progress
+    const form = this;
+
+    // Ensure the button name is sent along with the form
+    if (!document.querySelector('input[name="process_payslip"]')) {
+        const hiddenBtn = document.createElement('input');
+        hiddenBtn.type = 'hidden';
+        hiddenBtn.name = 'process_payslip';
+        hiddenBtn.value = '1';
+        form.appendChild(hiddenBtn);
+    }
+
+    let timerInterval;
+    Swal.fire({
+        title: 'Processing Payslips...',
+        html: 'Please wait. Progress: <b>0</b>%',
+        timer: 2000,
+        timerProgressBar: true,
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+            const b = Swal.getHtmlContainer().querySelector('b');
+            timerInterval = setInterval(() => {
+                let left = Swal.getTimerLeft();
+                if(left !== undefined) {
+                    let percent = Math.min(100, Math.round(((2000 - left) / 2000) * 100));
+                    b.textContent = percent;
+                }
+            }, 50);
+        },
+        willClose: () => {
+            clearInterval(timerInterval);
+        }
+    }).then(() => {
+        // Once the timer finishes, submit the form to the PHP backend
+        form.submit();
+    });
 });
 
 // ==========================================

@@ -60,12 +60,13 @@ Timesheet - Pending
 <!-- 01-07-2026 -->
 FullFinal - Working
 
+<!-- 03-07-2026 -->
+Attendanced - Working
 
 
 
 Leave Accumulations - Pending (not urgent)
 Apply Leave - Pending (urgent)
-Attendanced - Pending (urgent)
 Leave - Pending (urgent)
 Payroll - Pending (urgent)
 Taxes - Pending (urgent)
@@ -87,12 +88,6 @@ Payroll Module Progress
 Hold Salary - done
 Approve Payslip - Working
 Edit Payslip - Working
-
-
-
-
-
-
 
 
 Insert
