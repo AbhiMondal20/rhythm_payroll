@@ -1,25 +1,85 @@
 <?php
+// Handle AJAX Request for Live Employee Search (MUST BE BEFORE ANY HTML OUTPUT)
+if (isset($_GET['ajax_search'])) {
+    require_once 'includes/config.php';
+    require_once 'includes/db_client.php';
+    
+    header('Content-Type: application/json');
+    $results = [];
+    
+    if (isset($conn)) {
+        $search = mysqli_real_escape_string($conn, trim($_GET['ajax_search']));
+        if (!empty($search)) {
+            $sql = "SELECT employee_code, employee_name FROM employees 
+                    WHERE employee_name LIKE '%$search%' 
+                    OR employee_code LIKE '%$search%' 
+                    LIMIT 10";
+            $res = mysqli_query($conn, $sql);
+            if ($res) {
+                while ($row = mysqli_fetch_assoc($res)) {
+                    $results[] = $row;
+                }
+            }
+        }
+    }
+    echo json_encode($results);
+    exit; // Stop execution here so only JSON is returned for the AJAX call
+}
+
 require_once 'includes/config.php';
+require_once 'includes/db_client.php';
+
 $page_title = 'Attendance - Time Entries';
 
-// Check if an employee search was submitted
+// Capture search and date parameters
 $search_query = isset($_GET['employee']) ? trim($_GET['employee']) : '';
+$date_range = isset($_GET['date_range']) ? trim($_GET['date_range']) : '';
 $is_searched = !empty($search_query);
-$time_entries = [];
 
-// Implement mysqli_query for database search
+$time_entries = [];
+$employee_details = null;
+
+// Process Search and Filters
 if ($is_searched && isset($conn)) {
     $safe_search = mysqli_real_escape_string($conn, $search_query);
-    // Search by employee name or status code
-    $sql = "SELECT * FROM time_entries 
-            WHERE employee_name LIKE '%$safe_search%' 
-            OR status_code LIKE '%$safe_search%' 
-            ORDER BY entry_date ASC";
-            
-    $result = mysqli_query($conn, $sql);
     
-    if ($result) {
-        while ($row = mysqli_fetch_assoc($result)) {
+    // 1. Fetch Employee Profile details
+    $emp_sql = "SELECT * FROM employees 
+                WHERE employee_name LIKE '%$safe_search%' 
+                OR employee_code = '$safe_search' 
+                LIMIT 1";
+    $emp_result = mysqli_query($conn, $emp_sql);
+    
+    // Base SQL for time entries
+    $time_sql = "SELECT * FROM time_entries WHERE ";
+    
+    if ($emp_result && mysqli_num_rows($emp_result) > 0) {
+        $employee_details = mysqli_fetch_assoc($emp_result);
+        $emp_code = mysqli_real_escape_string($conn, $employee_details['employee_code']);
+        $time_sql .= "employee_code = '$emp_code'";
+    } else {
+        // Fallback search directly in time entries if no exact profile matches
+        $time_sql .= "(employee_name LIKE '%$safe_search%' OR employee_code LIKE '%$safe_search%')";
+    }
+    
+    // 3. Append Date Range filter if provided
+    if (!empty($date_range) && strpos($date_range, ' to ') !== false) {
+        set_error_handler(function() { /* ignore date parsing warnings */ });
+        $dates = explode(' to ', $date_range);
+        if (count($dates) == 2) {
+            $start_date = mysqli_real_escape_string($conn, date('Y-m-d', strtotime($dates[0])));
+            $end_date = mysqli_real_escape_string($conn, date('Y-m-d', strtotime($dates[1])));
+            $time_sql .= " AND entry_date BETWEEN '$start_date' AND '$end_date'";
+        }
+        restore_error_handler();
+    }
+    
+    $time_sql .= " ORDER BY entry_date ASC";
+    
+    // Execute Time Entries Query
+    $time_result = mysqli_query($conn, $time_sql);
+    if ($time_result) {
+        while ($row = mysqli_fetch_assoc($time_result)) {
             $time_entries[] = $row;
         }
     }
@@ -31,11 +91,7 @@ ob_start();
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="includes/assets/style.css">
 
-<style>
-    /* Reset & Base Custom Styles (Replacing Bootstrap) */
-   
-    .container { padding: 16px 24px; max-width: 100%; margin: 0 auto; }
-    
+<style>    
     /* Utility Classes */
     .flex-between { display: flex; justify-content: space-between; align-items: center; }
     .flex-center { display: flex; justify-content: center; align-items: center; }
@@ -75,8 +131,9 @@ ob_start();
     .card { background: #fff; border-radius: 8px; min-height: 450px; }
 
     /* Tabs */
-    .attendance-tabs { border-bottom: 1px solid #dee2e6; margin-bottom: 10px; }
-    .attendance-tabs a { color: #6c757d; text-decoration: none; padding: 10px 15px; display: inline-block; font-size: 14px; transition: color 0.2s; }
+    .attendance-tabs { border-bottom: 1px solid #dee2e6; }
+    .attendance-tabs a { color: #6c757d; text-decoration: none; padding: 3px 5px; gap: 12px; display: inline-block; font-size: 14px; transition: color 0.2s; }
+    .attendance-tabs .separator { color: #D1D5DB; font-size: 14px; }
     .attendance-tabs a:hover { color: #495057; }
     .attendance-tabs a.active { color: #0d6efd; border-bottom: 2px solid #0d6efd; font-weight: 500; }
     
@@ -90,17 +147,24 @@ ob_start();
     .search-chip a { color: #6b7280; margin-left: 6px; text-decoration: none; font-size: 16px; display: flex; align-items: center; }
     .search-chip a:hover { color: #ef4444; }
 
+    /* Autocomplete Dropdown Styles */
+    .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 1000; max-height: 250px; overflow-y: auto; display: none; margin-top: 2px; }
+    .autocomplete-item { padding: 10px 14px; cursor: pointer; font-size: 13.5px; border-bottom: 1px solid #f3f4f6; display: flex; flex-direction: column; transition: background-color 0.1s; }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover { background-color: #eff6ff; }
+    .autocomplete-name { font-weight: 600; color: #111827; }
+    .autocomplete-code { font-size: 11px; color: #6b7280; margin-top: 2px; }
+
+    /* Employee Profile Card Layout */
+    .employee-profile-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin-bottom: 24px; display: flex; align-items: center; gap: 24px; }
+    .emp-avatar { width: 56px; height: 56px; background: #0d6efd; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 600; text-transform: uppercase; }
+    .emp-details-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+    .emp-detail-item { display: flex; flex-direction: column; gap: 4px; }
+    .emp-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+    .emp-val { font-size: 14px; font-weight: 500; color: #0f172a; }
+
     /* Forms & Inputs */
-    .form-control, .form-select {
-        width: 100%;
-        border-radius: 4px;
-        font-size: 13.5px;
-        border: 1px solid #d1d5db;
-        height: 36px;
-        padding: 6px 12px;
-        background-color: #fff;
-        outline: none;
-    }
+    .form-control, .form-select { width: 100%; border-radius: 4px; font-size: 13.5px; border: 1px solid #d1d5db; height: 36px; padding: 6px 12px; background-color: #fff; outline: none; }
     .form-control:focus, .form-select:focus { border-color: #0d6efd; }
     
     .date-dropdown { display: flex; align-items: center; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; height: 36px; width: 260px; padding: 0 12px; gap: 8px;}
@@ -140,11 +204,8 @@ ob_start();
     .expandable-row.show { display: table-row; }
     .edit-form-container { padding: 24px 30px; background-color: #fff; border-top: 1px solid #e5e7eb; }
     .edit-form-container .form-label { display: block; font-size: 12px; color: #4b5563; font-weight: 500; margin-bottom: 4px; }
-    .edit-form-container .form-control, .edit-form-container .form-select { 
-        border: none; border-bottom: 1px solid #d1d5db; border-radius: 0; padding: 4px 0 8px 0; background: transparent; box-shadow: none; height: auto;
-    }
+    .edit-form-container .form-control, .edit-form-container .form-select { border: none; border-bottom: 1px solid #d1d5db; border-radius: 0; padding: 4px 0 8px 0; background: transparent; box-shadow: none; height: auto; }
     .edit-form-container .form-control:focus, .edit-form-container .form-select:focus { border-bottom-color: #0d6efd; }
-    
     .input-icon-wrapper { position: relative; }
     .input-icon-wrapper .bi-calendar { position: absolute; right: 0; top: 50%; transform: translateY(-50%); color: #0d6efd; cursor: pointer; }
 
@@ -164,20 +225,26 @@ ob_start();
         .flatpickr-calendar.multiMonth { width: 100% !important; }
         .flatpickr-calendar .flatpickr-months { flex-wrap: wrap; }
         .grid-col-3, .grid-col-6 { width: 100%; margin-bottom: 16px; }
+        .employee-profile-card { flex-direction: column; align-items: flex-start; }
     }
 </style>
 
-<div class="container py-3">
+<div class="container">
     
     <div class="flex-between mb-1">
         <h4 class="text-dark fw-bold m-0" style="font-size: 1.25rem;">Attendance</h4>
         <div class="attendance-tabs m-0 border-0">
-            <a href="TimeEntries" class="active">Time Entries</a>
-            <a href="CalendarView">Calendar View</a>
+            <a href="attendance" class="active">Time Entries</a>
+            <span class="separator">|</span>
+            <a href="AttCalendarView">Calendar View</a>
+            <span class="separator">|</span>
             <a href="ManualAttendance">Manual Attendance</a>
-            <a href="Discrepancies">Discrepancies</a>
-            <a href="ProcessTimeCard">Process Time Card</a>
-            <a href="ApproveOvertime">Approve Overtime</a>
+            <span class="separator">|</span>
+            <a href="AttDiscrepancies">Discrepancies</a>
+            <span class="separator">|</span>
+            <a href="AttProcessTimeCard">Process Time Card</a>
+            <span class="separator">|</span>
+            <a href="AttApproveOvertime">Approve Overtime</a>
         </div>
     </div>
 
@@ -185,7 +252,7 @@ ob_start();
         <div class="card-body p-4">
             <h6 class="text-dark fw-bold mb-4" style="font-size: 13.5px; letter-spacing: 0.5px; margin-top: 0; text-transform: uppercase;">TIME ENTRIES</h6>
             
-            <form method="GET" action="" class="filter-bar">
+            <form method="GET" action="" class="filter-bar" id="filterForm">
                 <div class="search-wrapper">
                     <?php if ($is_searched): ?>
                         <div class="search-chip">
@@ -196,13 +263,15 @@ ob_start();
                         <input type="text" class="form-control" disabled style="background-color: #fff;">
                     <?php else: ?>
                         <i class="bi bi-search"></i>
-                        <input type="text" name="employee" class="form-control" placeholder="Search by name or #code">
+                        <input type="text" id="employeeSearchInput" class="form-control" placeholder="Search by name or #code" autocomplete="off">
+                        <input type="hidden" id="employeeSearchHidden" name="employee" value="">
+                        <div id="autocompleteDropdown" class="autocomplete-dropdown"></div>
                     <?php endif; ?>
                 </div>
                 
                 <div class="date-dropdown">
                     <i class="bi bi-calendar"></i>
-                    <input type="text" id="dateRange" placeholder="Select Date Range">
+                    <input type="text" name="date_range" id="dateRange" placeholder="Select Date Range" value="<?= htmlspecialchars($date_range) ?>">
                 </div>                
                 <button type="submit" class="btn btn-apply">Apply</button>
             </form>
@@ -243,6 +312,40 @@ ob_start();
 
             <?php else: ?>
 
+                <?php if ($employee_details): ?>
+                    <div class="employee-profile-card">
+                        <div class="emp-avatar">
+                            <?= htmlspecialchars(substr($employee_details['employee_name'], 0, 1)) ?>
+                        </div>
+                        <div class="emp-details-grid">
+                            <div class="emp-detail-item">
+                                <span class="emp-label">Name</span>
+                                <span class="emp-val"><?= htmlspecialchars($employee_details['employee_name']) ?></span>
+                            </div>
+                            <div class="emp-detail-item">
+                                <span class="emp-label">Emp Code</span>
+                                <span class="emp-val"><?= htmlspecialchars($employee_details['employee_code']) ?></span>
+                            </div>
+                            <div class="emp-detail-item">
+                                <span class="emp-label">Department</span>
+                                <span class="emp-val"><?= htmlspecialchars($employee_details['department'] ?: 'N/A') ?></span>
+                            </div>
+                            <div class="emp-detail-item">
+                                <span class="emp-label">Designation</span>
+                                <span class="emp-val"><?= htmlspecialchars($employee_details['designation'] ?: 'N/A') ?></span>
+                            </div>
+                            <div class="emp-detail-item">
+                                <span class="emp-label">Join Date</span>
+                                <span class="emp-val"><?= !empty($employee_details['join_date']) ? date('d M Y', strtotime($employee_details['join_date'])) : 'N/A' ?></span>
+                            </div>
+                            <div class="emp-detail-item">
+                                <span class="emp-label">Official Email</span>
+                                <span class="emp-val"><?= htmlspecialchars($employee_details['official_email'] ?: 'N/A') ?></span>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
                 <div class="table-container border">
                     <table class="table">
                         <thead>
@@ -259,7 +362,6 @@ ob_start();
                         <tbody>
                             <?php if (!empty($time_entries)): ?>
                                 <?php foreach ($time_entries as $index => $row): 
-                                    // Basic formatting logic. Adapt based on your DB columns
                                     $dateFormatted = date('d M, D', strtotime($row['entry_date']));
                                     $status1Class = ($row['day_status_1'] == 'P') ? 'status-p' : 'status-a';
                                     $status2Class = ($row['day_status_2'] == 'P') ? 'status-p' : 'status-a';
@@ -359,7 +461,7 @@ ob_start();
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="7" style="text-align: center; padding: 30px;">No entries found for this search.</td>
+                                    <td colspan="7" style="text-align: center; padding: 40px; color: #6b7280;">No data logs matched your criteria within the specified date frame.</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>
@@ -401,6 +503,66 @@ include 'includes/footer.php';
 
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script>
+    // Live Search (Autocomplete) functionality
+    const searchInput = document.getElementById('employeeSearchInput');
+    const searchHidden = document.getElementById('employeeSearchHidden');
+    const dropdown = document.getElementById('autocompleteDropdown');
+    const filterForm = document.getElementById('filterForm');
+
+    if (searchInput && dropdown) {
+        let debounceTimer;
+
+        searchInput.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            const query = this.value.trim();
+
+            if (query.length < 2) {
+                dropdown.style.display = 'none';
+                return;
+            }
+
+            // Fetch matched employees after user stops typing for 300ms
+            debounceTimer = setTimeout(() => {
+                fetch(`?ajax_search=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        dropdown.innerHTML = '';
+                        if (data.length > 0) {
+                            data.forEach(emp => {
+                                const item = document.createElement('div');
+                                item.className = 'autocomplete-item';
+                                item.innerHTML = `
+                                    <span class="autocomplete-name">${emp.employee_name}</span>
+                                    <span class="autocomplete-code">#${emp.employee_code}</span>
+                                `;
+                                
+                                // On selecting an employee, populate form and submit
+                                item.addEventListener('click', () => {
+                                    searchInput.value = emp.employee_name; 
+                                    searchHidden.value = emp.employee_code; // Filter by explicit code
+                                    dropdown.style.display = 'none';
+                                    filterForm.submit();
+                                });
+                                dropdown.appendChild(item);
+                            });
+                        } else {
+                            dropdown.innerHTML = '<div class="autocomplete-item text-muted">No employees found</div>';
+                        }
+                        dropdown.style.display = 'block';
+                    })
+                    .catch(error => console.error('Error fetching search results:', error));
+            }, 300); 
+        });
+
+        // Close dropdown when clicking outside of it
+        document.addEventListener('click', function(e) {
+            if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+    }
+
+    // Toggle expand/collapse Rows
     function toggleRow(rowId, iconElement) {
         const row = document.getElementById(rowId);
         if (row.classList.contains('show')) {
@@ -427,18 +589,22 @@ include 'includes/footer.php';
         }
     }
 
-    // Flatpickr initialization
-    const today = new Date();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    // Initialize Flatpickr tracking values
+    const dateRangeInput = document.getElementById("dateRange");
+    const hasValue = dateRangeInput.value.trim() !== "";
 
     flatpickr("#dateRange", {
         mode: "range",
         dateFormat: "d M Y",
-        defaultDate: [firstDay, lastDay],
-        showMonths: 2,
         monthSelectorType: "static",
-        animate: true
+        animate: true,
+        showMonths: 2,
+        ...(hasValue ? {} : {
+            defaultDate: [
+                new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+                new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)
+            ]
+        })
     });
 </script>
 <script src="includes/assets/scripts.js"></script>
