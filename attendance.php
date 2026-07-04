@@ -1,5 +1,5 @@
 <?php
-// Handle AJAX Request for Live Employee Search (MUST BE BEFORE ANY HTML OUTPUT)
+// Handle AJAX Request for Live Employee Search
 if (isset($_GET['ajax_search'])) {
     require_once 'includes/config.php';
     require_once 'includes/db_client.php';
@@ -23,7 +23,58 @@ if (isset($_GET['ajax_search'])) {
         }
     }
     echo json_encode($results);
-    exit; // Stop execution here so only JSON is returned for the AJAX call
+    exit;
+}
+
+// Handle AJAX Request for Updating Time Entries
+if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
+    require_once 'includes/config.php';
+    require_once 'includes/db_client.php';
+    header('Content-Type: application/json');
+
+    if (isset($conn)) {
+        $emp_code = mysqli_real_escape_string($conn, $_POST['emp_code']);
+        $entry_date = mysqli_real_escape_string($conn, $_POST['entry_date']);
+        
+        // Save the full detailed status string now
+        $day_status = mysqli_real_escape_string($conn, $_POST['day_status']);
+        
+        $check_in = mysqli_real_escape_string($conn, $_POST['check_in']);
+        $check_out = mysqli_real_escape_string($conn, $_POST['check_out']);
+        $hours_worked = mysqli_real_escape_string($conn, $_POST['hours_worked']);
+        $over_time = mysqli_real_escape_string($conn, $_POST['over_time']);
+        $under_time = mysqli_real_escape_string($conn, $_POST['under_time']);
+        $normal_hours = mysqli_real_escape_string($conn, $_POST['normal_hours']);
+        $late_hours = mysqli_real_escape_string($conn, $_POST['late_hours']);
+        $early_hours = mysqli_real_escape_string($conn, $_POST['early_hours']);
+        $status_code = mysqli_real_escape_string($conn, $_POST['status_code']);
+        $remarks = mysqli_real_escape_string($conn, $_POST['remarks']);
+        $calc_in_out = ($_POST['calc_in_out'] === 'true') ? 1 : 0;
+
+        $update_sql = "UPDATE time_entries SET 
+            day_status_1 = '$day_status',
+            check_in_time = '$check_in',
+            check_out_time = '$check_out',
+            hours_worked = '$hours_worked',
+            over_time_hours = '$over_time',
+            under_time_hours = '$under_time',
+            normal_hours = '$normal_hours',
+            late_hours = '$late_hours',
+            early_hours = '$early_hours',
+            status_code = '$status_code',
+            remarks = '$remarks',
+            calculate_per_in_out = '$calc_in_out'
+            WHERE employee_code = '$emp_code' AND entry_date = '$entry_date'";
+
+        if (mysqli_query($conn, $update_sql)) {
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => mysqli_error($conn)]);
+        }
+    } else {
+        echo json_encode(['success' => false, 'error' => 'Database connection failed']);
+    }
+    exit;
 }
 
 require_once 'includes/config.php';
@@ -31,7 +82,6 @@ require_once 'includes/db_client.php';
 
 $page_title = 'Attendance - Time Entries';
 
-// Capture search and date parameters
 $search_query = isset($_GET['employee']) ? trim($_GET['employee']) : '';
 $date_range = isset($_GET['date_range']) ? trim($_GET['date_range']) : '';
 $is_searched = !empty($search_query);
@@ -39,18 +89,15 @@ $is_searched = !empty($search_query);
 $time_entries = [];
 $employee_details = null;
 
-// Process Search and Filters
 if ($is_searched && isset($conn)) {
     $safe_search = mysqli_real_escape_string($conn, $search_query);
     
-    // 1. Fetch Employee Profile details
     $emp_sql = "SELECT * FROM employees 
                 WHERE employee_name LIKE '%$safe_search%' 
                 OR employee_code = '$safe_search' 
                 LIMIT 1";
     $emp_result = mysqli_query($conn, $emp_sql);
     
-    // Base SQL for time entries
     $time_sql = "SELECT * FROM time_entries WHERE ";
     
     if ($emp_result && mysqli_num_rows($emp_result) > 0) {
@@ -58,13 +105,11 @@ if ($is_searched && isset($conn)) {
         $emp_code = mysqli_real_escape_string($conn, $employee_details['employee_code']);
         $time_sql .= "employee_code = '$emp_code'";
     } else {
-        // Fallback search directly in time entries if no exact profile matches
         $time_sql .= "(employee_name LIKE '%$safe_search%' OR employee_code LIKE '%$safe_search%')";
     }
     
-    // 3. Append Date Range filter if provided
     if (!empty($date_range) && strpos($date_range, ' to ') !== false) {
-        set_error_handler(function() { /* ignore date parsing warnings */ });
+        set_error_handler(function() {});
         $dates = explode(' to ', $date_range);
         if (count($dates) == 2) {
             $start_date = mysqli_real_escape_string($conn, date('Y-m-d', strtotime($dates[0])));
@@ -76,7 +121,6 @@ if ($is_searched && isset($conn)) {
     
     $time_sql .= " ORDER BY entry_date ASC";
     
-    // Execute Time Entries Query
     $time_result = mysqli_query($conn, $time_sql);
     if ($time_result) {
         while ($row = mysqli_fetch_assoc($time_result)) {
@@ -84,15 +128,11 @@ if ($is_searched && isset($conn)) {
         }
     }
 }
-
 ob_start();
 ?>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="includes/assets/style.css">
 
 <style>    
-    /* Utility Classes */
     .flex-between { display: flex; justify-content: space-between; align-items: center; }
     .flex-center { display: flex; justify-content: center; align-items: center; }
     .flex-end { display: flex; justify-content: flex-end; align-items: center; }
@@ -116,28 +156,24 @@ ob_start();
     .fw-bold { font-weight: 600; }
     .w-100 { width: 100%; }
     .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
-    .border { border: 1px solid #e5e7eb; }
-    .border-0 { border: none !important; }
-    .rounded-1 { border-radius: 4px; }
+    //.border { border: 1px solid #e5e7eb; }
+    //.border-0 { border: none !important; }
+    //.rounded-1 { border-radius: 4px; }
     .rounded-3 { border-radius: 8px; }
     .bg-white { background-color: #ffffff; }
 
-    /* Custom Grid System */
     .grid-row { display: flex; flex-wrap: wrap; margin-left: -12px; margin-right: -12px; }
     .grid-col-3 { width: 25%; padding: 0 12px; flex: 0 0 auto; }
     .grid-col-6 { width: 50%; padding: 0 12px; flex: 0 0 auto; }
 
-    /* Card */
     .card { background: #fff; border-radius: 8px; min-height: 450px; }
 
-    /* Tabs */
     .attendance-tabs { border-bottom: 1px solid #dee2e6; }
     .attendance-tabs a { color: #6c757d; text-decoration: none; padding: 3px 5px; gap: 12px; display: inline-block; font-size: 14px; transition: color 0.2s; }
     .attendance-tabs .separator { color: #D1D5DB; font-size: 14px; }
     .attendance-tabs a:hover { color: #495057; }
     .attendance-tabs a.active { color: #0d6efd; border-bottom: 2px solid #0d6efd; font-weight: 500; }
     
-    /* Search & Filter Bar */
     .filter-bar { display: flex; gap: 15px; align-items: center; margin-bottom: 25px; }
     .search-wrapper { position: relative; width: 280px; }
     .search-wrapper .form-control { padding-left: 35px; }
@@ -147,7 +183,6 @@ ob_start();
     .search-chip a { color: #6b7280; margin-left: 6px; text-decoration: none; font-size: 16px; display: flex; align-items: center; }
     .search-chip a:hover { color: #ef4444; }
 
-    /* Autocomplete Dropdown Styles */
     .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 1000; max-height: 250px; overflow-y: auto; display: none; margin-top: 2px; }
     .autocomplete-item { padding: 10px 14px; cursor: pointer; font-size: 13.5px; border-bottom: 1px solid #f3f4f6; display: flex; flex-direction: column; transition: background-color 0.1s; }
     .autocomplete-item:last-child { border-bottom: none; }
@@ -155,7 +190,6 @@ ob_start();
     .autocomplete-name { font-weight: 600; color: #111827; }
     .autocomplete-code { font-size: 11px; color: #6b7280; margin-top: 2px; }
 
-    /* Employee Profile Card Layout */
     .employee-profile-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin-bottom: 24px; display: flex; align-items: center; gap: 24px; }
     .emp-avatar { width: 56px; height: 56px; background: #0d6efd; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 600; text-transform: uppercase; }
     .emp-details-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
@@ -163,15 +197,14 @@ ob_start();
     .emp-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
     .emp-val { font-size: 14px; font-weight: 500; color: #0f172a; }
 
-    /* Forms & Inputs */
     .form-control, .form-select { width: 100%; border-radius: 4px; font-size: 13.5px; border: 1px solid #d1d5db; height: 36px; padding: 6px 12px; background-color: #fff; outline: none; }
     .form-control:focus, .form-select:focus { border-color: #0d6efd; }
+    .form-control[readonly] { background-color: #f9fafb; cursor: not-allowed; color: #6b7280; font-weight: 500; }
     
     .date-dropdown { display: flex; align-items: center; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; height: 36px; width: 260px; padding: 0 12px; gap: 8px;}
     .date-dropdown .bi-calendar { color: #6b7280; border-right: 1px solid #d1d5db; padding-right: 8px; }
     .date-dropdown input { border: none; background: transparent; flex: 1; outline: none; font-size: 13.5px; color: #4b5563; }
 
-    /* Buttons */
     .btn { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid transparent; border-radius: 4px; font-size: 13px; font-weight: 500; height: 32px; padding: 0 16px; transition: all 0.2s; }
     .btn-apply { background-color: #0d6efd; color: #fff; height: 36px; padding: 0 20px; font-size: 13.5px; }
     .btn-apply:hover, .btn-primary:hover { background-color: #0b5ed7; color: #fff; }
@@ -181,25 +214,22 @@ ob_start();
     .btn-outline-danger { border-color: #ef4444; color: #ef4444; background: transparent; }
     .btn-outline-danger:hover { background: #fef2f2; color: #dc2626; border-color: #dc2626; }
 
-    /* Empty State */
     .empty-state { text-align: center; padding: 60px 20px; }
     .empty-state h5 { font-size: 15px; font-weight: 600; color: #111827; margin-bottom: 20px; }
     .empty-state-svg { max-width: 300px; height: auto; opacity: 0.9; }
 
-    /* Badges */
-    .status-badge { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 12px; font-weight: 600; margin-right: 2px; }
+    .status-badge { display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 11px; font-weight: 600; padding: 2px 6px; margin-right: 2px; }
     .status-p { background-color: #e6f4ea; color: #1e8e3e; border: 1px solid #ceead6; }
     .status-a { background-color: #fce8e6; color: #d93025; border: 1px solid #fad2cf; }
+    .status-other { background-color: #fef3c7; color: #d97706; border: 1px solid #fde68a; }
     .system-badge { background-color: #e8f0fe; color: #1967d2; border-radius: 20px; padding: 3px 25px; border: 1px solid #d2e3fc; font-size: 12.5px; font-weight: 500; }
     
-    /* Table Styles */
     .table-container { border-radius: 6px; overflow: hidden; width: 100%; border: 1px solid #e5e7eb; }
     .table { width: 100%; border-collapse: collapse; text-align: left; }
     .table th { background-color: #f8f9fa; font-weight: 600; font-size: 12px; color: #4b5563; border-bottom: 1px solid #e5e7eb; padding: 12px 16px; }
     .table td { vertical-align: middle; font-size: 13.5px; color: #111827; padding: 14px 16px; border-bottom: 1px solid #f3f4f6; }
     .table tbody tr:hover { background-color: #f9fafb; }
     
-    /* Expandable Row Edit Form */
     .expandable-row { background-color: #fff; display: none; border-bottom: 1px solid #e5e7eb;}
     .expandable-row.show { display: table-row; }
     .edit-form-container { padding: 24px 30px; background-color: #fff; border-top: 1px solid #e5e7eb; }
@@ -207,19 +237,31 @@ ob_start();
     .edit-form-container .form-control, .edit-form-container .form-select { border: none; border-bottom: 1px solid #d1d5db; border-radius: 0; padding: 4px 0 8px 0; background: transparent; box-shadow: none; height: auto; }
     .edit-form-container .form-control:focus, .edit-form-container .form-select:focus { border-bottom-color: #0d6efd; }
     .input-icon-wrapper { position: relative; }
-    .input-icon-wrapper .bi-calendar { position: absolute; right: 0; top: 50%; transform: translateY(-50%); color: #0d6efd; cursor: pointer; }
+    .input-icon-wrapper .bi-clock { position: absolute; right: 0; top: 50%; transform: translateY(-50%); color: #0d6efd; pointer-events: none; }
 
-    /* Custom Form Checkbox */
     .form-check { display: flex; align-items: center; gap: 8px; }
     .form-check-input { width: 16px; height: 16px; cursor: pointer; margin: 0; }
     .form-check-label { font-size: 13.5px; color: #111827; cursor: pointer; }
     
-    /* Pagination */
     .pagination-container { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; font-size: 13px; color: #6b7280; }
     .pagination-btn-group { display: flex; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; }
     .pagination-btn-group button { border: 1px solid #e5e7eb; background: #fff; padding: 6px 12px; cursor: pointer; color: #6b7280; outline: none; margin-left: -1px; }
     .pagination-btn-group button.active { background: #0d6efd; color: #fff; border-color: #0d6efd; z-index: 2; }
     .pagination-btn-group button:disabled { background: #f9fafb; color: #d1d5db; cursor: not-allowed; }
+
+    .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; }
+    .custom-toast { min-width: 280px; background: #ffffff; border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); padding: 16px; display: flex; align-items: flex-start; gap: 12px; transform: translateX(120%); transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55); border-left: 4px solid #0d6efd; }
+    .custom-toast.show { transform: translateX(0); }
+    .custom-toast.success { border-left-color: #10B981; }
+    .custom-toast.error { border-left-color: #EF4444; }
+    .toast-icon { font-size: 18px; margin-top: -2px; }
+    .custom-toast.success .toast-icon { color: #10B981; }
+    .custom-toast.error .toast-icon { color: #EF4444; }
+    .toast-content { flex: 1; }
+    .toast-title { font-weight: 600; font-size: 14px; color: #111827; margin-bottom: 4px; }
+    .toast-message { font-size: 13px; color: #6b7280; margin: 0; }
+    .toast-close { cursor: pointer; color: #9ca3af; font-size: 18px; transition: color 0.2s; margin-top: -2px; }
+    .toast-close:hover { color: #4b5563; }
 
     @media (max-width: 768px) {
         .flatpickr-calendar.multiMonth { width: 100% !important; }
@@ -309,13 +351,11 @@ ob_start();
                         <line x1="250" y1="195" x2="330" y2="195" stroke="#E5E7EB" stroke-width="2"/>
                     </svg>
                 </div>
-
             <?php else: ?>
-
                 <?php if ($employee_details): ?>
                     <div class="employee-profile-card">
                         <div class="emp-avatar">
-                            <?= htmlspecialchars(substr($employee_details['employee_name'], 0, 1)) ?>
+                            <?= '<img src="' . $employee_details['profile_photo'] . '" alt="Profile Image" srcset="" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">'; ?>
                         </div>
                         <div class="emp-details-grid">
                             <div class="emp-detail-item">
@@ -362,21 +402,30 @@ ob_start();
                         <tbody>
                             <?php if (!empty($time_entries)): ?>
                                 <?php foreach ($time_entries as $index => $row): 
-                                    $dateFormatted = date('d M, D', strtotime($row['entry_date']));
-                                    $status1Class = ($row['day_status_1'] == 'P') ? 'status-p' : 'status-a';
-                                    $status2Class = ($row['day_status_2'] == 'P') ? 'status-p' : 'status-a';
+                                    $dateFormatted = date('d M, D', strtotime($row['entry_date']));                                    
+                                    // Badge styling based on broader list
+                                    $rawStatus = $row['day_status_1'] ?? '';
+                                    if (strpos($rawStatus, 'Present') !== false) {
+                                        $badgeClass = 'status-p';
+                                    } elseif (strpos($rawStatus, 'Absent') !== false) {
+                                        $badgeClass = 'status-a';
+                                    } else {
+                                        $badgeClass = 'status-other';
+                                    }
+                                    
                                     $rowId = "row-" . $index . "-details";
                                 ?>
                                     <tr>
                                         <td class="ps-4"><?= htmlspecialchars($dateFormatted) ?></td>
                                         <td>
-                                            <span class="status-badge <?= $status1Class ?>"><?= htmlspecialchars($row['day_status_1']) ?></span> 
-                                            <span class="status-badge <?= $status2Class ?>"><?= htmlspecialchars($row['day_status_2']) ?></span>
+                                            <span class="status-badge <?= $badgeClass ?>">
+                                                <?= htmlspecialchars($rawStatus ?: '-Select-') ?>
+                                            </span> 
                                         </td>
-                                        <td><?= htmlspecialchars($row['shift_name']) ?></td>
+                                        <td><?= htmlspecialchars($employee_details['shift']) ?></td>
                                         <td>
-                                            <?= htmlspecialchars(date('h:i A', strtotime($row['check_in_time']))) ?> - 
-                                            <?= htmlspecialchars(date('h:i A', strtotime($row['check_out_time']))) ?>
+                                            <?= !empty($row['check_in_time']) ? htmlspecialchars(date('h:i A', strtotime($row['check_in_time']))) : '--:--' ?> - 
+                                            <?= !empty($row['check_out_time']) ? htmlspecialchars(date('h:i A', strtotime($row['check_out_time']))) : '--:--' ?>
                                         </td>
                                         <td><?= htmlspecialchars($row['hours_worked']) ?></td>
                                         <td><span class="system-badge"><?= htmlspecialchars($row['record_status']) ?></span></td>
@@ -389,63 +438,81 @@ ob_start();
                                                 <div class="grid-row mb-4">
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Day Status</label>
-                                                        <select class="form-select">
-                                                            <option <?= ($row['day_status_1'] == 'P') ? 'selected' : '' ?>>Present (PP)</option>
-                                                            <option <?= ($row['day_status_1'] == 'A') ? 'selected' : '' ?>>Absent (AA)</option>
+                                                        <select class="form-select upd-day-status">
+                                                            <option <?= ($row['day_status_1'] == 'Present(PP)') ? 'selected' : '' ?>> Present (PP)</option>
+                                                            <option <?= ($row['day_status_1'] == 'Absent(AA)') ?>> Absent(AA)</option>
+                                                            <option <?= ($row['day_status_1'] == 'Fist Half Present(P*A)')?>>Fist Half Present(P*A)</option>
+                                                            <option <?= ($row['day_status_1'] == 'Second Half Present(P*A)')?>> Second Half Present(P*A)</option>
+                                                            <option <?= ($row['day_status_1'] == 'First Half Present & Second Half Present') ? 'selected' : '' ?>>First Half Present & Second Half Present</option>
+                                                            <option <?= ($row['day_status_1'] == 'First Half Absent & Second Half Absent') ? 'selected' : '' ?>>First Half Absent & Second Half Absent</option>
+                                                            <option <?= ($row['day_status_1'] == 'First Half Present & Second Half Absent') ? 'selected' : '' ?>>First Half Present & Second Half Absent</option>
+                                                            <option <?= ($row['day_status_1'] == 'First Half Absent & Second Half Present') ? 'selected' : '' ?>>First Half Absent & Second Half Present</option>
+                                                            <option <?= ($row['day_status_1'] == 'WeekOff') ? 'selected' : '' ?>>WeekOff</option>
+                                                            <option <?= ($row['day_status_1'] == 'Holiday') ? 'selected' : '' ?>>Holiday</option>
+                                                            <option <?= ($row['day_status_1'] == 'Worked On Week Off') ? 'selected' : '' ?>>Worked On Week Off</option>
+                                                            <option <?= ($row['day_status_1'] == 'Worked On Holiday') ? 'selected' : '' ?>>Worked On Holiday</option>
+                                                            <option <?= ($row['day_status_1'] == 'Worked On Week Off First Half') ? 'selected' : '' ?>>Worked On Week Off First Half</option>
+                                                            <option <?= ($row['day_status_1'] == 'Worked On Week Off Second Half') ? 'selected' : '' ?>>Worked On Week Off Second Half</option>
+                                                            <option <?= ($row['day_status_1'] == 'Worked On Holiday First Half') ? 'selected' : '' ?>>Worked On Holiday First Half</option>
+                                                            <option <?= ($row['day_status_1'] == 'Worked On Holiday Second Half') ? 'selected' : '' ?>>Worked On Holiday Second Half</option>
                                                         </select>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Check In Time</label>
                                                         <div class="input-icon-wrapper">
-                                                            <input type="text" class="form-control" value="<?= htmlspecialchars($row['check_in_time']) ?>">
-                                                            <i class="bi bi-calendar"></i>
+                                                            <input type="time" step="1" class="form-control upd-check-in" value="<?= htmlspecialchars($row['check_in_time']) ?>">
+                                                            <i class="bi bi-clock"></i>
                                                         </div>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Check Out Time</label>
                                                         <div class="input-icon-wrapper">
-                                                            <input type="text" class="form-control" value="<?= htmlspecialchars($row['check_out_time']) ?>">
-                                                            <i class="bi bi-calendar"></i>
+                                                            <input type="time" step="1" class="form-control upd-check-out" value="<?= htmlspecialchars($row['check_out_time']) ?>">
+                                                            <i class="bi bi-clock"></i>
                                                         </div>
                                                     </div>
                                                     <div class="grid-col-3">
-                                                        <label class="form-label">Over Time Hours</label>
-                                                        <input type="text" class="form-control" value="<?= htmlspecialchars($row['over_time_hours']) ?>">
+                                                        <label class="form-label">Hours Worked</label>
+                                                        <input type="text" class="form-control upd-hours-worked" value="<?= htmlspecialchars($row['hours_worked']) ?>" readonly>
                                                     </div>
                                                 </div>
                                                 
                                                 <div class="grid-row mb-4">
                                                     <div class="grid-col-3">
+                                                        <label class="form-label">Over Time Hours</label>
+                                                        <input type="text" class="form-control upd-over-time" value="<?= htmlspecialchars($row['over_time_hours']) ?>" readonly>
+                                                    </div>
+                                                    <div class="grid-col-3">
                                                         <label class="form-label">Under Time Hours</label>
-                                                        <input type="text" class="form-control" value="<?= htmlspecialchars($row['under_time_hours']) ?>">
+                                                        <input type="text" class="form-control upd-under-time" value="<?= htmlspecialchars($row['under_time_hours']) ?>" readonly>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Normal Hours</label>
-                                                        <input type="text" class="form-control" value="<?= htmlspecialchars($row['normal_hours']) ?>">
+                                                        <input type="text" class="form-control upd-normal-hours" value="<?= htmlspecialchars($row['normal_hours']) ?>" readonly>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Late Hours</label>
-                                                        <input type="text" class="form-control" value="<?= htmlspecialchars($row['late_hours']) ?>">
-                                                    </div>
-                                                    <div class="grid-col-3">
-                                                        <label class="form-label">Early Hours</label>
-                                                        <input type="text" class="form-control" value="<?= htmlspecialchars($row['early_hours']) ?>">
+                                                        <input type="text" class="form-control upd-late-hours" value="<?= htmlspecialchars($row['late_hours']) ?>" readonly>
                                                     </div>
                                                 </div>
                                                 
                                                 <div class="grid-row mb-3 flex-end" style="align-items: flex-end;">
                                                     <div class="grid-col-3">
-                                                        <label class="form-label">Status</label>
-                                                        <input type="text" class="form-control" value="<?= htmlspecialchars($row['status_code']) ?>">
-                                                    </div>
-                                                    <div class="grid-col-6">
-                                                        <label class="form-label">Remarks</label>
-                                                        <input type="text" class="form-control" value="<?= htmlspecialchars($row['remarks']) ?>">
+                                                        <label class="form-label">Early Hours</label>
+                                                        <input type="text" class="form-control upd-early-hours" value="<?= htmlspecialchars($row['early_hours']) ?>" readonly>
                                                     </div>
                                                     <div class="grid-col-3">
-                                                        <div class="form-check">
-                                                            <input class="form-check-input" type="checkbox" id="calcInOut_<?= $index ?>" <?= $row['calculate_per_in_out'] ? 'checked' : '' ?>>
-                                                            <label class="form-check-label" for="calcInOut_<?= $index ?>">Calculate as per In/Out time</label>
+                                                        <label class="form-label">Status</label>
+                                                        <input type="text" class="form-control upd-status-code" value="<?= htmlspecialchars($row['status_code']) ?>">
+                                                    </div>
+                                                    <div class="grid-col-3">
+                                                        <label class="form-label">Remarks</label>
+                                                        <input type="text" class="form-control upd-remarks" value="<?= htmlspecialchars($row['remarks']) ?>">
+                                                    </div>
+                                                    <div class="grid-col-3">
+                                                        <div class="form-check" style="margin-bottom: 8px;">
+                                                            <input class="form-check-input upd-calc-in-out" type="checkbox" id="calcInOut_<?= $index ?>" <?= $row['calculate_per_in_out'] ? 'checked' : '' ?>>
+                                                            <label class="form-check-label" for="calcInOut_<?= $index ?>">Calc per In/Out time</label>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -453,7 +520,7 @@ ob_start();
                                                 <div class="flex-end gap-2 mt-5">
                                                     <button class="btn btn-outline-danger">Delete</button>
                                                     <button class="btn btn-outline-primary" onclick="toggleRow('<?= $rowId ?>', this.closest('.expandable-row').previousElementSibling.querySelector('i'))">Cancel</button>
-                                                    <button class="btn btn-primary">Save</button>
+                                                    <button class="btn btn-primary" onclick="saveTimeEntry(this, '<?= $row['employee_code'] ?>', '<?= $row['entry_date'] ?>')">Save</button>
                                                 </div>
                                             </div>
                                         </td>
@@ -503,7 +570,6 @@ include 'includes/footer.php';
 
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script>
-    // Live Search (Autocomplete) functionality
     const searchInput = document.getElementById('employeeSearchInput');
     const searchHidden = document.getElementById('employeeSearchHidden');
     const dropdown = document.getElementById('autocompleteDropdown');
@@ -515,13 +581,11 @@ include 'includes/footer.php';
         searchInput.addEventListener('input', function() {
             clearTimeout(debounceTimer);
             const query = this.value.trim();
-
             if (query.length < 2) {
                 dropdown.style.display = 'none';
                 return;
             }
 
-            // Fetch matched employees after user stops typing for 300ms
             debounceTimer = setTimeout(() => {
                 fetch(`?ajax_search=${encodeURIComponent(query)}`)
                     .then(response => response.json())
@@ -531,15 +595,10 @@ include 'includes/footer.php';
                             data.forEach(emp => {
                                 const item = document.createElement('div');
                                 item.className = 'autocomplete-item';
-                                item.innerHTML = `
-                                    <span class="autocomplete-name">${emp.employee_name}</span>
-                                    <span class="autocomplete-code">#${emp.employee_code}</span>
-                                `;
-                                
-                                // On selecting an employee, populate form and submit
+                                item.innerHTML = `<span class="autocomplete-name">${emp.employee_name}</span><span class="autocomplete-code">#${emp.employee_name}</span>`;
                                 item.addEventListener('click', () => {
                                     searchInput.value = emp.employee_name; 
-                                    searchHidden.value = emp.employee_code; // Filter by explicit code
+                                    searchHidden.value = emp.employee_name; 
                                     dropdown.style.display = 'none';
                                     filterForm.submit();
                                 });
@@ -550,11 +609,10 @@ include 'includes/footer.php';
                         }
                         dropdown.style.display = 'block';
                     })
-                    .catch(error => console.error('Error fetching search results:', error));
+                    .catch(error => console.error('Error:', error));
             }, 300); 
         });
 
-        // Close dropdown when clicking outside of it
         document.addEventListener('click', function(e) {
             if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
                 dropdown.style.display = 'none';
@@ -562,7 +620,6 @@ include 'includes/footer.php';
         });
     }
 
-    // Toggle expand/collapse Rows
     function toggleRow(rowId, iconElement) {
         const row = document.getElementById(rowId);
         if (row.classList.contains('show')) {
@@ -589,22 +646,180 @@ include 'includes/footer.php';
         }
     }
 
-    // Initialize Flatpickr tracking values
-    const dateRangeInput = document.getElementById("dateRange");
-    const hasValue = dateRangeInput.value.trim() !== "";
+    // Helper to format ms to "08:28 Hrs"
+    function formatMsToHrs(ms) {
+        if (ms <= 0) return '00:00 Hrs';
+        let totalMins = Math.floor(ms / 60000);
+        let hours = Math.floor(totalMins / 60);
+        let mins = totalMins % 60;
+        return String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0') + ' Hrs';
+    }
 
-    flatpickr("#dateRange", {
-        mode: "range",
-        dateFormat: "d M Y",
-        monthSelectorType: "static",
-        animate: true,
-        showMonths: 2,
-        ...(hasValue ? {} : {
-            defaultDate: [
-                new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-                new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)
-            ]
-        })
+    // Engine to automatically calculate all Time Parameters
+    function runTimeCalculations(container) {
+        const checkIn = container.querySelector('.upd-check-in').value;
+        const checkOut = container.querySelector('.upd-check-out').value;
+        const isAutoCalc = container.querySelector('.upd-calc-in-out').checked;
+
+        // Ensure fields are read-only if auto-calc is checked, editable otherwise
+        const inputs = ['upd-over-time', 'upd-under-time', 'upd-normal-hours', 'upd-late-hours', 'upd-early-hours'];
+        inputs.forEach(cls => {
+            container.querySelector('.' + cls).readOnly = isAutoCalc;
+        });
+
+        if (!isAutoCalc || !checkIn || !checkOut) return;
+
+        // Shift Parameters: Default 09:00 to 18:00 (9 hours total)
+        const shiftStartStr = '09:00:00';
+        const shiftEndStr = '18:00:00';
+        const standardHoursMs = 9 * 60 * 60 * 1000; 
+        
+        const inTime = new Date(`1970-01-01T${checkIn}Z`);
+        const outTime = new Date(`1970-01-01T${checkOut}Z`);
+        const shiftStart = new Date(`1970-01-01T${shiftStartStr}Z`);
+        const shiftEnd = new Date(`1970-01-01T${shiftEndStr}Z`);
+
+        // Handle overnight
+        if (outTime < inTime) {
+            outTime.setDate(outTime.getDate() + 1);
+        }
+
+        let hoursWorkedMs = outTime - inTime;
+
+        // Late Hours (Check-In is after Shift Start)
+        let lateMs = inTime > shiftStart ? (inTime - shiftStart) : 0;
+        
+        // Early Hours (Check-Out is before Shift End, assuming standard same-day shift)
+        let earlyMs = outTime < shiftEnd ? (shiftEnd - outTime) : 0;
+
+        // Over Time Hours (Time worked beyond standard 9 hours)
+        let overTimeMs = hoursWorkedMs > standardHoursMs ? (hoursWorkedMs - standardHoursMs) : 0;
+        
+        // Under Time Hours (Time worked less than standard 9 hours)
+        let underTimeMs = hoursWorkedMs < standardHoursMs ? (standardHoursMs - hoursWorkedMs) : 0;
+        
+        // Normal Hours
+        let normalMs = Math.min(hoursWorkedMs, standardHoursMs);
+
+        // Update DOM
+        container.querySelector('.upd-hours-worked').value = formatMsToHrs(hoursWorkedMs);
+        container.querySelector('.upd-late-hours').value = formatMsToHrs(lateMs);
+        container.querySelector('.upd-early-hours').value = formatMsToHrs(earlyMs);
+        container.querySelector('.upd-over-time').value = formatMsToHrs(overTimeMs);
+        container.querySelector('.upd-under-time').value = formatMsToHrs(underTimeMs);
+        container.querySelector('.upd-normal-hours').value = formatMsToHrs(normalMs);
+    }
+
+    // Listen for changes on CheckIn, CheckOut, or Checkbox
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('upd-check-in') || 
+            e.target.classList.contains('upd-check-out') || 
+            e.target.classList.contains('upd-calc-in-out')) {
+            
+            const container = e.target.closest('.edit-form-container');
+            runTimeCalculations(container);
+        }
     });
+
+    const dateRangeInput = document.getElementById("dateRange");
+    if (dateRangeInput) {
+        const hasValue = dateRangeInput.value.trim() !== "";
+        flatpickr("#dateRange", {
+            mode: "range",
+            dateFormat: "d M Y",
+            monthSelectorType: "static",
+            animate: true,
+            showMonths: 2,
+            ...(hasValue ? {} : {
+                defaultDate: [
+                    new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+                    new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)
+                ]
+            })
+        });
+    }
+
+    function showToast(title, message, type = 'success') {
+        let container = document.getElementById('toastContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'toast-container';
+            document.body.appendChild(container);
+        }
+
+        const toast = document.createElement('div');
+        toast.className = `custom-toast ${type}`;
+        
+        const icon = type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
+        
+        toast.innerHTML = `
+            <i class="bi ${icon} toast-icon"></i>
+            <div class="toast-content">
+                <div class="toast-title">${title}</div>
+                <div class="toast-message">${message}</div>
+            </div>
+            <i class="bi bi-x toast-close" onclick="this.parentElement.classList.remove('show'); setTimeout(() => this.parentElement.remove(), 300);"></i>
+        `;
+
+        container.appendChild(toast);
+        setTimeout(() => toast.classList.add('show'), 10);
+        setTimeout(() => {
+            if(toast.classList.contains('show')) {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300); 
+            }
+        }, 3000);
+    }
+
+    function saveTimeEntry(button, empCode, entryDate) {
+        const container = button.closest('.edit-form-container');
+        
+        const formData = new URLSearchParams();
+        formData.append('action', 'update_entry');
+        formData.append('emp_code', empCode);
+        formData.append('entry_date', entryDate);
+        formData.append('day_status', container.querySelector('.upd-day-status').value);
+        formData.append('check_in', container.querySelector('.upd-check-in').value);
+        formData.append('check_out', container.querySelector('.upd-check-out').value);
+        formData.append('hours_worked', container.querySelector('.upd-hours-worked').value);
+        formData.append('over_time', container.querySelector('.upd-over-time').value);
+        formData.append('under_time', container.querySelector('.upd-under-time').value);
+        formData.append('normal_hours', container.querySelector('.upd-normal-hours').value);
+        formData.append('late_hours', container.querySelector('.upd-late-hours').value);
+        formData.append('early_hours', container.querySelector('.upd-early-hours').value);
+        formData.append('status_code', container.querySelector('.upd-status-code').value);
+        formData.append('remarks', container.querySelector('.upd-remarks').value);
+        formData.append('calc_in_out', container.querySelector('.upd-calc-in-out').checked);
+
+        const originalText = button.innerHTML;
+        button.innerHTML = 'Saving...';
+        button.disabled = true;
+
+        fetch(window.location.href, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: formData.toString()
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('Saved!', 'Time entry updated successfully.', 'success');
+                setTimeout(() => {
+                    window.location.reload(); 
+                }, 1500); 
+            } else {
+                showToast('Error', data.error || 'Failed to update record.', 'error');
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showToast('Network Error', 'Something went wrong communicating with the server.', 'error');
+            button.innerHTML = originalText;
+            button.disabled = false;
+        });
+    }
 </script>
 <script src="includes/assets/scripts.js"></script>

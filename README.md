@@ -85,9 +85,10 @@ Successfully published 2 GMB posts for each location:
 Siliguri, Coochbehar, and Raiganj.
 
 Payroll Module Progress
-Hold Salary - done
-Approve Payslip - Working
-Edit Payslip - Working
+Approve Payslip - Done
+Edit Payslip - Done
+Loans - Working
+ Process Payslip - Working
 
 
 Insert

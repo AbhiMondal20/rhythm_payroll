@@ -52,6 +52,7 @@ if ($result->num_rows > 0) {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -63,11 +64,14 @@ if ($result->num_rows > 0) {
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="icon" type="image/png" sizes="32x32" href="includes/assets/img/favicon.svg">
     <link rel="icon" type="image/png" sizes="16x16" href="includes/assets/img/favicon.svg">
     <link rel="apple-touch-icon" href="includes/assets/img/apple-touch-icon.png">
     <?php if (!empty($extra_head)) echo $extra_head; ?>
 </head>
+
 <body>
     <?php include 'includes/sidebar.php'; ?>
     <div id="toast-container"></div>
@@ -83,13 +87,15 @@ if ($result->num_rows > 0) {
                             <line x1="3" y1="18" x2="21" y2="18" />
                         </svg>
                     </button>
-                    <span style="font-weight:600;font-size:15px;color:#1a1a2e"><img src="<?= $company_logo ?? 'company/uploads/default.png' ?>" style="height: 50px;" alt="Company Logo"> 
-                    <!-- <?= $company_name ?? APP_NAME ?> -->
-                </span>
+                    <span style="font-weight:600;font-size:15px;color:#1a1a2e"><img
+                            src="<?= $company_logo ?? 'company/uploads/default.png' ?>" style="height: 50px;"
+                            alt="Company Logo">
+                        <!-- <?= $company_name ?? APP_NAME ?> -->
+                    </span>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px">
-                    
-                
+
+
                     <button style="position:relative;padding:7px 9px" class="btn">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
@@ -99,9 +105,8 @@ if ($result->num_rows > 0) {
                         <span class="notif-dot"></span>
                     </button>
                     <a href="support" style="position:relative;padding:7px 9px" class="btn" title="Support">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <!-- Headset -->
                             <path d="M4 12a8 8 0 0 1 16 0" />
                             <rect x="2" y="12" width="4" height="6" rx="1" />
@@ -138,11 +143,8 @@ if ($result->num_rows > 0) {
                             <span class="user-name"><?= htmlspecialchars($employee_name) ?></span>
 
                             <svg class="user-arrow" width="16" height="16" viewBox="0 0 20 20" fill="none">
-                                <path d="M5 7.5L10 12.5L15 7.5"
-                                    stroke="currentColor"
-                                    stroke-width="1.8"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round" />
+                                <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8"
+                                    stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                         </div>
                         <div class="user-dropdown" id="userDropdown">
