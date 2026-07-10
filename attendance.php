@@ -1,5 +1,10 @@
 <?php
-// Handle AJAX Request for Live Employee Search
+session_start();
+if (!isset($_SESSION['login'])) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit();
+}
+
 if (isset($_GET['ajax_search'])) {
     require_once 'includes/config.php';
     require_once 'includes/db_client.php';
@@ -26,6 +31,29 @@ if (isset($_GET['ajax_search'])) {
     exit;
 }
 
+// Handle AJAX Request for Deleting Time Entries
+if (isset($_POST['action']) && $_POST['action'] === 'delete_entry') {
+    require_once 'includes/config.php';
+    require_once 'includes/db_client.php';
+    header('Content-Type: application/json');
+
+    if (isset($conn)) {
+        $emp_code = mysqli_real_escape_string($conn, $_POST['emp_code']);
+        $entry_date = mysqli_real_escape_string($conn, $_POST['entry_date']);
+        
+        $delete_sql = "DELETE FROM time_entries WHERE employee_code = '$emp_code' AND entry_date = '$entry_date'";
+
+        if (mysqli_query($conn, $delete_sql)) {
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => mysqli_error($conn)]);
+        }
+    } else {
+        echo json_encode(['success' => false, 'error' => 'Database connection failed']);
+    }
+    exit;
+}
+
 // Handle AJAX Request for Updating Time Entries
 if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
     require_once 'includes/config.php';
@@ -36,7 +64,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
         $emp_code = mysqli_real_escape_string($conn, $_POST['emp_code']);
         $entry_date = mysqli_real_escape_string($conn, $_POST['entry_date']);
         
-        // Save the full detailed status string now
+        // Save the short status code
         $day_status = mysqli_real_escape_string($conn, $_POST['day_status']);
         
         $check_in = mysqli_real_escape_string($conn, $_POST['check_in']);
@@ -51,6 +79,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
         $remarks = mysqli_real_escape_string($conn, $_POST['remarks']);
         $calc_in_out = ($_POST['calc_in_out'] === 'true') ? 1 : 0;
 
+        // Automatically set record_status to 'Manual' on edit
         $update_sql = "UPDATE time_entries SET 
             day_status_1 = '$day_status',
             check_in_time = '$check_in',
@@ -63,7 +92,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
             early_hours = '$early_hours',
             status_code = '$status_code',
             remarks = '$remarks',
-            calculate_per_in_out = '$calc_in_out'
+            calculate_per_in_out = '$calc_in_out',
+            record_status = 'Manual'
             WHERE employee_code = '$emp_code' AND entry_date = '$entry_date'";
 
         if (mysqli_query($conn, $update_sql)) {
@@ -88,6 +118,24 @@ $is_searched = !empty($search_query);
 
 $time_entries = [];
 $employee_details = null;
+
+// Status Mapping Dictionary
+$status_options = [
+    'PP' => 'Present (PP)',
+    'AA' => 'Absent (AA)',
+    'P*A' => 'First Half Present (P*A)',
+    'A*P' => 'Second Half Present (A*P)',
+    'HO' => 'Holiday (HO)',
+    'WO' => 'Week Off (WO)',
+    'WW' => 'Worked On Week Off (WW)',
+    'HW' => 'Worked On Holiday (HW)',
+    'WW*' => 'Worked On Week Off First Half (WW*)',
+    '*WW' => 'Worked On Week Off Second Half (*WW)',
+    'HW*' => 'Worked On Holiday First Half (HW*)',
+    '*HW' => 'Worked On Holiday Second Half (*HW)',
+    '*LOP' => 'Loss Of Pay in Second Half (*LOP)',
+    'LOP*' => 'Loss Of Pay in First Half (LOP*)'
+];
 
 if ($is_searched && isset($conn)) {
     $safe_search = mysqli_real_escape_string($conn, $search_query);
@@ -156,9 +204,6 @@ ob_start();
     .fw-bold { font-weight: 600; }
     .w-100 { width: 100%; }
     .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
-    //.border { border: 1px solid #e5e7eb; }
-    //.border-0 { border: none !important; }
-    //.rounded-1 { border-radius: 4px; }
     .rounded-3 { border-radius: 8px; }
     .bg-white { background-color: #ffffff; }
 
@@ -271,8 +316,7 @@ ob_start();
     }
 </style>
 
-<div class="container">
-    
+<div class="container">    
     <div class="flex-between mb-1">
         <h4 class="text-dark fw-bold m-0" style="font-size: 1.25rem;">Attendance</h4>
         <div class="attendance-tabs m-0 border-0">
@@ -403,15 +447,17 @@ ob_start();
                             <?php if (!empty($time_entries)): ?>
                                 <?php foreach ($time_entries as $index => $row): 
                                     $dateFormatted = date('d M, D', strtotime($row['entry_date']));                                    
-                                    // Badge styling based on broader list
+                                    // Badge styling based on new mapped status
                                     $rawStatus = $row['day_status_1'] ?? '';
-                                    if (strpos($rawStatus, 'Present') !== false) {
+                                    if (in_array($rawStatus, ['PP', 'P*A', 'A*P'])) {
                                         $badgeClass = 'status-p';
-                                    } elseif (strpos($rawStatus, 'Absent') !== false) {
+                                    } elseif (in_array($rawStatus, ['AA', 'LOP*', '*LOP'])) {
                                         $badgeClass = 'status-a';
                                     } else {
                                         $badgeClass = 'status-other';
                                     }
+                                    
+                                    $displayStatus = $status_options[$rawStatus] ?? ($rawStatus ?: '-Select-');
                                     
                                     $rowId = "row-" . $index . "-details";
                                 ?>
@@ -419,7 +465,7 @@ ob_start();
                                         <td class="ps-4"><?= htmlspecialchars($dateFormatted) ?></td>
                                         <td>
                                             <span class="status-badge <?= $badgeClass ?>">
-                                                <?= htmlspecialchars($rawStatus ?: '-Select-') ?>
+                                                <?= htmlspecialchars($displayStatus) ?>
                                             </span> 
                                         </td>
                                         <td><?= htmlspecialchars($employee_details['shift']) ?></td>
@@ -439,36 +485,21 @@ ob_start();
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Day Status</label>
                                                         <select class="form-select upd-day-status">
-                                                            <option <?= ($row['day_status_1'] == 'Present(PP)') ? 'selected' : '' ?>> Present (PP)</option>
-                                                            <option <?= ($row['day_status_1'] == 'Absent(AA)') ?>> Absent(AA)</option>
-                                                            <option <?= ($row['day_status_1'] == 'Fist Half Present(P*A)')?>>Fist Half Present(P*A)</option>
-                                                            <option <?= ($row['day_status_1'] == 'Second Half Present(P*A)')?>> Second Half Present(P*A)</option>
-                                                            <option <?= ($row['day_status_1'] == 'First Half Present & Second Half Present') ? 'selected' : '' ?>>First Half Present & Second Half Present</option>
-                                                            <option <?= ($row['day_status_1'] == 'First Half Absent & Second Half Absent') ? 'selected' : '' ?>>First Half Absent & Second Half Absent</option>
-                                                            <option <?= ($row['day_status_1'] == 'First Half Present & Second Half Absent') ? 'selected' : '' ?>>First Half Present & Second Half Absent</option>
-                                                            <option <?= ($row['day_status_1'] == 'First Half Absent & Second Half Present') ? 'selected' : '' ?>>First Half Absent & Second Half Present</option>
-                                                            <option <?= ($row['day_status_1'] == 'WeekOff') ? 'selected' : '' ?>>WeekOff</option>
-                                                            <option <?= ($row['day_status_1'] == 'Holiday') ? 'selected' : '' ?>>Holiday</option>
-                                                            <option <?= ($row['day_status_1'] == 'Worked On Week Off') ? 'selected' : '' ?>>Worked On Week Off</option>
-                                                            <option <?= ($row['day_status_1'] == 'Worked On Holiday') ? 'selected' : '' ?>>Worked On Holiday</option>
-                                                            <option <?= ($row['day_status_1'] == 'Worked On Week Off First Half') ? 'selected' : '' ?>>Worked On Week Off First Half</option>
-                                                            <option <?= ($row['day_status_1'] == 'Worked On Week Off Second Half') ? 'selected' : '' ?>>Worked On Week Off Second Half</option>
-                                                            <option <?= ($row['day_status_1'] == 'Worked On Holiday First Half') ? 'selected' : '' ?>>Worked On Holiday First Half</option>
-                                                            <option <?= ($row['day_status_1'] == 'Worked On Holiday Second Half') ? 'selected' : '' ?>>Worked On Holiday Second Half</option>
+                                                            <?php foreach($status_options as $val => $label): ?>
+                                                                <option value="<?= htmlspecialchars($val) ?>" <?= ($row['day_status_1'] === $val) ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                                                            <?php endforeach; ?>
                                                         </select>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Check In Time</label>
                                                         <div class="input-icon-wrapper">
-                                                            <input type="time" step="1" class="form-control upd-check-in" value="<?= htmlspecialchars($row['check_in_time']) ?>">
-                                                            <i class="bi bi-clock"></i>
+                                                            <input type="datetime-local" step="1" class="form-control upd-check-in" value="<?= !empty($row['check_in_time']) ? date('Y-m-d\TH:i:s', strtotime($row['check_in_time'])) : '' ?>">
                                                         </div>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Check Out Time</label>
                                                         <div class="input-icon-wrapper">
-                                                            <input type="time" step="1" class="form-control upd-check-out" value="<?= htmlspecialchars($row['check_out_time']) ?>">
-                                                            <i class="bi bi-clock"></i>
+                                                            <input type="datetime-local" step="1" class="form-control upd-check-out" value="<?= !empty($row['check_out_time']) ? date('Y-m-d\TH:i:s', strtotime($row['check_out_time'])) : '' ?>">
                                                         </div>
                                                     </div>
                                                     <div class="grid-col-3">
@@ -518,7 +549,7 @@ ob_start();
                                                 </div>
 
                                                 <div class="flex-end gap-2 mt-5">
-                                                    <button class="btn btn-outline-danger">Delete</button>
+                                                    <button class="btn btn-outline-danger" onclick="deleteTimeEntry('<?= $row['employee_code'] ?>', '<?= $row['entry_date'] ?>')">Delete</button>
                                                     <button class="btn btn-outline-primary" onclick="toggleRow('<?= $rowId ?>', this.closest('.expandable-row').previousElementSibling.querySelector('i'))">Cancel</button>
                                                     <button class="btn btn-primary" onclick="saveTimeEntry(this, '<?= $row['employee_code'] ?>', '<?= $row['entry_date'] ?>')">Save</button>
                                                 </div>
@@ -595,7 +626,7 @@ include 'includes/footer.php';
                             data.forEach(emp => {
                                 const item = document.createElement('div');
                                 item.className = 'autocomplete-item';
-                                item.innerHTML = `<span class="autocomplete-name">${emp.employee_name}</span><span class="autocomplete-code">#${emp.employee_name}</span>`;
+                                item.innerHTML = `<span class="autocomplete-name">${emp.employee_name}</span><span class="autocomplete-code">#${emp.employee_code}</span>`;
                                 item.addEventListener('click', () => {
                                     searchInput.value = emp.employee_name; 
                                     searchHidden.value = emp.employee_name; 
@@ -655,7 +686,7 @@ include 'includes/footer.php';
         return String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0') + ' Hrs';
     }
 
-    // Engine to automatically calculate all Time Parameters
+    // Engine to automatically calculate all Time Parameters based on valid DateTime strings
     function runTimeCalculations(container) {
         const checkIn = container.querySelector('.upd-check-in').value;
         const checkOut = container.querySelector('.upd-check-out').value;
@@ -669,22 +700,23 @@ include 'includes/footer.php';
 
         if (!isAutoCalc || !checkIn || !checkOut) return;
 
-        // Shift Parameters: Default 09:00 to 18:00 (9 hours total)
-        const shiftStartStr = '09:00:00';
-        const shiftEndStr = '18:00:00';
-        const standardHoursMs = 9 * 60 * 60 * 1000; 
+        const inTime = new Date(checkIn);
+        const outTime = new Date(checkOut);
         
-        const inTime = new Date(`1970-01-01T${checkIn}Z`);
-        const outTime = new Date(`1970-01-01T${checkOut}Z`);
-        const shiftStart = new Date(`1970-01-01T${shiftStartStr}Z`);
-        const shiftEnd = new Date(`1970-01-01T${shiftEndStr}Z`);
+        if(isNaN(inTime) || isNaN(outTime)) return; // Prevents error if format isn't complete yet
 
-        // Handle overnight
-        if (outTime < inTime) {
-            outTime.setDate(outTime.getDate() + 1);
-        }
+        // Shift Parameters: Default 09:00 to 18:00 (9 hours total)
+        // Adjust the shift times based on the date of check-in
+        const shiftStart = new Date(inTime);
+        shiftStart.setHours(9, 0, 0, 0); 
+        
+        const shiftEnd = new Date(inTime);
+        shiftEnd.setHours(18, 0, 0, 0); 
+        
+        const standardHoursMs = 9 * 60 * 60 * 1000; 
 
         let hoursWorkedMs = outTime - inTime;
+        if(hoursWorkedMs < 0) hoursWorkedMs = 0; // Check out shouldn't be before check in
 
         // Late Hours (Check-In is after Shift Start)
         let lateMs = inTime > shiftStart ? (inTime - shiftStart) : 0;
@@ -819,6 +851,58 @@ include 'includes/footer.php';
             showToast('Network Error', 'Something went wrong communicating with the server.', 'error');
             button.innerHTML = originalText;
             button.disabled = false;
+        });
+    }
+
+    // Function to handle SweetAlert Deletion
+    function deleteTimeEntry(empCode, entryDate) {
+        Swal.fire({
+            title: 'Are you sure?',
+            text: "You won't be able to revert this!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'Yes, delete it!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const formData = new URLSearchParams();
+                formData.append('action', 'delete_entry');
+                formData.append('emp_code', empCode);
+                formData.append('entry_date', entryDate);
+
+                fetch(window.location.href, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData.toString()
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        Swal.fire(
+                            'Deleted!',
+                            'The time entry has been deleted.',
+                            'success'
+                        ).then(() => {
+                            window.location.reload();
+                        });
+                    } else {
+                        Swal.fire(
+                            'Error!',
+                            data.error || 'Failed to delete the record.',
+                            'error'
+                        );
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    Swal.fire(
+                        'Network Error',
+                        'Something went wrong communicating with the server.',
+                        'error'
+                    );
+                });
+            }
         });
     }
 </script>

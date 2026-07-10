@@ -61,7 +61,14 @@ Timesheet - Pending
 FullFinal - Working
 
 <!-- 03-07-2026 -->
-Attendanced - Working
+Attendanced - Done
+<!-- 10-07-2026 -->
+Calendar View - Done
+
+Manual Attendance - Pending
+Discrepancies - Pending
+Process Time Card - Pending
+Approve Overtime - Pending
 
 
 
@@ -88,7 +95,7 @@ Payroll Module Progress
 Approve Payslip - Done
 Edit Payslip - Done
 Loans - Working
- Process Payslip - Working
+Process Payslip - Working
 
 
 Insert
