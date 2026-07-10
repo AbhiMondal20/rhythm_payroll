@@ -156,15 +156,19 @@ if ($is_searched && isset($conn)) {
         $time_sql .= "(employee_name LIKE '%$safe_search%' OR employee_code LIKE '%$safe_search%')";
     }
     
+    // Safely process the date range without modifying global error handlers
     if (!empty($date_range) && strpos($date_range, ' to ') !== false) {
-        set_error_handler(function() {});
         $dates = explode(' to ', $date_range);
         if (count($dates) == 2) {
-            $start_date = mysqli_real_escape_string($conn, date('Y-m-d', strtotime($dates[0])));
-            $end_date = mysqli_real_escape_string($conn, date('Y-m-d', strtotime($dates[1])));
-            $time_sql .= " AND entry_date BETWEEN '$start_date' AND '$end_date'";
+            $start_timestamp = strtotime($dates[0]);
+            $end_timestamp = strtotime($dates[1]);
+            
+            if ($start_timestamp !== false && $end_timestamp !== false) {
+                $start_date = mysqli_real_escape_string($conn, date('Y-m-d', $start_timestamp));
+                $end_date = mysqli_real_escape_string($conn, date('Y-m-d', $end_timestamp));
+                $time_sql .= " AND entry_date BETWEEN '$start_date' AND '$end_date'";
+            }
         }
-        restore_error_handler();
     }
     
     $time_sql .= " ORDER BY entry_date ASC";
@@ -178,6 +182,8 @@ if ($is_searched && isset($conn)) {
 }
 ob_start();
 ?>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="includes/assets/style.css">
 
 <style>    
@@ -236,7 +242,7 @@ ob_start();
     .autocomplete-code { font-size: 11px; color: #6b7280; margin-top: 2px; }
 
     .employee-profile-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin-bottom: 24px; display: flex; align-items: center; gap: 24px; }
-    .emp-avatar { width: 56px; height: 56px; background: #0d6efd; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 600; text-transform: uppercase; }
+    .emp-avatar { width: 56px; height: 56px; background: #0d6efd; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 600; text-transform: uppercase; overflow: hidden; }
     .emp-details-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
     .emp-detail-item { display: flex; flex-direction: column; gap: 4px; }
     .emp-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -316,7 +322,8 @@ ob_start();
     }
 </style>
 
-<div class="container">    
+<div class="container">
+    
     <div class="flex-between mb-1">
         <h4 class="text-dark fw-bold m-0" style="font-size: 1.25rem;">Attendance</h4>
         <div class="attendance-tabs m-0 border-0">
@@ -399,24 +406,24 @@ ob_start();
                 <?php if ($employee_details): ?>
                     <div class="employee-profile-card">
                         <div class="emp-avatar">
-                            <?= '<img src="' . $employee_details['profile_photo'] . '" alt="Profile Image" srcset="" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">'; ?>
+                            <?= '<img src="' . htmlspecialchars($employee_details['profile_photo'] ?? '') . '" alt="Profile Image" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">'; ?>
                         </div>
                         <div class="emp-details-grid">
                             <div class="emp-detail-item">
                                 <span class="emp-label">Name</span>
-                                <span class="emp-val"><?= htmlspecialchars($employee_details['employee_name']) ?></span>
+                                <span class="emp-val"><?= htmlspecialchars($employee_details['employee_name'] ?? '') ?></span>
                             </div>
                             <div class="emp-detail-item">
                                 <span class="emp-label">Emp Code</span>
-                                <span class="emp-val"><?= htmlspecialchars($employee_details['employee_code']) ?></span>
+                                <span class="emp-val"><?= htmlspecialchars($employee_details['employee_code'] ?? '') ?></span>
                             </div>
                             <div class="emp-detail-item">
                                 <span class="emp-label">Department</span>
-                                <span class="emp-val"><?= htmlspecialchars($employee_details['department'] ?: 'N/A') ?></span>
+                                <span class="emp-val"><?= htmlspecialchars($employee_details['department'] ?? 'N/A') ?></span>
                             </div>
                             <div class="emp-detail-item">
                                 <span class="emp-label">Designation</span>
-                                <span class="emp-val"><?= htmlspecialchars($employee_details['designation'] ?: 'N/A') ?></span>
+                                <span class="emp-val"><?= htmlspecialchars($employee_details['designation'] ?? 'N/A') ?></span>
                             </div>
                             <div class="emp-detail-item">
                                 <span class="emp-label">Join Date</span>
@@ -424,7 +431,7 @@ ob_start();
                             </div>
                             <div class="emp-detail-item">
                                 <span class="emp-label">Official Email</span>
-                                <span class="emp-val"><?= htmlspecialchars($employee_details['official_email'] ?: 'N/A') ?></span>
+                                <span class="emp-val"><?= htmlspecialchars($employee_details['official_email'] ?? 'N/A') ?></span>
                             </div>
                         </div>
                     </div>
@@ -446,7 +453,7 @@ ob_start();
                         <tbody>
                             <?php if (!empty($time_entries)): ?>
                                 <?php foreach ($time_entries as $index => $row): 
-                                    $dateFormatted = date('d M, D', strtotime($row['entry_date']));                                    
+                                    $dateFormatted = date('d M, D', strtotime($row['entry_date']));                                   
                                     // Badge styling based on new mapped status
                                     $rawStatus = $row['day_status_1'] ?? '';
                                     if (in_array($rawStatus, ['PP', 'P*A', 'A*P'])) {
@@ -468,13 +475,13 @@ ob_start();
                                                 <?= htmlspecialchars($displayStatus) ?>
                                             </span> 
                                         </td>
-                                        <td><?= htmlspecialchars($employee_details['shift']) ?></td>
+                                        <td><?= htmlspecialchars($employee_details['shift'] ?? '') ?></td>
                                         <td>
                                             <?= !empty($row['check_in_time']) ? htmlspecialchars(date('h:i A', strtotime($row['check_in_time']))) : '--:--' ?> - 
                                             <?= !empty($row['check_out_time']) ? htmlspecialchars(date('h:i A', strtotime($row['check_out_time']))) : '--:--' ?>
                                         </td>
-                                        <td><?= htmlspecialchars($row['hours_worked']) ?></td>
-                                        <td><span class="system-badge"><?= htmlspecialchars($row['record_status']) ?></span></td>
+                                        <td><?= htmlspecialchars($row['hours_worked'] ?? '') ?></td>
+                                        <td><span class="system-badge"><?= htmlspecialchars($row['record_status'] ?? '') ?></span></td>
                                         <td class="text-end pe-4"><i class="bi bi-chevron-down text-muted" style="cursor:pointer;" onclick="toggleRow('<?= $rowId ?>', this)"></i></td>
                                     </tr>
                                     
@@ -486,7 +493,7 @@ ob_start();
                                                         <label class="form-label">Day Status</label>
                                                         <select class="form-select upd-day-status">
                                                             <?php foreach($status_options as $val => $label): ?>
-                                                                <option value="<?= htmlspecialchars($val) ?>" <?= ($row['day_status_1'] === $val) ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                                                                <option value="<?= htmlspecialchars($val) ?>" <?= (($row['day_status_1'] ?? '') === $val) ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
                                                             <?php endforeach; ?>
                                                         </select>
                                                     </div>
@@ -504,45 +511,45 @@ ob_start();
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Hours Worked</label>
-                                                        <input type="text" class="form-control upd-hours-worked" value="<?= htmlspecialchars($row['hours_worked']) ?>" readonly>
+                                                        <input type="text" class="form-control upd-hours-worked" value="<?= htmlspecialchars($row['hours_worked'] ?? '') ?>" readonly>
                                                     </div>
                                                 </div>
                                                 
                                                 <div class="grid-row mb-4">
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Over Time Hours</label>
-                                                        <input type="text" class="form-control upd-over-time" value="<?= htmlspecialchars($row['over_time_hours']) ?>" readonly>
+                                                        <input type="text" class="form-control upd-over-time" value="<?= htmlspecialchars($row['over_time_hours'] ?? '') ?>" readonly>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Under Time Hours</label>
-                                                        <input type="text" class="form-control upd-under-time" value="<?= htmlspecialchars($row['under_time_hours']) ?>" readonly>
+                                                        <input type="text" class="form-control upd-under-time" value="<?= htmlspecialchars($row['under_time_hours'] ?? '') ?>" readonly>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Normal Hours</label>
-                                                        <input type="text" class="form-control upd-normal-hours" value="<?= htmlspecialchars($row['normal_hours']) ?>" readonly>
+                                                        <input type="text" class="form-control upd-normal-hours" value="<?= htmlspecialchars($row['normal_hours'] ?? '') ?>" readonly>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Late Hours</label>
-                                                        <input type="text" class="form-control upd-late-hours" value="<?= htmlspecialchars($row['late_hours']) ?>" readonly>
+                                                        <input type="text" class="form-control upd-late-hours" value="<?= htmlspecialchars($row['late_hours'] ?? '') ?>" readonly>
                                                     </div>
                                                 </div>
                                                 
                                                 <div class="grid-row mb-3 flex-end" style="align-items: flex-end;">
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Early Hours</label>
-                                                        <input type="text" class="form-control upd-early-hours" value="<?= htmlspecialchars($row['early_hours']) ?>" readonly>
+                                                        <input type="text" class="form-control upd-early-hours" value="<?= htmlspecialchars($row['early_hours'] ?? '') ?>" readonly>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Status</label>
-                                                        <input type="text" class="form-control upd-status-code" value="<?= htmlspecialchars($row['status_code']) ?>">
+                                                        <input type="text" class="form-control upd-status-code" value="<?= htmlspecialchars($row['status_code'] ?? '') ?>">
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Remarks</label>
-                                                        <input type="text" class="form-control upd-remarks" value="<?= htmlspecialchars($row['remarks']) ?>">
+                                                        <input type="text" class="form-control upd-remarks" value="<?= htmlspecialchars($row['remarks'] ?? '') ?>">
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <div class="form-check" style="margin-bottom: 8px;">
-                                                            <input class="form-check-input upd-calc-in-out" type="checkbox" id="calcInOut_<?= $index ?>" <?= $row['calculate_per_in_out'] ? 'checked' : '' ?>>
+                                                            <input class="form-check-input upd-calc-in-out" type="checkbox" id="calcInOut_<?= $index ?>" <?= !empty($row['calculate_per_in_out']) ? 'checked' : '' ?>>
                                                             <label class="form-check-label" for="calcInOut_<?= $index ?>">Calc per In/Out time</label>
                                                         </div>
                                                     </div>
@@ -600,6 +607,8 @@ include 'includes/footer.php';
 ?>
 
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
+
 <script>
     const searchInput = document.getElementById('employeeSearchInput');
     const searchHidden = document.getElementById('employeeSearchHidden');
@@ -677,7 +686,6 @@ include 'includes/footer.php';
         }
     }
 
-    // Helper to format ms to "08:28 Hrs"
     function formatMsToHrs(ms) {
         if (ms <= 0) return '00:00 Hrs';
         let totalMins = Math.floor(ms / 60000);
@@ -686,13 +694,11 @@ include 'includes/footer.php';
         return String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0') + ' Hrs';
     }
 
-    // Engine to automatically calculate all Time Parameters based on valid DateTime strings
     function runTimeCalculations(container) {
         const checkIn = container.querySelector('.upd-check-in').value;
         const checkOut = container.querySelector('.upd-check-out').value;
         const isAutoCalc = container.querySelector('.upd-calc-in-out').checked;
 
-        // Ensure fields are read-only if auto-calc is checked, editable otherwise
         const inputs = ['upd-over-time', 'upd-under-time', 'upd-normal-hours', 'upd-late-hours', 'upd-early-hours'];
         inputs.forEach(cls => {
             container.querySelector('.' + cls).readOnly = isAutoCalc;
@@ -703,10 +709,8 @@ include 'includes/footer.php';
         const inTime = new Date(checkIn);
         const outTime = new Date(checkOut);
         
-        if(isNaN(inTime) || isNaN(outTime)) return; // Prevents error if format isn't complete yet
+        if(isNaN(inTime) || isNaN(outTime)) return; 
 
-        // Shift Parameters: Default 09:00 to 18:00 (9 hours total)
-        // Adjust the shift times based on the date of check-in
         const shiftStart = new Date(inTime);
         shiftStart.setHours(9, 0, 0, 0); 
         
@@ -716,24 +720,14 @@ include 'includes/footer.php';
         const standardHoursMs = 9 * 60 * 60 * 1000; 
 
         let hoursWorkedMs = outTime - inTime;
-        if(hoursWorkedMs < 0) hoursWorkedMs = 0; // Check out shouldn't be before check in
+        if(hoursWorkedMs < 0) hoursWorkedMs = 0; 
 
-        // Late Hours (Check-In is after Shift Start)
         let lateMs = inTime > shiftStart ? (inTime - shiftStart) : 0;
-        
-        // Early Hours (Check-Out is before Shift End, assuming standard same-day shift)
         let earlyMs = outTime < shiftEnd ? (shiftEnd - outTime) : 0;
-
-        // Over Time Hours (Time worked beyond standard 9 hours)
         let overTimeMs = hoursWorkedMs > standardHoursMs ? (hoursWorkedMs - standardHoursMs) : 0;
-        
-        // Under Time Hours (Time worked less than standard 9 hours)
         let underTimeMs = hoursWorkedMs < standardHoursMs ? (standardHoursMs - hoursWorkedMs) : 0;
-        
-        // Normal Hours
         let normalMs = Math.min(hoursWorkedMs, standardHoursMs);
 
-        // Update DOM
         container.querySelector('.upd-hours-worked').value = formatMsToHrs(hoursWorkedMs);
         container.querySelector('.upd-late-hours').value = formatMsToHrs(lateMs);
         container.querySelector('.upd-early-hours').value = formatMsToHrs(earlyMs);
@@ -742,7 +736,6 @@ include 'includes/footer.php';
         container.querySelector('.upd-normal-hours').value = formatMsToHrs(normalMs);
     }
 
-    // Listen for changes on CheckIn, CheckOut, or Checkbox
     document.addEventListener('change', function(e) {
         if (e.target.classList.contains('upd-check-in') || 
             e.target.classList.contains('upd-check-out') || 
@@ -854,7 +847,6 @@ include 'includes/footer.php';
         });
     }
 
-    // Function to handle SweetAlert Deletion
     function deleteTimeEntry(empCode, entryDate) {
         Swal.fire({
             title: 'Are you sure?',
