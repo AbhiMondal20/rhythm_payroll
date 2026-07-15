@@ -1,5 +1,14 @@
 <?php
 session_start();
+if (!isset($_SESSION['login'])) {
+    if (isset($_POST['action']) || isset($_GET['action'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+        exit();
+    }
+    header('Location: login');
+    exit();
+}
 require_once 'includes/db_client.php';
 require_once 'includes/config.php';
 
@@ -138,8 +147,7 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
                     <th>Department</th>
                     <th>Designation</th>
                     <th>Group</th>
-                    <!-- <th>Actions</th> -->
-                </tr>
+                    </tr>
             </thead>
             <tbody>
                 <?php foreach ($employees_page as $e): 
@@ -186,9 +194,9 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
                             <a href="AddEmployee?isEditEmployee=true&id=<?= (int)$e['id'] ?>"
                             style="display:flex;align-items:center;gap:8px;font-weight:600;color:#1a1a2e;text-decoration:none;">
                             
-                                <img src="<?= esc($e['profile_photo']) ?>"
-                                    alt="Profile"
-                                    style="width:32px;height:32px;border-radius:50%;object-fit:cover;">
+                                <img src="<?= esc(!empty($e['profile_photo']) ? $e['profile_photo'] : 'uploads/photos/user.png') ?>"
+                            alt="Profile"
+                            style="width:32px;height:32px;border-radius:50%;object-fit:cover;">
 
                                 <span><?= esc($e['employee_name']) ?></span>
                             </a>
@@ -210,24 +218,7 @@ function renderEmployeeTable($employees_page, $total_employees, $current_page, $
                         <div style="font-weight:600;color:#1a1a2e"><?= esc($e['emp_type']) ?></div>
                     </td>
 
-                    <!-- <td>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap">
-                            <form method="POST" style="display:inline" class="delete-employee-form">
-                                <input type="hidden" name="action" value="delete_employee">
-                                <input type="hidden" name="employee_id" value="<?= (int)$e['id'] ?>">
-
-                                <button type="submit" class="ur-del-btn">
-                                    ✕
-                                </button>
-                            </form>
-
-                            <a href="AddEmployee?isEditEmployee=true&id=<?= (int)$e['id'] ?>" class="ur-chevron-btn">
-                                <i class="fa-solid fa-chevron-right loc-item-chevron"></i>
-                            </a>
-
-                        </div>
-                    </td> -->
-                </tr>
+                    </tr>
                 <?php endforeach; ?>
 
                 <?php if (empty($employees_page)): ?>
@@ -422,6 +413,11 @@ ob_start();
         <a href="AddEmployee?isAddEmployee=true" class="btn btn-primary"
             style="text-decoration:none;background:#2563EB;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;">+
             Add Employee</a>
+            
+        <button id="btnSyncDevices" class="btn"
+            style="background:#10B981;color:#fff;padding:8px 14px;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;">
+           <i class="fa-solid fa-rotate"></i> Sync
+        </button>
     </div>
 </div>
 
@@ -558,6 +554,92 @@ document.querySelectorAll('.delete-employee-form').forEach(form => {
         });
     });
 });
+// ==========================================
+// NEW AJAX SYNC SCRIPT INTEGRATION (WITH PROGRESS)
+// ==========================================
+const btnSync = document.getElementById('btnSyncDevices');
+if (btnSync) {
+    btnSync.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        let progressInterval;
+        let currentProgress = 0;
+
+        // Show loading state with SweetAlert and a Progress Bar
+        Swal.fire({
+            title: 'Syncing Data...',
+            html: `
+                <div style="margin-bottom: 15px;">Please wait while devices are being synced.</div>
+                <div style="font-weight: bold; margin-bottom: 5px;">Progress: <span id="progress-text">0</span>%</div>
+                <div style="width: 100%; background-color: #e9ecef; border-radius: 4px; overflow: hidden; height: 20px;">
+                    <div id="sync-progress-bar" style="width: 0%; height: 100%; background-color: #10B981; transition: width 0.4s ease;"></div>
+                </div>
+            `,
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            didOpen: () => {
+                Swal.showLoading();
+                
+                const progressText = Swal.getHtmlContainer().querySelector('#progress-text');
+                const progressBar = Swal.getHtmlContainer().querySelector('#sync-progress-bar');
+                
+                // Simulate progress climbing up to 90% while waiting for server response
+                progressInterval = setInterval(() => {
+                    if (currentProgress < 90) {
+                        // Increments randomly between 1% and 5% to look natural
+                        const increment = Math.floor(Math.random() * 5) + 1;
+                        currentProgress = Math.min(currentProgress + increment, 90);
+                        
+                        progressText.textContent = currentProgress;
+                        progressBar.style.width = currentProgress + '%';
+                    }
+                }, 600); // Updates every 600ms
+            },
+            willClose: () => {
+                clearInterval(progressInterval); // Clean up interval if closed
+            }
+        });
+
+        // Trigger the sync file
+        fetch('http://192.168.2.161/rhythm_payroll/includes/sync/sync_all.php')
+            .then(response => {
+                if (!response.ok) throw new Error("Network error");
+                return response.text(); 
+            })
+            .then(data => {
+                // Clear the interval and force progress to 100%
+                clearInterval(progressInterval);
+                const progressText = Swal.getHtmlContainer().querySelector('#progress-text');
+                const progressBar = Swal.getHtmlContainer().querySelector('#sync-progress-bar');
+                
+                if (progressText && progressBar) {
+                    progressText.textContent = 100;
+                    progressBar.style.width = '100%';
+                }
+                
+                // Add a tiny delay so the user sees it hit 100% before changing screens
+                setTimeout(() => {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Sync Complete!',
+                        html: '<div style="font-size: 14px; text-align: left; max-height: 200px; overflow-y: auto;">' + data + '</div>',
+                        confirmButtonColor: '#10B981'
+                    }).then(() => {
+                        window.location.reload(); 
+                    });
+                }, 500);
+            })
+            .catch(error => {
+                clearInterval(progressInterval);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Sync Failed',
+                    text: 'Could not connect to the sync script. Ensure the IP is correct and the server is running.',
+                    confirmButtonColor: '#dc3545'
+                });
+            });
+    });
+}
 </script>
 
 <?php

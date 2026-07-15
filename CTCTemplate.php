@@ -5,7 +5,6 @@ if (!isset($_SESSION['login'])) {
     exit();
 }
 
-
 require_once 'includes/config.php';
 require_once 'includes/db_client.php';
 $page_title = 'CTC Templates';
@@ -16,14 +15,44 @@ function esc($v){
 
 $pt_states = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal'];
 
-$salary_components = [
-    'earnings'    => ['Basic Salary','House Rent Allowance','Special Allowance','Conveyance Allowance','Medical Allowance','Variable Pay','Performance Bonus'],
-    'deductions'  => ['Professional Tax','PF Employee','ESI Employee','TDS','Loan Recovery'],
-    'employer'    => ['PF Employer','ESI Employer','Gratuity'],
-];
-
 $calc_types = ['Fixed','Slab','Formula','% of Basic','% of CTC','% of Gross'];
 $unit_types = ['₹ Fixed','% of CTC','% of Basic','% of Gross','/month','/day','Balance'];
+
+// --- DYNAMIC COMPONENT FETCH ---
+$salary_components = [
+    'earnings'   => [],
+    'deductions' => [],
+    'employer'   => [],
+];
+
+$res = $conn->query("
+    SELECT id, salary_type, component_category, code, component_name, expression
+    FROM salary_components
+    WHERE status = 'active'
+    ORDER BY salary_type ASC, component_name ASC
+");
+
+if ($res) {
+    while ($row = $res->fetch_assoc()) {
+        $item = [
+            'id'       => (int)$row['id'],
+            'type'     => $row['salary_type'],
+            'category' => $row['component_category'],
+            'code'     => $row['code'],
+            'name'     => $row['component_name'],
+            'expr'     => $row['expression'],
+        ];
+
+        if ($row['salary_type'] === 'Deduction') {
+            $salary_components['deductions'][] = $item;
+        } elseif ($row['salary_type'] === 'Employer') {
+            $salary_components['employer'][] = $item;
+        } else {
+            $salary_components['earnings'][] = $item;
+        }
+    }
+}
+// ------------------------------------------------
 
 $mode = $_GET['mode'] ?? 'view';
 $active_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -200,15 +229,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /* FETCH TEMPLATES */
 $templates = [];
-$res = $conn->query("
+$res2 = $conn->query("
     SELECT *
     FROM ctc_templates
     WHERE status = 'active'
     ORDER BY id ASC
 ");
 
-if ($res) {
-    while ($row = $res->fetch_assoc()) {
+if ($res2) {
+    while ($row = $res2->fetch_assoc()) {
         $templates[] = [
             'id'       => (int)$row['id'],
             'name'     => $row['name'],
@@ -992,11 +1021,19 @@ function togglePT() {
     if(!chk.checked) sel.value='';
 }
 
-var compOptions = {
-    earnings:   ['Basic Salary','House Rent Allowance','Special Allowance','Conveyance Allowance','Medical Allowance','Variable Pay','Performance Bonus','Overtime Pay'],
-    deductions: ['Professional Tax','PF Employee','ESI Employee','TDS','Loan Recovery','Advance Recovery'],
-    employer:   ['PF Employer','ESI Employer','Gratuity','EDLI']
-};
+// Generate the options array dynamically from PHP safely (handling special characters)
+var compOptions = <?php
+    $js_opts = ['earnings'=>[], 'deductions'=>[], 'employer'=>[]];
+    foreach($salary_components as $cat => $comps) {
+        foreach($comps as $comp) {
+            $js_opts[$cat][] = $comp['name']; 
+        }
+    }
+    // JSON_HEX flags ensure quotes/apostrophes don't break the JS syntax
+    echo json_encode($js_opts, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?: '{"earnings":[],"deductions":[],"employer":[]}';
+?>;
+
+console.log("Salary Components Loaded:", compOptions);
 
 var calcTypes=['Fixed','Slab','Formula','% of Basic','% of CTC','% of Gross'];
 var unitTypes=['₹ Fixed','% of CTC','% of Basic','% of Gross','/month','/day','Balance'];
@@ -1076,8 +1113,8 @@ function compRowHTML($type, $index, $c) {
     <div class="ctc-comp-row">
         <select name="components[<?= esc($type) ?>][<?= (int)$index ?>][name]" title="Component">
             <?php foreach($opts as $o): ?>
-                <option value="<?= esc($o) ?>" <?= $o===$c['name']?'selected':'' ?>>
-                    <?= esc($o) ?>
+                <option value="<?= esc($o['name']) ?>" <?= $o['name']===$c['name']?'selected':'' ?>>
+                    <?= esc($o['name']) ?>
                 </option>
             <?php endforeach; ?>
         </select>

@@ -17,7 +17,7 @@ function allPages(): array {
     return [
         // Main Modules
         ['module_key' => 'payroll', 'page_name' => 'Dashboard'],
-        ['module_key' => 'payroll', 'page_name' => 'Employee List'],
+        ['module_key' => 'payroll', 'page_name' => 'Employees'],
         ['module_key' => 'payroll', 'page_name' => 'Approvals'],
         ['module_key' => 'payroll', 'page_name' => 'Attendance'],
         ['module_key' => 'payroll', 'page_name' => 'Leave'],

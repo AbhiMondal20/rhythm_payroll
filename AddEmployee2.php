@@ -127,13 +127,36 @@ if ($resMgr) {
 }
 
 // ---------------------------------------------------------
-// 1. Fetch CTC Templates 
+// 1. Fetch CTC Templates & Components for JS Calculation
 // ---------------------------------------------------------
 $db_ctc_templates = [];
 $resCtc = mysqli_query($conn, "SELECT id, name as template_name FROM ctc_templates where status = 'active' ORDER BY template_name ASC");
 if ($resCtc) {
     while ($r = mysqli_fetch_assoc($resCtc)) {
         $db_ctc_templates[] = $r;
+    }
+}
+
+$ctc_components = [];
+$resComp = mysqli_query($conn, "SELECT id, template_id, component_type, component_name, calc_type, calc_value, unit, sort_order FROM ctc_template_components ORDER BY template_id, sort_order ASC");
+if ($resComp) {
+    while ($r = mysqli_fetch_assoc($resComp)) {
+        $ctc_components[$r['template_id']][] = $r;
+    }
+}
+
+// ---------------------------------------------------------
+// 2. Fetch Statutory Rules (PF / ESI) for JS Calculation
+// ---------------------------------------------------------
+$stat_config = [
+    'epf_emp_rate' => 12, 'epf_employer_rate' => 12, 'pf_max_ceil' => 15000, 
+    'esi_emp' => 0.75, 'esi_employer' => 3.25, 'esi_max_ceil' => 21000
+];
+$resStat = mysqli_query($conn, "SELECT epf_emp_rate, epf_employer_rate, pf_max_ceil, esi_emp, esi_employer, esi_max_ceil FROM statutory_global_config LIMIT 1");
+if ($resStat && mysqli_num_rows($resStat) > 0) {
+    $rowConfig = mysqli_fetch_assoc($resStat);
+    foreach($rowConfig as $k => $v) {
+        if($v !== null) $stat_config[$k] = (float)$v;
     }
 }
 
@@ -977,14 +1000,14 @@ ob_start();
                         </div>
                         <div>
                             <h3>Gross Salary & CTC Details</h3>
-                            <p>Select a CTC template and enter the monthly gross salary.</p>
+                            <p>Select a template and enter monthly gross. Components will automatically calculate based on rules.</p>
                         </div>
                     </div>
                     <div class="form-block-body">
                         <div class="fg-row col-2">
                             <div class="fg">
                                 <label>CTC TEMPLATE</label>
-                                <select name="ctc_template_id" id="fCtcTemplate">
+                                <select name="ctc_template_id" id="fCtcTemplate" onchange="calcSalary()">
                                     <option value="">Custom / None</option>
                                     <?php foreach ($db_ctc_templates as $tpl): ?>
                                         <option value="<?= $tpl['id'] ?>" <?= sel($emp['ctc_template_id'], $tpl['id']) ?>>
@@ -995,7 +1018,39 @@ ob_start();
                             </div>
                             <div class="fg">
                                 <label>GROSS SALARY / MONTH (₹) <span class="req">*</span></label>
-                                <input type="number" name="salary" id="fSalary" value="<?= esc($emp['salary']) ?>" min="0" placeholder="e.g. 38000" oninput="updatePreview()" required>
+                                <input type="number" name="salary" id="fSalary" value="<?= esc($emp['salary']) ?>" min="0" placeholder="e.g. 38000" oninput="calcSalary();updatePreview()" required>
+                            </div>
+                        </div>
+
+                        <div class="fg-row col-2" id="manualSalaryBlock" style="display:none; padding:15px; background:#F9FAFB; border-radius:8px; border:1px dashed #D1D5DB; margin-top:10px;">
+                            <div class="fg" style="margin-bottom:0">
+                                <label>MANUAL BASIC %</label>
+                                <input type="number" name="basic_pct" id="fBasicPct" value="<?= esc($emp['basic_pct'] ?: 60) ?>" min="1" max="100" oninput="calcSalary()">
+                            </div>
+                            <div class="fg" style="margin-bottom:0">
+                                <label>MANUAL HRA %</label>
+                                <input type="number" name="hra_pct" id="fHraPct" value="<?= esc($emp['hra_pct'] ?: 40) ?>" min="0" max="100" oninput="calcSalary()">
+                            </div>
+                        </div>
+
+                        <div id="salBreakdownWrap" style="display:none; margin-top:15px;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid #E5E7EB;border-radius:9px;overflow:hidden;margin-top:4px">
+                                <div style="padding:12px 14px;border-right:1px solid #E5E7EB">
+                                    <div style="font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:.5px;margin-bottom:8px">EARNINGS</div>
+                                    <table class="sal-table" id="tEarnings" style="width:100%;font-size:12.5px;color:#374151"></table>
+                                </div>
+                                <div style="padding:12px 14px;border-right:1px solid #E5E7EB">
+                                    <div style="font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:.5px;margin-bottom:8px">DEDUCTIONS</div>
+                                    <table class="sal-table" id="tDeductions" style="width:100%;font-size:12.5px;color:#374151"></table>
+                                </div>
+                                <div style="padding:12px 14px;background:#F9FAFB">
+                                    <div style="font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:.5px;margin-bottom:8px">EMPLOYER COST (CTC)</div>
+                                    <table class="sal-table" id="tEmployer" style="width:100%;font-size:12.5px;color:#374151"></table>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px;background:linear-gradient(90deg,#D1FAE5,#DBEAFE);border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+                                <span style="font-size:13px;font-weight:600;color:#111827">Monthly Net Take-Home</span>
+                                <span style="font-size:18px;font-weight:700;color:#059669" id="salNetDisplay">₹0</span>
                             </div>
                         </div>
                     </div>
@@ -1006,6 +1061,7 @@ ob_start();
                     <button type="button" class="btn btn-primary" onclick="nextSection()">Bank Details</button>
                 </div>
             </div>
+
 
             
             <div class="form-section" id="section-4">
@@ -1266,6 +1322,9 @@ ob_start();
                 </div>
             </div>
         </div>
+
+        <div class="sal-preview-card" id="salPreviewCard" style="display:none">
+            </div>
     </div>
 </div>
 
@@ -1277,6 +1336,10 @@ ob_start();
 <script>
 let currentSection = 1;
 const totalSections = 6;
+
+// Embed DB configuration into JS logic
+const ctcComponentsData = <?= json_encode($ctc_components) ?>;
+const statConfig = <?= json_encode($stat_config) ?>;
 
 const svgIcons = {
     success: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
@@ -1400,6 +1463,172 @@ function money(n) {
     return '₹' + Math.round(Number(n || 0)).toLocaleString('en-IN');
 }
 
+// -------------------------------------------------------------
+// Core Update: Dynamic Salary Calculator Based on Database Rules
+// -------------------------------------------------------------
+function calcSalary() {
+    const gross = Number(document.getElementById('fSalary')?.value || 0);
+    const templateId = document.getElementById('fCtcTemplate')?.value;
+    const manualBlock = document.getElementById('manualSalaryBlock');
+    
+    // UI resets
+    const wrap = document.getElementById('salBreakdownWrap');
+    const pc = document.getElementById('salPreviewCard');
+    
+    if (gross <= 0) {
+        if (wrap) wrap.style.display = 'none';
+        if (pc) pc.style.display = 'none';
+        return;
+    }
+
+    if (wrap) wrap.style.display = 'block';
+    if (pc) pc.style.display = 'block';
+
+    let earningsHTML = '';
+    let deductionsHTML = '';
+    let employerHTML = '';
+
+    let basicVal = 0;
+    let computedEarnings = [];
+    let computedDeductions = [];
+    let computedEmployer = [];
+    let totalEarningsCalc = 0;
+
+    if (templateId && ctcComponentsData[templateId]) {
+        // Hide manual inputs since template logic will run
+        if(manualBlock) manualBlock.style.display = 'none';
+        
+        const comps = ctcComponentsData[templateId];
+        let specialAllowanceObj = null;
+
+        // 1st pass: Calculate the foundational 'Basic' specifically
+        let basicComp = comps.find(c => c.component_name.toLowerCase() === 'basic');
+        if (basicComp) {
+            basicVal = gross * (Number(basicComp.calc_value) / 100);
+            computedEarnings.push({ name: basicComp.component_name, val: basicVal });
+            totalEarningsCalc += basicVal;
+        } else {
+            // Defaulting Basic to 50% if missing from template unexpectedly
+            basicVal = gross * 0.5; 
+        }
+
+        // 2nd pass: Calculate all other percentages based on Basic
+        comps.forEach(c => {
+            if (c.component_name.toLowerCase() === 'basic') return;
+            
+            if (c.unit === 'Balance') {
+                specialAllowanceObj = c; // Save for the end
+            } else if (c.component_type === 'earnings') {
+                let v = 0;
+                if (c.calc_type === '% of Basic' || c.unit === '% of Basic') {
+                    v = basicVal * (Number(c.calc_value) / 100);
+                } else if (c.calc_type === 'Fixed') {
+                    v = Number(c.calc_value);
+                }
+                computedEarnings.push({ name: c.component_name, val: v });
+                totalEarningsCalc += v;
+            }
+        });
+
+        // 3rd pass: Compute the 'Balance' component (usually Special Allowance)
+        if (specialAllowanceObj) {
+            let balance = Math.max(0, gross - totalEarningsCalc);
+            computedEarnings.push({ name: specialAllowanceObj.component_name, val: balance });
+        }
+
+        // 4th pass: Execute Statutory Rules automatically (PF, ESI, PT)
+        // Employee PF
+        let pfBase = Math.min(basicVal, Number(statConfig.pf_max_ceil || 15000));
+        let empPf = pfBase * (Number(statConfig.epf_emp_rate || 12) / 100);
+        let employerPf = pfBase * (Number(statConfig.epf_employer_rate || 12) / 100);
+        
+        if (empPf > 0) computedDeductions.push({name: 'EPF', val: empPf});
+        if (employerPf > 0) computedEmployer.push({name: 'Employer EPF', val: employerPf});
+
+        // Employee ESI
+        if (gross <= Number(statConfig.esi_max_ceil || 21000)) {
+            let empEsi = gross * (Number(statConfig.esi_emp || 0.75) / 100);
+            let employerEsi = gross * (Number(statConfig.esi_employer || 3.25) / 100);
+            if(empEsi > 0) computedDeductions.push({name: 'ESI', val: empEsi});
+            if(employerEsi > 0) computedEmployer.push({name: 'Employer ESI', val: employerEsi});
+        }
+
+        // Standard Professional Tax Logic (Fallback standard slab if needed)
+        let pt = gross > 20000 ? 200 : (gross > 15000 ? 150 : (gross > 10000 ? 110 : 0));
+        if (pt > 0) computedDeductions.push({name: 'Prof. Tax', val: pt});
+
+    } else {
+        // Fallback to manual basic/hra logic if NO template is selected
+        if(manualBlock) manualBlock.style.display = 'flex';
+        
+        const basicPct = Number(document.getElementById('fBasicPct')?.value || 60);
+        const hraPct = Number(document.getElementById('fHraPct')?.value || 40);
+        
+        basicVal = gross * basicPct / 100;
+        let hraVal = basicVal * hraPct / 100;
+        let specialVal = Math.max(0, gross - basicVal - hraVal);
+        
+        computedEarnings = [
+            {name: 'Basic', val: basicVal},
+            {name: 'HRA', val: hraVal},
+            {name: 'Special Allowance', val: specialVal}
+        ];
+
+        let pf = basicVal * 0.12;
+        let pt = gross > 20000 ? 200 : (gross > 15000 ? 150 : (gross > 10000 ? 110 : 0));
+        
+        computedDeductions = [
+            {name: 'PF', val: pf},
+            {name: 'Prof. Tax', val: pt}
+        ];
+
+        computedEmployer = [
+            {name: 'Employer PF', val: pf}
+        ];
+    }
+
+    // Build the DOM tables
+    computedEarnings.forEach(e => {
+        earningsHTML += `<tr><td style="padding:4px 0">${e.name}</td><td style="padding:4px 0;text-align:right;font-weight:600">${money(e.val)}</td></tr>`;
+    });
+    
+    let totalDed = 0;
+    computedDeductions.forEach(d => {
+        totalDed += d.val;
+        deductionsHTML += `<tr><td style="padding:4px 0">${d.name}</td><td style="padding:4px 0;text-align:right;font-weight:600">${money(d.val)}</td></tr>`;
+    });
+
+    let totalEmployer = 0;
+    computedEmployer.forEach(em => {
+        totalEmployer += em.val;
+        employerHTML += `<tr><td style="padding:4px 0">${em.name}</td><td style="padding:4px 0;text-align:right;font-weight:600">${money(em.val)}</td></tr>`;
+    });
+
+    let netPay = gross - totalDed;
+    let ctcValue = gross + totalEmployer;
+    employerHTML += `<tr><td style="padding:8px 0 4px; border-top:1px solid #D1D5DB; margin-top:4px; font-weight:700">Total Monthly CTC</td><td style="padding:8px 0 4px; border-top:1px solid #D1D5DB; margin-top:4px; text-align:right; font-weight:700; color:#4F46E5">${money(ctcValue)}</td></tr>`;
+
+    // Inject into UI
+    document.getElementById('tEarnings').innerHTML = earningsHTML;
+    document.getElementById('tDeductions').innerHTML = deductionsHTML;
+    document.getElementById('tEmployer').innerHTML = employerHTML;
+    document.getElementById('salNetDisplay').textContent = money(netPay);
+
+    // Inject into side-preview card if exists
+    if(pc) {
+        let sidePreviewHTML = `<div class="sal-preview-title">Salary Breakdown</div>`;
+        sidePreviewHTML += `<div class="spr-row"><span class="spr-label">Gross Salary</span><span class="spr-val">${money(gross)}</span></div>`;
+        computedEarnings.forEach(e => {
+             sidePreviewHTML += `<div class="spr-row"><span class="spr-label">${e.name}</span><span class="spr-val">${money(e.val)}</span></div>`;
+        });
+        computedDeductions.forEach(d => {
+             sidePreviewHTML += `<div class="spr-row deduct"><span class="spr-label">${d.name}</span><span class="spr-val">${money(d.val)}</span></div>`;
+        });
+        sidePreviewHTML += `<div class="spr-row total"><span class="spr-label">Net Salary</span><span class="spr-val">${money(netPay)}</span></div>`;
+        pc.innerHTML = sidePreviewHTML;
+    }
+}
+
 function handleDocUpload(input, label) {
     if (input.files && input.files.length) {
         const row = input.closest('.doc-row');
@@ -1415,6 +1644,7 @@ function handleDocUpload(input, label) {
 document.addEventListener('DOMContentLoaded', function() {
     updateProgress();
     updatePreview();
+    calcSalary(); // Run on load to apply existing template logic
 
     <?php if (!empty($toast_msg)): ?>
     showEmpToast(

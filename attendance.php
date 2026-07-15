@@ -1,7 +1,12 @@
 <?php
 session_start();
 if (!isset($_SESSION['login'])) {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    if (isset($_POST['action']) || isset($_GET['action'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+        exit();
+    }
+    header('Location: login');
     exit();
 }
 
@@ -54,7 +59,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_entry') {
     exit;
 }
 
-// Handle AJAX Request for Updating Time Entries
+// Handle AJAX Request for Updating or Inserting Time Entries
 if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
     require_once 'includes/config.php';
     require_once 'includes/db_client.php';
@@ -64,9 +69,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
         $emp_code = mysqli_real_escape_string($conn, $_POST['emp_code']);
         $entry_date = mysqli_real_escape_string($conn, $_POST['entry_date']);
         
-        // Save the short status code
         $day_status = mysqli_real_escape_string($conn, $_POST['day_status']);
-        
         $check_in = mysqli_real_escape_string($conn, $_POST['check_in']);
         $check_out = mysqli_real_escape_string($conn, $_POST['check_out']);
         $hours_worked = mysqli_real_escape_string($conn, $_POST['hours_worked']);
@@ -79,24 +82,41 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
         $remarks = mysqli_real_escape_string($conn, $_POST['remarks']);
         $calc_in_out = ($_POST['calc_in_out'] === 'true') ? 1 : 0;
 
-        // Automatically set record_status to 'Manual' on edit
-        $update_sql = "UPDATE time_entries SET 
-            day_status_1 = '$day_status',
-            check_in_time = '$check_in',
-            check_out_time = '$check_out',
-            hours_worked = '$hours_worked',
-            over_time_hours = '$over_time',
-            under_time_hours = '$under_time',
-            normal_hours = '$normal_hours',
-            late_hours = '$late_hours',
-            early_hours = '$early_hours',
-            status_code = '$status_code',
-            remarks = '$remarks',
-            calculate_per_in_out = '$calc_in_out',
-            record_status = 'Manual'
-            WHERE employee_code = '$emp_code' AND entry_date = '$entry_date'";
+        $check_in_val = !empty($check_in) ? "'$check_in'" : "NULL";
+        $check_out_val = !empty($check_out) ? "'$check_out'" : "NULL";
 
-        if (mysqli_query($conn, $update_sql)) {
+        $check_sql = "SELECT 1 FROM time_entries WHERE employee_code = '$emp_code' AND entry_date = '$entry_date'";
+        $check_res = mysqli_query($conn, $check_sql);
+
+        if (mysqli_num_rows($check_res) > 0) {
+            $sql = "UPDATE time_entries SET 
+                day_status_1 = '$day_status',
+                check_in_time = $check_in_val,
+                check_out_time = $check_out_val,
+                hours_worked = '$hours_worked',
+                over_time_hours = '$over_time',
+                under_time_hours = '$under_time',
+                normal_hours = '$normal_hours',
+                late_hours = '$late_hours',
+                early_hours = '$early_hours',
+                status_code = '$status_code',
+                remarks = '$remarks',
+                calculate_per_in_out = '$calc_in_out',
+                record_status = 'Manual'
+                WHERE employee_code = '$emp_code' AND entry_date = '$entry_date'";
+        } else {
+            $sql = "INSERT INTO time_entries (
+                employee_code, entry_date, day_status_1, check_in_time, check_out_time, 
+                hours_worked, over_time_hours, under_time_hours, normal_hours, 
+                late_hours, early_hours, status_code, remarks, calculate_per_in_out, record_status
+            ) VALUES (
+                '$emp_code', '$entry_date', '$day_status', $check_in_val, $check_out_val, 
+                '$hours_worked', '$over_time', '$under_time', '$normal_hours', 
+                '$late_hours', '$early_hours', '$status_code', '$remarks', '$calc_in_out', 'Manual'
+            )";
+        }
+
+        if (mysqli_query($conn, $sql)) {
             echo json_encode(['success' => true]);
         } else {
             echo json_encode(['success' => false, 'error' => mysqli_error($conn)]);
@@ -118,6 +138,7 @@ $is_searched = !empty($search_query);
 
 $time_entries = [];
 $employee_details = null;
+$shift_assignments = []; // Array to store assignments for the queried user
 
 // Status Mapping Dictionary
 $status_options = [
@@ -137,6 +158,39 @@ $status_options = [
     'LOP*' => 'Loss Of Pay in First Half (LOP*)'
 ];
 
+function formatTimeForDisplay($timeString) {
+    if (empty($timeString)) return '';
+    if (strpos($timeString, 'Hrs') !== false) return $timeString;
+    if (preg_match('/^(\d{2,}):(\d{2})/', $timeString, $matches)) {
+        return $matches[1] . ':' . $matches[2] . ' Hrs';
+    }
+    return $timeString;
+}
+
+if (!empty($date_range) && strpos($date_range, ' to ') !== false) {
+    $dates = explode(' to ', $date_range);
+    if (count($dates) == 2) {
+        $start_timestamp = strtotime($dates[0]);
+        $end_timestamp = strtotime($dates[1]);
+        if ($start_timestamp !== false && $end_timestamp !== false) {
+            $start_date = date('Y-m-d', $start_timestamp);
+            $end_date = date('Y-m-d', $end_timestamp);
+        } else {
+            $start_date = date('Y-m-01');
+            $end_date = date('Y-m-t');
+            $date_range = date('d M Y', strtotime($start_date)) . ' to ' . date('d M Y', strtotime($end_date));
+        }
+    } else {
+        $start_date = date('Y-m-01');
+        $end_date = date('Y-m-t');
+        $date_range = date('d M Y', strtotime($start_date)) . ' to ' . date('d M Y', strtotime($end_date));
+    }
+} else {
+    $start_date = date('Y-m-01');
+    $end_date = date('Y-m-t');
+    $date_range = date('d M Y', strtotime($start_date)) . ' to ' . date('d M Y', strtotime($end_date));
+}
+
 if ($is_searched && isset($conn)) {
     $safe_search = mysqli_real_escape_string($conn, $search_query);
     
@@ -147,37 +201,105 @@ if ($is_searched && isset($conn)) {
     $emp_result = mysqli_query($conn, $emp_sql);
     
     $time_sql = "SELECT * FROM time_entries WHERE ";
+    $emp_code = '';
     
     if ($emp_result && mysqli_num_rows($emp_result) > 0) {
         $employee_details = mysqli_fetch_assoc($emp_result);
-        $emp_code = mysqli_real_escape_string($conn, $employee_details['employee_code']);
-        $time_sql .= "employee_code = '$emp_code'";
+        $emp_code = $employee_details['employee_code'];
+        $safe_emp_code = mysqli_real_escape_string($conn, $emp_code);
+        $time_sql .= "employee_code = '$safe_emp_code'";
+        
+        // Fetch Shift Assignments mapping specifically for this employee
+        $assign_sql = "SELECT sa.start_date, sa.end_date, sa.weekdays, s.shift_name 
+                       FROM att_shift_assignments sa
+                       LEFT JOIN att_shifts s ON sa.shift_id = s.id
+                       WHERE sa.emp_id = '$safe_emp_code'
+                       ORDER BY sa.start_date DESC";
+        $assign_res = mysqli_query($conn, $assign_sql);
+        if ($assign_res) {
+            while ($row = mysqli_fetch_assoc($assign_res)) {
+                $shift_assignments[] = $row;
+            }
+        }
+        
     } else {
         $time_sql .= "(employee_name LIKE '%$safe_search%' OR employee_code LIKE '%$safe_search%')";
     }
     
-    // Safely process the date range without modifying global error handlers
-    if (!empty($date_range) && strpos($date_range, ' to ') !== false) {
-        $dates = explode(' to ', $date_range);
-        if (count($dates) == 2) {
-            $start_timestamp = strtotime($dates[0]);
-            $end_timestamp = strtotime($dates[1]);
-            
-            if ($start_timestamp !== false && $end_timestamp !== false) {
-                $start_date = mysqli_real_escape_string($conn, date('Y-m-d', $start_timestamp));
-                $end_date = mysqli_real_escape_string($conn, date('Y-m-d', $end_timestamp));
-                $time_sql .= " AND entry_date BETWEEN '$start_date' AND '$end_date'";
-            }
-        }
-    }
+    $start_safe = mysqli_real_escape_string($conn, $start_date);
+    $end_safe = mysqli_real_escape_string($conn, $end_date);
+    $time_sql .= " AND entry_date BETWEEN '$start_safe' AND '$end_safe' ORDER BY entry_date ASC";
     
-    $time_sql .= " ORDER BY entry_date ASC";
-    
+    $db_entries = [];
     $time_result = mysqli_query($conn, $time_sql);
     if ($time_result) {
         while ($row = mysqli_fetch_assoc($time_result)) {
-            $time_entries[] = $row;
+            $db_entries[$row['entry_date']] = $row;
         }
+    }
+    
+    // Generate clean consecutive calendars with DateTime objects
+    try {
+        $begin = new DateTime($start_date);
+        $end = new DateTime($end_date);
+        $end->modify('+1 day'); 
+
+        $interval = new DateInterval('P1D');
+        $period = new DatePeriod($begin, $interval, $end);
+
+        foreach ($period as $dt) {
+            $date_str = $dt->format('Y-m-d');
+            $day_num = $dt->format('N'); // 1-7
+            $day_short = $dt->format('D'); // Mon-Sun
+            
+            // Logic to determine Shift Name based on assignments
+            $assigned_shift_name = $employee_details['shift'] ?? 'N/A'; // Fallback to employee profile shift
+            
+            foreach ($shift_assignments as $assign) {
+                $assign_start = $assign['start_date'];
+                $assign_end = $assign['end_date'];
+                $weekdays = $assign['weekdays'] ?? '';
+                
+                // Check if current date falls within assignment timeframe
+                if ($date_str >= $assign_start && (empty($assign_end) || $date_str <= $assign_end)) {
+                    // Check if weekdays match (assuming empty means all days, or a comma list like "1,2,3" or "Mon,Tue")
+                    if (empty($weekdays) || stripos($weekdays, (string)$day_num) !== false || stripos($weekdays, $day_short) !== false) {
+                        $assigned_shift_name = $assign['shift_name'];
+                        break; // Stop at the first valid matched assignment
+                    }
+                }
+            }
+            
+            if (isset($db_entries[$date_str])) {
+                $entry = $db_entries[$date_str];
+                $entry['assigned_shift_name'] = $assigned_shift_name;
+                $time_entries[] = $entry;
+            } else {
+                $is_sunday = ($day_num == 7);
+                $default_status = $is_sunday ? 'WO' : 'AA'; 
+                
+                $time_entries[] = [
+                    'employee_code' => $emp_code,
+                    'entry_date' => $date_str,
+                    'day_status_1' => $default_status,
+                    'check_in_time' => null,
+                    'check_out_time' => null,
+                    'hours_worked' => '',
+                    'over_time_hours' => '',
+                    'under_time_hours' => '',
+                    'normal_hours' => '',
+                    'late_hours' => '',
+                    'early_hours' => '',
+                    'status_code' => '',
+                    'remarks' => '',
+                    'calculate_per_in_out' => 0,
+                    'record_status' => 'System',
+                    'assigned_shift_name' => $assigned_shift_name // Store determined shift
+                ];
+            }
+        }
+    } catch (Exception $e) {
+        // Fallback protection container
     }
 }
 ob_start();
@@ -406,7 +528,7 @@ ob_start();
                 <?php if ($employee_details): ?>
                     <div class="employee-profile-card">
                         <div class="emp-avatar">
-                            <?= '<img src="' . htmlspecialchars($employee_details['profile_photo'] ?? '') . '" alt="Profile Image" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">'; ?>
+                            <?= '<img src="' . htmlspecialchars($employee_details['profile_photo'] ?? 'uploads/photos/user.png') . '" alt="Profile Image" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">'; ?>
                         </div>
                         <div class="emp-details-grid">
                             <div class="emp-detail-item">
@@ -453,8 +575,7 @@ ob_start();
                         <tbody>
                             <?php if (!empty($time_entries)): ?>
                                 <?php foreach ($time_entries as $index => $row): 
-                                    $dateFormatted = date('d M, D', strtotime($row['entry_date']));                                   
-                                    // Badge styling based on new mapped status
+                                    $dateFormatted = date('d M, D', strtotime($row['entry_date']));                                  
                                     $rawStatus = $row['day_status_1'] ?? '';
                                     if (in_array($rawStatus, ['PP', 'P*A', 'A*P'])) {
                                         $badgeClass = 'status-p';
@@ -466,6 +587,12 @@ ob_start();
                                     
                                     $displayStatus = $status_options[$rawStatus] ?? ($rawStatus ?: '-Select-');
                                     
+                                    // Set Shift Name based on SQL lookup result
+                                    $shiftDisplay = $row['assigned_shift_name'] ?? '';
+                                    if ($rawStatus === 'WO') {
+                                        $shiftDisplay = 'WO';
+                                    }
+                                    
                                     $rowId = "row-" . $index . "-details";
                                 ?>
                                     <tr>
@@ -475,13 +602,24 @@ ob_start();
                                                 <?= htmlspecialchars($displayStatus) ?>
                                             </span> 
                                         </td>
-                                        <td><?= htmlspecialchars($employee_details['shift'] ?? '') ?></td>
+                                        <td><?= htmlspecialchars($shiftDisplay) ?></td>
+                                        
                                         <td>
-                                            <?= !empty($row['check_in_time']) ? htmlspecialchars(date('h:i A', strtotime($row['check_in_time']))) : '--:--' ?> - 
-                                            <?= !empty($row['check_out_time']) ? htmlspecialchars(date('h:i A', strtotime($row['check_out_time']))) : '--:--' ?>
+                                            <?php if (empty($row['check_in_time']) && empty($row['check_out_time'])): ?>
+                                                -
+                                            <?php else: ?>
+                                                <?= !empty($row['check_in_time']) ? htmlspecialchars(date('h:i A', strtotime($row['check_in_time']))) : '--:--' ?> - 
+                                                <?= !empty($row['check_out_time']) ? htmlspecialchars(date('h:i A', strtotime($row['check_out_time']))) : '--:--' ?>
+                                            <?php endif; ?>
                                         </td>
-                                        <td><?= htmlspecialchars($row['hours_worked'] ?? '') ?></td>
-                                        <td><span class="system-badge"><?= htmlspecialchars($row['record_status'] ?? '') ?></span></td>
+                                        
+                                        <td>
+                                            <?php 
+                                            $hrs = formatTimeForDisplay($row['hours_worked'] ?? '');
+                                            echo !empty($hrs) ? htmlspecialchars($hrs) : '-';
+                                            ?>
+                                        </td>
+                                        <td><span class="system-badge"><?= htmlspecialchars($row['record_status'] ?? 'System') ?></span></td>
                                         <td class="text-end pe-4"><i class="bi bi-chevron-down text-muted" style="cursor:pointer;" onclick="toggleRow('<?= $rowId ?>', this)"></i></td>
                                     </tr>
                                     
@@ -511,33 +649,33 @@ ob_start();
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Hours Worked</label>
-                                                        <input type="text" class="form-control upd-hours-worked" value="<?= htmlspecialchars($row['hours_worked'] ?? '') ?>" readonly>
+                                                        <input type="text" class="form-control upd-hours-worked" value="<?= htmlspecialchars(formatTimeForDisplay($row['hours_worked'] ?? '')) ?>" readonly>
                                                     </div>
                                                 </div>
                                                 
                                                 <div class="grid-row mb-4">
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Over Time Hours</label>
-                                                        <input type="text" class="form-control upd-over-time" value="<?= htmlspecialchars($row['over_time_hours'] ?? '') ?>" readonly>
+                                                        <input type="text" class="form-control upd-over-time" value="<?= htmlspecialchars(formatTimeForDisplay($row['over_time_hours'] ?? '')) ?>" readonly>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Under Time Hours</label>
-                                                        <input type="text" class="form-control upd-under-time" value="<?= htmlspecialchars($row['under_time_hours'] ?? '') ?>" readonly>
+                                                        <input type="text" class="form-control upd-under-time" value="<?= htmlspecialchars(formatTimeForDisplay($row['under_time_hours'] ?? '')) ?>" readonly>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Normal Hours</label>
-                                                        <input type="text" class="form-control upd-normal-hours" value="<?= htmlspecialchars($row['normal_hours'] ?? '') ?>" readonly>
+                                                        <input type="text" class="form-control upd-normal-hours" value="<?= htmlspecialchars(formatTimeForDisplay($row['normal_hours'] ?? '')) ?>" readonly>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Late Hours</label>
-                                                        <input type="text" class="form-control upd-late-hours" value="<?= htmlspecialchars($row['late_hours'] ?? '') ?>" readonly>
+                                                        <input type="text" class="form-control upd-late-hours" value="<?= htmlspecialchars(formatTimeForDisplay($row['late_hours'] ?? '')) ?>" readonly>
                                                     </div>
                                                 </div>
                                                 
                                                 <div class="grid-row mb-3 flex-end" style="align-items: flex-end;">
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Early Hours</label>
-                                                        <input type="text" class="form-control upd-early-hours" value="<?= htmlspecialchars($row['early_hours'] ?? '') ?>" readonly>
+                                                        <input type="text" class="form-control upd-early-hours" value="<?= htmlspecialchars(formatTimeForDisplay($row['early_hours'] ?? '')) ?>" readonly>
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Status</label>
@@ -556,7 +694,9 @@ ob_start();
                                                 </div>
 
                                                 <div class="flex-end gap-2 mt-5">
-                                                    <button class="btn btn-outline-danger" onclick="deleteTimeEntry('<?= $row['employee_code'] ?>', '<?= $row['entry_date'] ?>')">Delete</button>
+                                                    <?php if (!empty($row['record_status']) && $row['record_status'] !== 'System'): ?>
+                                                        <button class="btn btn-outline-danger" onclick="deleteTimeEntry('<?= $row['employee_code'] ?>', '<?= $row['entry_date'] ?>')">Delete</button>
+                                                    <?php endif; ?>
                                                     <button class="btn btn-outline-primary" onclick="toggleRow('<?= $rowId ?>', this.closest('.expandable-row').previousElementSibling.querySelector('i'))">Cancel</button>
                                                     <button class="btn btn-primary" onclick="saveTimeEntry(this, '<?= $row['employee_code'] ?>', '<?= $row['entry_date'] ?>')">Save</button>
                                                 </div>
@@ -748,19 +888,12 @@ include 'includes/footer.php';
 
     const dateRangeInput = document.getElementById("dateRange");
     if (dateRangeInput) {
-        const hasValue = dateRangeInput.value.trim() !== "";
         flatpickr("#dateRange", {
             mode: "range",
             dateFormat: "d M Y",
             monthSelectorType: "static",
             animate: true,
-            showMonths: 2,
-            ...(hasValue ? {} : {
-                defaultDate: [
-                    new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-                    new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)
-                ]
-            })
+            showMonths: 2
         });
     }
 
@@ -897,5 +1030,17 @@ include 'includes/footer.php';
             }
         });
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const editContainers = document.querySelectorAll('.edit-form-container');
+        
+        editContainers.forEach(container => {
+            const calcCheckbox = container.querySelector('.upd-calc-in-out');
+            
+            if (calcCheckbox && calcCheckbox.checked) {
+                runTimeCalculations(container);
+            }
+        });
+    });
 </script>
 <script src="includes/assets/scripts.js"></script>

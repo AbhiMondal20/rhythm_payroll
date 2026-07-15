@@ -72,6 +72,10 @@ Approve Overtime - Pending
 
 
 
+if outpunch time is over and employee forgot out punch then after 1 hour send a notifications 
+
+
+
 Leave Accumulations - Pending (not urgent)
 Apply Leave - Pending (urgent)
 Leave - Pending (urgent)
@@ -110,3 +114,10 @@ Insert
 
 
 teleReportPDF4 
+
+
+Prof. Tax 
+10000-15000 - 110 Ptax
+15001-25000 - 130 ptax
+250001-40000 - 150 ptax
+40001+ 200 ptax

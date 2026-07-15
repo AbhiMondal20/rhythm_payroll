@@ -1,20 +1,40 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 $user_id = $_SESSION['user_id'] ?? 0;
 $role = $role ?? 'Employee';
 
 $allowed_pages = [];
 
-$stmt = mysqli_prepare($conn, "SELECT page_name FROM user_access WHERE user_id = ? AND can_view = 1");
-mysqli_stmt_bind_param($stmt, "i", $user_id);
-mysqli_stmt_execute($stmt);
+if (isset($conn)) {
+    // FIX 1: Removed CAST(? AS JSON). We will bind it as a string instead.
+    $query = "SELECT page_name FROM user_access WHERE JSON_CONTAINS(user_id, ?) AND can_view = 1";
+    $stmt = mysqli_prepare($conn, $query);
 
-$result = mysqli_stmt_get_result($stmt);
+    // FIX 2: Check if $stmt is valid BEFORE trying to bind parameters
+    if ($stmt) {
+        // Convert integer to string so JSON_CONTAINS can read it properly
+        $user_id_str = (string)$user_id; 
+        
+        // Bind as a string ("s")
+        mysqli_stmt_bind_param($stmt, "s", $user_id_str);
+        mysqli_stmt_execute($stmt);
 
-while ($row = mysqli_fetch_assoc($result)) {
-    $allowed_pages[] = strtolower($row['page_name']);
+        $result = mysqli_stmt_get_result($stmt);
+
+        while ($row = mysqli_fetch_assoc($result)) {
+            $clean_page_name = str_replace('.php', '', $row['page_name']);
+            $allowed_pages[] = strtolower(trim($clean_page_name));
+        }
+
+        mysqli_stmt_close($stmt);
+    } else {
+        // If it fails again, this will log the exact MySQL error without crashing the page
+        error_log("Sidebar DB Prepare Error: " . mysqli_error($conn));
+    }
 }
-
-mysqli_stmt_close($stmt);
 ?>
 <div class="mobile-overlay" id="overlay" onclick="closeSidebar()"></div>
 <aside class="sidebar" id="sidebar">
@@ -36,7 +56,7 @@ mysqli_stmt_close($stmt);
         <?php
         $nav_main = [
             ['href'=>'dashboard',  'label'=>'Dashboard',     'badge'=>'','badge_color'=>''],
-            ['href'=>'employees',  'label'=>'Employee List', 'badge'=>'','badge_color'=>'blue'],
+            ['href'=>'employees',  'label'=>'Employees List', 'badge'=>'','badge_color'=>'blue'],
             ['href'=>'approvals',  'label'=>'Approvals',     'badge'=>'','badge_color'=>'red'],
             ['href'=>'attendance', 'label'=>'Attendance',    'badge'=>'','badge_color'=>''],
             ['href'=>'leave',      'label'=>'Leave',         'badge'=>'','badge_color'=>''],
@@ -73,27 +93,22 @@ mysqli_stmt_close($stmt);
         ];
 
         function render_nav(array $items, string $current, array $icons, array $allowed_pages, string $role): void {
-            // Optional: If 'admin' bypasses access checks, uncomment the condition below
             $is_admin = strtolower(trim($role)) === 'admin';
 
-            $rendered_count = 0; // Keep track to see if the section is entirely empty
-
             foreach ($items as $item) {
-                $page_key = strtolower($item['href']);
+                $page_key = strtolower(trim($item['href']));
                 
-                // Check if user has access (Admins see everything, others must have 'can_view = 1' in DB)
                 if (!$is_admin && !in_array($page_key, $allowed_pages)) {
                     continue; 
                 }
 
-                $rendered_count++;
                 $currentPage = basename($current, '.php');
                 $active = strtolower($currentPage) === $page_key ? 'active' : '';
                 $icon   = $icons[$item['href']] ?? '';
 
                 echo "<a class='nav-item {$active}' href='{$item['href']}'>";
                 echo "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>{$icon}</svg>";
-                echo $item['label'];
+                echo htmlspecialchars($item['label']);
 
                 if (!empty($item['badge'])) {
                     $bg = match($item['badge_color']) {
@@ -106,35 +121,32 @@ mysqli_stmt_close($stmt);
 
                 echo "</a>";
             }
-
-            // If the section is empty (all links hidden), we output a flag we can use to hide headers if desired.
-            if ($rendered_count === 0) {
-                echo "<!-- NO_ACCESS -->"; 
-            }
         }
         ?>
 
-        <!-- Output sections using output buffering to hide the header if no items render -->
         <?php ob_start(); render_nav($nav_main, $_SERVER['PHP_SELF'], $icons, $allowed_pages, $role); $main_html = ob_get_clean(); ?>
-        <?php if (!str_contains($main_html, '<!-- NO_ACCESS -->')): ?>
+        <?php if (trim($main_html) !== ''): /* FIX 3: Check if the string is empty instead of using str_contains with empty string */ ?>
             <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:4px">MAIN</div>
             <?= $main_html ?>
         <?php endif; ?>
 
         <?php ob_start(); render_nav($nav_fin, $_SERVER['PHP_SELF'], $icons, $allowed_pages, $role); $fin_html = ob_get_clean(); ?>
-        <?php if (!str_contains($fin_html, '<!-- NO_ACCESS -->')): ?>
+        <?php if (trim($fin_html) !== ''): ?>
             <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:8px">FINANCE</div>
             <?= $fin_html ?>
         <?php endif; ?>
 
         <?php ob_start(); render_nav($nav_system, $_SERVER['PHP_SELF'], $icons, $allowed_pages, $role); $sys_html = ob_get_clean(); ?>
-        <?php if (!str_contains($sys_html, '<!-- NO_ACCESS -->')): ?>
+        <?php if (trim($sys_html) !== ''): ?>
             <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:8px">SYSTEM</div>
             <?= $sys_html ?>
         <?php endif; ?>
     </nav>
 
     <?php
+    $employee_name = $employee_name ?? 'User Name'; 
+    $username = $username ?? 'user@example.com';   
+
     if (strtolower(trim($employee_name)) === 'admin') {
         $initials = 'AD';
     } else {
@@ -155,35 +167,30 @@ mysqli_stmt_close($stmt);
         <div style="display:flex;align-items:center;gap:10px">
             <div class="avatar" style="background:var(--yellow);color:var(--navy);font-size:12px;flex-shrink:0"><?= $initials ?></div>
             <div style="flex:1;min-width:0">
-                <div style="color:#fff;font-size:13px;font-weight:600"><?= $role ?></div>
+                <div style="color:#fff;font-size:13px;font-weight:600"><?= htmlspecialchars($role) ?></div>
                 <div style="color:#6B6F8E;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                    <?= $username ?>
+                    <?= htmlspecialchars($username) ?>
                 </div>
             </div>
         </div>
         
         <?php
-        // Retrieve dates 
         $start_date_str = $_SESSION['license']['start_date'] ?? date('Y-m-d', strtotime('-30 days')); 
         $expiry_date_str = $expiry_date ?? $_SESSION['expiry_date'] ?? date('Y-m-d');
 
-        // Convert string dates to timestamps
         $start_ts = strtotime($start_date_str);
         $expiry_ts = strtotime($expiry_date_str);
         $now_ts = time();
 
-        // Calculate total duration and REMAINING duration
         $total_duration = $expiry_ts - $start_ts;
         $remaining_duration = $expiry_ts - $now_ts;
 
-        // Calculate remaining percentage
         if ($total_duration > 0) {
             $percentage = ($remaining_duration / $total_duration) * 100;
         } else {
             $percentage = 0; 
         }
 
-        // Ensure the percentage stays strictly between 0% and 100% 
         $percentage = max(0, min(100, $percentage));
         $percentage_rounded = round($percentage);
         $display_date = date('d M Y', $expiry_ts);

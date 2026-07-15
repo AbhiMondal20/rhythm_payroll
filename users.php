@@ -369,28 +369,23 @@ document.addEventListener('DOMContentLoaded',function(){
                     <th style="width:44px"></th>
                 </tr>
             </thead>
-            <tbody id="usrTableBody">
-                <?php foreach($paged_users as $i=>$u): ?>
-                    <tr data-search="<?= strtolower(esc($u['employee_code'])) ?> <?= strtolower(esc($u['employee_name'])) ?> <?= strtolower(esc($u['client_code'])) ?>">
-                        <td style="color:#6B7280"><?= $offset + $i + 1 ?></td>
-                        <td style="color:#374151;font-weight:500"><?= esc($u['employee_code']) ?></td>
-                        <td style="color:#374151"><?= esc($u['username']) ?></td>
-                        <td style="font-weight:500;color:#111827"><?= esc($u['employee_name']) ?></td>
-                        <td style="color:#374151"><?= esc($u['role']) ?></td>
-                        <td>
-                            <label class="usr-toggle" title="Toggle status">
-                                <input type="checkbox"
-                                    <?= ($u['status'] === 'active') ? 'checked' : '' ?>
-                                    onchange="toggleStatus(<?= $u['id'] ?>, this.parentElement)">
-                                <span class="usr-toggle-sl"></span>
-                            </label>
-                        </td>
-                        <td>
-                            <a href="?tab=list&view=detail&id=<?= $u['id'] ?>" class="usr-arrow" title="View / Edit">›</a>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
+            <tbody id="arTableBody">
+    <?php $sno = 1; ?>
+    <?php foreach($users as $u): if($u['id']===1) continue; ?>
+        <tr>
+            <td>
+                <input type="checkbox" name="selected_users[]" value="<?= $u['id'] ?>"
+                    class="ar-chk"
+                    style="width:16px;height:16px;accent-color:#2563EB;cursor:pointer"
+                    onchange="updateArCount()">
+            </td>
+            <td style="color:#6B7280"><?= $sno++ ?></td> <td style="color:#374151"><?= esc($u['username']) ?></td>
+            <td style="font-weight:500;color:#111827"><?= esc($u['employee_name']) ?></td>
+            <td style="color:#6B7280"><?= esc($u['employee_code']) ?></td>
+            <td style="color:#374151"><?= esc($u['role']) ?></td>
+        </tr>
+    <?php endforeach; ?>
+</tbody>
         </table>
     </div>
 

@@ -1,9 +1,15 @@
 <?php
 session_start();
 if (!isset($_SESSION['login'])) {
+    if (isset($_POST['action']) || isset($_GET['action'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+        exit();
+    }
     header('Location: login');
     exit();
 }
+
 require_once 'includes/config.php';
 $page_title  = 'Dashboard';
 $extra_head  = '<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>';

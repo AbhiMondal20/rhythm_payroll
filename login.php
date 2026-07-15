@@ -18,14 +18,14 @@ function getRedirectPageLocal(): string {
     $access = $_SESSION['user_access'] ?? [];
 
     if (in_array('dashboard', $access, true)) {
-        return 'dashboard/';
+        return 'http://192.168.2.161/rhythm_payroll/dashboard';
     }
 
     if (!empty($access[0])) {
-        return 'dashboard/' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $access[0]);
+        return 'http://192.168.2.161/rhythm_payroll/dashboard' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $access[0]);
     }
 
-    return 'dashboard/';
+    return 'http://192.168.2.161/rhythm_payroll/dashboard';
 }
 
 if (!empty($_SESSION['login'])) {
@@ -186,12 +186,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             } else {
 
                                 $user_id = (int)$user['id'];
-                                
-                                /* ─────────────────────────────────────────
-                                    USER ACCESS ARRAY HANDLING
-                                ───────────────────────────────────────── */
-                                // This replaces brackets and quotes to ensure FIND_IN_SET works 
-                                // whether the array is standard CSV, JSON numeric [1,2], or JSON string ["1","2"]
                                 $accQuery = "
                                     SELECT page_name
                                     FROM user_access
