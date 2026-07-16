@@ -1,3 +1,4 @@
+
  </main>
 </div>
 <script>
@@ -25,7 +26,9 @@ function showToast(type, message) {
 }
 </script>
 <?php if (!empty($extra_scripts)) echo $extra_scripts; ?>
-
+<div style="text-align: center; padding: 10px; font-size: 12px; color: #999; border-top: 1px solid #ddd; margin-top: 20px;">
+    <p style="margin: 5px 0;">&copy; <?php echo date('Y'); ?> Rhythm Payroll. Beta version 1.0.0. All rights reserved.</p>
+</div>
 
 </body>
 </html>
