@@ -1,6 +1,11 @@
 <?php
 session_start();
 if (!isset($_SESSION['login'])) {
+    if (isset($_POST['action']) || isset($_GET['action'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+        exit();
+    }
     header('Location: login');
     exit();
 }

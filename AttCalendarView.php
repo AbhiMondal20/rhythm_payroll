@@ -1,7 +1,12 @@
 <?php
 session_start();
 if (!isset($_SESSION['login'])) {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    if (isset($_POST['action']) || isset($_GET['action'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+        exit();
+    }
+    header('Location: login');
     exit();
 }
 
@@ -256,7 +261,7 @@ ob_start();
 
     <div class="card shadow-sm mt-2">
         <div class="card-body p-4">
-            <h6 class="text-dark fw-bold mb-4" style="font-size: 13.5px; letter-spacing: 0.5px; margin-top: 0;">ATTENDANCE CALENDAR</h6>            
+            <h6 class="text-dark fw-bold mb-4" style="font-size: 13.5px; letter-spacing: 0.5px; margin-top: 0;">CALENDAR VIEW</h6>            
             <form method="GET" action="" class="filter-bar" id="filterForm">
                 <div class="search-wrapper">
                     <?php if ($is_searched): ?>

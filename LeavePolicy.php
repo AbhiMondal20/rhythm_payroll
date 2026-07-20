@@ -1,5 +1,12 @@
 <?php
+ob_start(); // Prevent whitespace in external files from breaking header redirects
 session_start();
+
+// Aggressive cache prevention to ensure updated values always show immediately
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+
 if (!isset($_SESSION['login'])) {
     header('Location: login');
     exit();
@@ -33,6 +40,9 @@ function postCheck($key) {
 function postStr($key, $default = '') {
     return trim($_POST[$key] ?? $default);
 }
+
+// Ensure autocommit is on, or explicitly commit later
+@$conn->autocommit(TRUE);
 
 /* ================= DB TABLES ================= */
 
@@ -199,27 +209,9 @@ if ($generalPolicyId > 0 && $ruleCount === 0) {
 
             $stmt->bind_param(
                 "iiisdisididiiiiiiiiii",
-                $generalPolicyId,
-                $ltid,
-                $d[1],
-                $d[2],
-                $d[3],
-                $d[4],
-                $d[5],
-                $d[6],
-                $d[7],
-                $d[8],
-                $d[9],
-                $d[10],
-                $d[11],
-                $d[12],
-                $d[13],
-                $d[14],
-                $d[15],
-                $d[16],
-                $d[17],
-                $d[18],
-                $d[19]
+                $generalPolicyId, $ltid, $d[1], $d[2], $d[3], $d[4], $d[5],
+                $d[6], $d[7], $d[8], $d[9], $d[10], $d[11], $d[12], $d[13],
+                $d[14], $d[15], $d[16], $d[17], $d[18], $d[19]
             );
             $stmt->execute();
         }
@@ -233,8 +225,15 @@ $active_policy_id = (int)($_GET['policy_id'] ?? 0);
 $active_rule_id   = (int)($_GET['rule_id'] ?? 0);
 $mode             = $_GET['mode'] ?? 'policy_list';
 $active_tab       = $_GET['tab'] ?? 'rules';
-$flash            = '';
-$flash_type       = 'success';
+
+// Flush Messages correctly
+$flash = '';
+$flash_type = 'success';
+if (isset($_SESSION['flash'])) {
+    $flash = $_SESSION['flash'];
+    $flash_type = $_SESSION['flash_type'] ?? 'success';
+    unset($_SESSION['flash'], $_SESSION['flash_type']);
+}
 
 /* ================= POST HANDLERS ================= */
 
@@ -259,10 +258,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $stmt->bind_param("sss", $name, $code, $remarks);
                 if ($stmt->execute()) {
-                    $active_policy_id = (int)$stmt->insert_id;
-                    $flash = 'Policy "' . $name . '" added.';
-                    $flash_type = 'success';
-                    $mode = 'policy_list';
+                    @$conn->commit();
+                    $new_id = (int)$stmt->insert_id;
+                    $_SESSION['flash'] = 'Policy "' . $name . '" added.';
+                    $_SESSION['flash_type'] = 'success';
+                    $url = "?policy_id={$new_id}&mode=policy_list";
+                    if(!headers_sent()) { header("Location: $url"); } else { echo "<script>window.location.href='$url';</script>"; }
+                    exit();
                 } else {
                     $flash = 'Save failed: ' . $stmt->error;
                     $flash_type = 'error';
@@ -298,10 +300,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $stmt->bind_param("sssi", $name, $code, $remarks, $id);
                 if ($stmt->execute()) {
-                    $flash = 'Policy updated.';
-                    $flash_type = 'success';
-                    $active_policy_id = $id;
-                    $mode = 'policy_list';
+                    @$conn->commit();
+                    $_SESSION['flash'] = 'Policy updated successfully.';
+                    $_SESSION['flash_type'] = 'success';
+                    $url = "?policy_id={$id}&mode=policy_list";
+                    if(!headers_sent()) { header("Location: $url"); } else { echo "<script>window.location.href='$url';</script>"; }
+                    exit();
                 } else {
                     $flash = 'Update failed: ' . $stmt->error;
                     $flash_type = 'error';
@@ -327,10 +331,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($stmt) {
                 $stmt->bind_param("i", $pid);
                 if ($stmt->execute()) {
-                    $flash = 'Policy deleted.';
-                    $flash_type = 'success';
-                    $active_policy_id = 0;
-                    $mode = 'policy_list';
+                    @$conn->commit();
+                    $_SESSION['flash'] = 'Policy deleted.';
+                    $_SESSION['flash_type'] = 'success';
+                    $url = "?mode=policy_list";
+                    if(!headers_sent()) { header("Location: $url"); } else { echo "<script>window.location.href='$url';</script>"; }
+                    exit();
                 } else {
                     $flash = 'Delete failed: ' . $stmt->error;
                     $flash_type = 'error';
@@ -412,46 +418,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $mode = 'add_rule';
                 } else {
                     $stmt->bind_param(
-                            "iiisdisidiidiiiiiiiiiisidssiiiis",
-                            $policy_id,
-                            $lt_id,
-                            $rule1_days,
-                            $rule1_timing,
-                            $rule2_gt_days,
-                            $rule2_inform_days,
-                            $rule2_timing,
-                            $rule3_max_days,
-                            $rule3_min_days,
-                            $rule4_yearly_max,
-                            $leave_paid,
-                            $paid_times,
-                            $allow_attachment,
-                            $attach_gt_days,
-                            $hol_during,
-                            $hol_after,
-                            $hol_before,
-                            $hol_optional_only,
-                            $wkoff_during,
-                            $wkoff_after,
-                            $wkoff_before,
-                            $accum_auto,
-                            $accum_basis,
-                            $accum_starts_after,
-                            $accum_leaves,
-                            $accum_every,
-                            $accum_on,
-                            $accum_max_balance,
-                            $accum_max_year,
-                            $accum_max_neg,
-                            $accum_carry_fwd,
-                            $remaining_leaves
-                        );
+                        "iiisdisidiidiiiiiiiiiisidssiiiis",
+                        $policy_id, $lt_id, $rule1_days, $rule1_timing, $rule2_gt_days, $rule2_inform_days,
+                        $rule2_timing, $rule3_max_days, $rule3_min_days, $rule4_yearly_max,
+                        $leave_paid, $paid_times, $allow_attachment, $attach_gt_days,
+                        $hol_during, $hol_after, $hol_before, $hol_optional_only,
+                        $wkoff_during, $wkoff_after, $wkoff_before,
+                        $accum_auto, $accum_basis, $accum_starts_after, $accum_leaves,
+                        $accum_every, $accum_on, $accum_max_balance, $accum_max_year,
+                        $accum_max_neg, $accum_carry_fwd, $remaining_leaves
+                    );
 
                     if ($stmt->execute()) {
-                        $active_rule_id = (int)$stmt->insert_id;
-                        $flash = 'Leave rule added.';
-                        $flash_type = 'success';
-                        $mode = 'gs_view';
+                        $new_rule_id = (int)$stmt->insert_id;
+                        @$conn->commit();
+                        $_SESSION['flash'] = 'Leave rule added.';
+                        $_SESSION['flash_type'] = 'success';
+                        $url = "?policy_id={$policy_id}&rule_id={$new_rule_id}&mode=gs_view&tab=rules";
+                        if(!headers_sent()) { header("Location: $url"); } else { echo "<script>window.location.href='$url';</script>"; }
+                        exit();
                     } else {
                         $flash = 'Rule save failed: ' . $stmt->error;
                         $flash_type = 'error';
@@ -480,47 +465,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $mode = 'edit_rule';
                 } else {
                     $stmt->bind_param(
-                            "iisdisidiidiiiiiiiiiisidssiiiisii",
-                            $lt_id,
-                            $rule1_days,
-                            $rule1_timing,
-                            $rule2_gt_days,
-                            $rule2_inform_days,
-                            $rule2_timing,
-                            $rule3_max_days,
-                            $rule3_min_days,
-                            $rule4_yearly_max,
-                            $leave_paid,
-                            $paid_times,
-                            $allow_attachment,
-                            $attach_gt_days,
-                            $hol_during,
-                            $hol_after,
-                            $hol_before,
-                            $hol_optional_only,
-                            $wkoff_during,
-                            $wkoff_after,
-                            $wkoff_before,
-                            $accum_auto,
-                            $accum_basis,
-                            $accum_starts_after,
-                            $accum_leaves,
-                            $accum_every,
-                            $accum_on,
-                            $accum_max_balance,
-                            $accum_max_year,
-                            $accum_max_neg,
-                            $accum_carry_fwd,
-                            $remaining_leaves,
-                            $rule_id,
-                            $policy_id
-                        );
+                        "iisdisidiidiiiiiiiiiisidssiiiisii",
+                        $lt_id, $rule1_days, $rule1_timing, $rule2_gt_days, $rule2_inform_days,
+                        $rule2_timing, $rule3_max_days, $rule3_min_days, $rule4_yearly_max,
+                        $leave_paid, $paid_times, $allow_attachment, $attach_gt_days,
+                        $hol_during, $hol_after, $hol_before, $hol_optional_only,
+                        $wkoff_during, $wkoff_after, $wkoff_before,
+                        $accum_auto, $accum_basis, $accum_starts_after, $accum_leaves,
+                        $accum_every, $accum_on, $accum_max_balance, $accum_max_year,
+                        $accum_max_neg, $accum_carry_fwd, $remaining_leaves,
+                        $rule_id, $policy_id
+                    );
 
                     if ($stmt->execute()) {
-                        $active_rule_id = $rule_id;
-                        $flash = 'Leave rule saved.';
-                        $flash_type = 'success';
-                        $mode = 'gs_view';
+                        @$conn->commit();
+                        $_SESSION['flash'] = 'Leave rule updated successfully.';
+                        $_SESSION['flash_type'] = 'success';
+                        $url = "?policy_id={$policy_id}&rule_id={$rule_id}&mode=gs_view&tab=rules";
+                        if(!headers_sent()) { header("Location: $url"); } else { echo "<script>window.location.href='$url';</script>"; }
+                        exit();
                     } else {
                         $flash = 'Rule update failed: ' . $stmt->error;
                         $flash_type = 'error';
@@ -543,8 +506,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($stmt) {
                 $stmt->bind_param("i", $rid);
                 if ($stmt->execute()) {
-                    $flash = 'Leave rule deleted.';
-                    $flash_type = 'success';
+                    @$conn->commit();
+                    $_SESSION['flash'] = 'Leave rule deleted.';
+                    $_SESSION['flash_type'] = 'success';
+                    $url = "?policy_id={$pid}&mode=gs_view";
+                    if(!headers_sent()) { header("Location: $url"); } else { echo "<script>window.location.href='$url';</script>"; }
+                    exit();
                 } else {
                     $flash = 'Delete failed: ' . $stmt->error;
                     $flash_type = 'error';
@@ -631,6 +598,7 @@ if (!$active_rule && count($rules)) {
 $accum_every_opts = ['Monthly', 'Quarterly', 'Half Yearly', 'Yearly'];
 $remain_opts = ['Lapsed', 'Carried Forward'];
 
+// Buffer the HTML rendering
 ob_start();
 ?>
 
@@ -867,7 +835,7 @@ ob_start();
         <div class="gs-right">
           <?php if ($mode === 'add_rule' || $mode === 'edit_rule'): ?>
 
-          <?php $r = $active_rule ?? []; ?>
+          <?php $r = ($mode === 'edit_rule') ? ($active_rule ?? []) : []; ?>
 
           <div class="anr-header"><?= $mode === 'edit_rule' ? 'Edit Leave Rule' : 'Add New Leave Rule' ?></div>
 
@@ -1193,7 +1161,7 @@ ob_start();
           </div>
 
           <?php else: ?>
-          <div style="display:flex;align-items:center;justify-content:center;height:200px;color:#9ca3af;font-size:13.5px">Select a leave from the list.</div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;height:200px;color:#9ca3af;font-size:13.5px">Select a leave from the list.</div>
           <?php endif; ?>
 
           <?php endif; ?>
@@ -1526,6 +1494,7 @@ function rmToast(el) {
 </script>
 
 <?php
+// Output the buffered page content properly formatted inside your existing layout
 $page_content = ob_get_clean();
 include 'includes/header.php';
 echo $page_content;

@@ -130,10 +130,11 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
 require_once 'includes/config.php';
 require_once 'includes/db_client.php';
 
-$page_title = 'Attendance - Time Entries';
+$page_title = 'Discrepancies';
 
 $search_query = isset($_GET['employee']) ? trim($_GET['employee']) : '';
 $date_range = isset($_GET['date_range']) ? trim($_GET['date_range']) : '';
+$discrepancy_type = isset($_GET['discrepancy_type']) ? trim($_GET['discrepancy_type']) : 'all';
 $is_searched = !empty($search_query);
 
 $time_entries = [];
@@ -189,6 +190,12 @@ if (!empty($date_range) && strpos($date_range, ' to ') !== false) {
     $start_date = date('Y-m-01');
     $end_date = date('Y-m-d'); 
     $date_range = date('d M Y', strtotime($start_date)) . ' to ' . date('d M Y', strtotime($end_date));
+}
+
+// Format period string for display
+$period_display = date('d M Y', strtotime($start_date)) . ' to ' . date('d M Y', strtotime($end_date));
+if (date('m Y', strtotime($start_date)) === date('m Y', strtotime($end_date)) && date('d', strtotime($start_date)) == '01' && date('d', strtotime($end_date)) == date('t', strtotime($end_date))) {
+    $period_display = date('F Y', strtotime($start_date));
 }
 
 if ($is_searched && isset($conn)) {
@@ -354,13 +361,13 @@ ob_start();
     .attendance-tabs a:hover { color: #495057; }
     .attendance-tabs a.active { color: #0d6efd; border-bottom: 2px solid #0d6efd; font-weight: 500; }
     
-    .filter-bar { display: flex; gap: 15px; align-items: center; margin-bottom: 25px; }
-    .search-wrapper { position: relative; width: 280px; }
-    .search-wrapper .form-control { padding-left: 35px; }
+    .filter-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 25px; flex-wrap: wrap; }
+    .search-wrapper { position: relative; width: 300px; }
+    .search-wrapper .form-control { padding-left: 35px; border-radius: 4px; }
     .search-wrapper .bi-search { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 14px; }
     
-    .search-chip { position: absolute; top: 4px; left: 4px; bottom: 4px; background-color: #f3f4f6; border-radius: 3px; display: flex; align-items: center; padding: 0 8px; font-size: 13px; color: #111827; border: 1px solid #e5e7eb; z-index: 5; }
-    .search-chip a { color: #6b7280; margin-left: 6px; text-decoration: none; font-size: 16px; display: flex; align-items: center; }
+    .search-chip { position: absolute; top: 4px; left: 4px; bottom: 4px; right: 4px; background-color: #fff; display: flex; align-items: center; padding: 0 8px; font-size: 13px; color: #111827; z-index: 5; }
+    .search-chip a { color: #6b7280; margin-left: auto; text-decoration: none; font-size: 16px; display: flex; align-items: center; }
     .search-chip a:hover { color: #ef4444; }
 
     .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 1000; max-height: 250px; overflow-y: auto; display: none; margin-top: 2px; }
@@ -370,99 +377,85 @@ ob_start();
     .autocomplete-name { font-weight: 600; color: #111827; }
     .autocomplete-code { font-size: 11px; color: #6b7280; margin-top: 2px; }
 
-    .employee-profile-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin-bottom: 24px; display: flex; align-items: center; gap: 24px; }
-    .emp-avatar { width: 56px; height: 56px; background: #0d6efd; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 600; text-transform: uppercase; overflow: hidden; }
-    .emp-details-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
-    .emp-detail-item { display: flex; flex-direction: column; gap: 4px; }
-    .emp-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
-    .emp-val { font-size: 14px; font-weight: 500; color: #0f172a; }
-
-    .form-control, .form-select { width: 100%; border-radius: 4px; font-size: 13.5px; border: 1px solid #d1d5db; height: 36px; padding: 6px 12px; background-color: #fff; outline: none; }
+    .form-control, .form-select { width: 100%; border-radius: 4px; font-size: 13.5px; border: 1px solid #d1d5db; height: 36px; padding: 6px 12px; background-color: #fff; outline: none; box-shadow: none; }
     .form-control:focus, .form-select:focus { border-color: #0d6efd; }
-    .form-control[readonly] { background-color: #f9fafb; cursor: not-allowed; color: #6b7280; font-weight: 500; }
     
-    .date-dropdown { display: flex; align-items: center; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; height: 36px; width: 260px; padding: 0 12px; gap: 8px;}
+    .date-dropdown { display: flex; align-items: center; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; height: 36px; width: 220px; padding: 0 12px; gap: 8px;}
     .date-dropdown .bi-calendar { color: #6b7280; border-right: 1px solid #d1d5db; padding-right: 8px; }
     .date-dropdown input { border: none; background: transparent; flex: 1; outline: none; font-size: 13.5px; color: #4b5563; }
-    .btn-apply { background-color: #0d6efd; color: #fff; height: 36px; padding: 0 20px; font-size: 13.5px; }
+    .btn-apply { background-color: #0d6efd;
+    color: #fff;
+    height: 36px;
+    padding: 0 20px;
+    font-size: 13.5px;}
     .btn-apply:hover, .btn-primary:hover { background-color: #0b5ed7; color: #fff; }
+    .btn-outline-secondary { border-color: #d1d5db; color: #4b5563; background: #fff; }
+    .btn-outline-secondary:hover { background: #f3f4f6; color: #111827; }
     .btn-primary { background: #0d6efd; color: #fff; }
-    .btn-outline-primary { border-color: #0d6efd; color: #0d6efd; background: transparent; }
-    .btn-outline-primary:hover { background: #eff6ff; color: #0b5ed7; }
-    .btn-outline-danger { border-color: #ef4444; color: #ef4444; background: transparent; }
-    .btn-outline-danger:hover { background: #fef2f2; color: #dc2626; border-color: #dc2626; }
 
     .empty-state { text-align: center; padding: 60px 20px; }
-    .empty-state h5 { font-size: 15px; font-weight: 600; color: #111827; margin-bottom: 20px; }
-    .empty-state-svg { max-width: 300px; height: auto; opacity: 0.9; }
+    .empty-state-svg { max-width: 350px; height: auto; margin-top: 30px; }
 
-    .status-badge { display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 11px; font-weight: 600; padding: 2px 6px; margin-right: 2px; }
-    .status-p { background-color: #e6f4ea; color: #1e8e3e; border: 1px solid #ceead6; }
-    .status-a { background-color: #fce8e6; color: #d93025; border: 1px solid #fad2cf; }
-    .status-other { background-color: #fef3c7; color: #d97706; border: 1px solid #fde68a; }
-    .system-badge { background-color: #e8f0fe; color: #1967d2; border-radius: 20px; padding: 3px 25px; border: 1px solid #d2e3fc; font-size: 12.5px; font-weight: 500; }
+    /* New Specific Badges based on image */
+    .status-badge-sm { display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 11px; font-weight: 600; padding: 3px 6px; margin-right: 2px; }
+    .status-p-bg { background-color: #e6f4ea; color: #1e8e3e; border: 1px solid #ceead6; }
+    .status-a-bg { background-color: #fce8e6; color: #d93025; border: 1px solid #fad2cf; }
     
-    .table-container { border-radius: 6px; overflow: hidden; width: 100%; border: 1px solid #e5e7eb; }
-    .table { width: 100%; border-collapse: collapse; text-align: left; }
-    .table th { background-color: #f8f9fa; font-weight: 600; font-size: 12px; color: #4b5563; border-bottom: 1px solid #e5e7eb; padding: 12px 16px; }
-    .table td { vertical-align: middle; font-size: 13.5px; color: #111827; padding: 14px 16px; border-bottom: 1px solid #f3f4f6; }
+    .badge-disc { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; display: inline-block; }
+    .badge-short-hours { background-color: #fff4e5; color: #ed6c02; border: 1px solid #ffe2c2; }
+    .badge-late-login { background-color: #e6f4ea; color: #1e8e3e; border: 1px solid #ceead6; }
+    .badge-missing { background-color: #fef2f2; color: #ef4444; border: 1px solid #fee2e2; }
+
+    .selected-emp-chip { display: flex; align-items: center; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 6px; background-color: #fff; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    .selected-emp-chip .form-check-input { margin-top: 0; margin-right: 12px; cursor: pointer; }
+
+    .table-container { border-radius: 6px; overflow: hidden; width: 100%; border: 1px solid #e5e7eb; background: #fff; }
+    .table { width: 100%; border-collapse: collapse; text-align: left; margin-bottom: 0; }
+    .table th { background-color: #f8f9fa; font-weight: 600; font-size: 13px; color: #4b5563; border-bottom: 1px solid #e5e7eb; padding: 12px 16px; }
+    .table td { vertical-align: middle; font-size: 13.5px; color: #111827; padding: 12px 16px; border-bottom: 1px solid #f3f4f6; }
     .table tbody tr:hover { background-color: #f9fafb; }
     
-    .current-date-row { background-color: #eff6ff !important; border-left: 3px solid #0d6efd; }
-    
-    .expandable-row { background-color: #fff; display: none; border-bottom: 1px solid #e5e7eb;}
+    .expandable-row { background-color: #f8fafc; display: none; border-bottom: 1px solid #e5e7eb;}
     .expandable-row.show { display: table-row; }
-    .edit-form-container { padding: 24px 30px; background-color: #fff; border-top: 1px solid #e5e7eb; }
+    .edit-form-container { padding: 24px 30px; background-color: #f8fafc; }
     .edit-form-container .form-label { display: block; font-size: 12px; color: #4b5563; font-weight: 500; margin-bottom: 4px; }
-    .edit-form-container .form-control, .edit-form-container .form-select { border: none; border-bottom: 1px solid #d1d5db; border-radius: 0; padding: 4px 0 8px 0; background: transparent; box-shadow: none; height: auto; }
-    .edit-form-container .form-control:focus, .edit-form-container .form-select:focus { border-bottom-color: #0d6efd; }
-    .input-icon-wrapper { position: relative; }
-    .input-icon-wrapper .bi-clock { position: absolute; right: 0; top: 50%; transform: translateY(-50%); color: #0d6efd; pointer-events: none; }
-
-    .form-check { display: flex; align-items: center; gap: 8px; }
+    .edit-form-container .form-control, .edit-form-container .form-select { background: #fff; }
+    
+    .form-check { display: flex; align-items: center; gap: 8px; margin: 0; }
     .form-check-input { width: 16px; height: 16px; cursor: pointer; margin: 0; }
-    .form-check-label { font-size: 13.5px; color: #111827; cursor: pointer; }
     
     .pagination-container { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; font-size: 13px; color: #6b7280; }
     .pagination-btn-group { display: flex; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; }
     .pagination-btn-group button { border: 1px solid #e5e7eb; background: #fff; padding: 6px 12px; cursor: pointer; color: #6b7280; outline: none; margin-left: -1px; }
-    .pagination-btn-group button.active { background: #0d6efd; color: #fff; border-color: #0d6efd; z-index: 2; }
+    .pagination-btn-group button.active { background: #e9ecef; color: #111827; border-color: #d1d5db; z-index: 2; font-weight: 600; }
     .pagination-btn-group button:disabled { background: #f9fafb; color: #d1d5db; cursor: not-allowed; }
 
-    .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; }
-    .custom-toast { min-width: 280px; background: #ffffff; border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); padding: 16px; display: flex; align-items: flex-start; gap: 12px; transform: translateX(120%); transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55); border-left: 4px solid #0d6efd; }
-    .custom-toast.show { transform: translateX(0); }
-    .custom-toast.success { border-left-color: #10B981; }
-    .custom-toast.error { border-left-color: #EF4444; }
-    .toast-icon { font-size: 18px; margin-top: -2px; }
-    .custom-toast.success .toast-icon { color: #10B981; }
-    .custom-toast.error .toast-icon { color: #EF4444; }
-    .toast-content { flex: 1; }
-    .toast-title { font-weight: 600; font-size: 14px; color: #111827; margin-bottom: 4px; }
-    .toast-message { font-size: 13px; color: #6b7280; margin: 0; }
-    .toast-close { cursor: pointer; color: #9ca3af; font-size: 18px; transition: color 0.2s; margin-top: -2px; }
-    .toast-close:hover { color: #4b5563; }
-
-    @media (max-width: 768px) {
-        .flatpickr-calendar.multiMonth { width: 100% !important; }
-        .flatpickr-calendar .flatpickr-months { flex-wrap: wrap; }
-        .grid-col-3, .grid-col-6 { width: 100%; margin-bottom: 16px; }
-        .employee-profile-card { flex-direction: column; align-items: flex-start; }
-    }
+    /* Modal styling to match image */
+    .modal-content { border-radius: 8px; border: none; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+    .modal-header { border-bottom: 1px solid #e5e7eb; padding: 16px 24px; }
+    .modal-title { font-size: 16px; font-weight: 600; color: #111827; }
+    .modal-body { padding: 24px; }
+    .modal-footer { border-top: 1px solid #e5e7eb; padding: 16px 24px; background: #f9fafb; display: flex; justify-content: space-between; border-radius: 0 0 8px 8px; }
+    
+    .advanced-search-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 16px; }
+    .advanced-search-field label { font-size: 12px; color: #4b5563; margin-bottom: 4px; display: block; }
+    
+    .recent-saved-tabs { display: flex; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden; }
+    .recent-saved-tabs button { padding: 6px 12px; font-size: 12px; border: none; background: #fff; color: #4b5563; cursor: pointer; }
+    .recent-saved-tabs button.active { background: #f3f4f6; color: #0d6efd; font-weight: 500; }
 </style>
 
-<div class="container">
-    
+<div class="container">    
     <div class="flex-between mb-1">
         <h4 class="text-dark fw-bold m-0" style="font-size: 1.25rem;">Attendance</h4>
         <div class="attendance-tabs m-0 border-0">
-            <a href="attendance" class="active">Time Entries</a>
+            <a href="attendance" >Time Entries</a>
             <span class="separator">|</span>
             <a href="AttCalendarView">Calendar View</a>
             <span class="separator">|</span>
             <a href="ManualAttendance">Manual Attendance</a>
             <span class="separator">|</span>
-            <a href="AttDiscrepancies">Discrepancies</a>
+            <a href="AttDiscrepancies" class="active">Discrepancies</a>
             <span class="separator">|</span>
             <a href="AttProcessTimeCard">Process Time Card</a>
             <span class="separator">|</span>
@@ -472,7 +465,8 @@ ob_start();
 
     <div class="card shadow-sm mt-2">
         <div class="card-body p-4">
-            <h6 class="text-dark fw-bold mb-4" style="font-size: 13.5px; letter-spacing: 0.5px; margin-top: 0; text-transform: uppercase;">TIME ENTRIES</h6>
+            <h6 class="text-dark fw-bold mb-1" style="font-size: 13.5px; letter-spacing: 0.5px; margin-top: 0; text-transform: uppercase;">Discrepancies</h6>
+            <p class="text-muted mb-4" style="font-size: 12px;">Note: Once the time card has been processed, this discrepancies page will automatically reflect the updated and accurate data.</p>
             
             <form method="GET" action="" class="filter-bar" id="filterForm">
                 <div class="search-wrapper">
@@ -482,7 +476,7 @@ ob_start();
                             <a href="?"><i class="bi bi-x"></i></a>
                         </div>
                         <input type="hidden" name="employee" value="<?= htmlspecialchars($search_query) ?>">
-                        <input type="text" class="form-control" disabled style="background-color: #fff;">
+                        <input type="text" class="form-control" disabled>
                     <?php else: ?>
                         <i class="bi bi-search"></i>
                         <input type="text" id="employeeSearchInput" class="form-control" placeholder="Search by name or #code" autocomplete="off">
@@ -491,17 +485,32 @@ ob_start();
                     <?php endif; ?>
                 </div>
                 
+                <select name="discrepancy_type" class="form-select" style="width: 170px;">
+                    <option value="all" <?= $discrepancy_type == 'all' ? 'selected' : '' ?>>Discrepancy Type</option>
+                    <option value="short_hours" <?= $discrepancy_type == 'short_hours' ? 'selected' : '' ?>>Short Hours</option>
+                    <option value="missing_swipes" <?= $discrepancy_type == 'missing_swipes' ? 'selected' : '' ?>>Missing Swipes</option>
+                    <option value="no_attendance" <?= $discrepancy_type == 'no_attendance' ? 'selected' : '' ?>>No Attendance</option>
+                    <option value="late_login" <?= $discrepancy_type == 'late_login' ? 'selected' : '' ?>>Late Login</option>
+                </select>
+
                 <div class="date-dropdown">
                     <i class="bi bi-calendar"></i>
-                    <input type="text" name="date_range" id="dateRange" placeholder="Select Date Range" value="<?= htmlspecialchars($date_range) ?>">
+                    <input type="text" name="date_range" id="dateRange" placeholder="Select Date" value="<?= htmlspecialchars($date_range) ?>">
                 </div>                
+                
+                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#advancedSearchModal">
+                    <i class="bi bi-funnel me-1"></i> Filter
+                </button>
+                
                 <button type="submit" class="btn btn-apply">Apply</button>
+                
+                <div class="ms-auto fw-bold text-dark" style="font-size: 13.5px;">
+                    Period: <?= htmlspecialchars($period_display) ?>
+                </div>
             </form>
 
             <?php if (!$is_searched): ?>
-                
                 <div class="empty-state">
-                    <h5>Search employees to edit their time entries</h5>
                     <svg class="empty-state-svg mt-3" viewBox="0 0 400 250" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <rect x="50" y="40" width="220" height="150" rx="4" fill="#F3F4F6"/>
                         <rect x="50" y="40" width="220" height="15" rx="4" fill="#1F2937"/>
@@ -533,36 +542,11 @@ ob_start();
                 </div>
             <?php else: ?>
                 <?php if ($employee_details): ?>
-                    <div class="employee-profile-card">
-                        <div class="emp-avatar">
-                            <?= '<img src="' . htmlspecialchars($employee_details['profile_photo'] ?? 'uploads/photos/user.png') . '" alt="Profile Image" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">'; ?>
-                        </div>
-                        <div class="emp-details-grid">
-                            <div class="emp-detail-item">
-                                <span class="emp-label">Name</span>
-                                <span class="emp-val"><?= htmlspecialchars($employee_details['employee_name'] ?? '') ?></span>
-                            </div>
-                            <div class="emp-detail-item">
-                                <span class="emp-label">Emp Code</span>
-                                <span class="emp-val"><?= htmlspecialchars($employee_details['employee_code'] ?? '') ?></span>
-                            </div>
-                            <div class="emp-detail-item">
-                                <span class="emp-label">Department</span>
-                                <span class="emp-val"><?= htmlspecialchars($employee_details['department'] ?? 'N/A') ?></span>
-                            </div>
-                            <div class="emp-detail-item">
-                                <span class="emp-label">Designation</span>
-                                <span class="emp-val"><?= htmlspecialchars($employee_details['designation'] ?? 'N/A') ?></span>
-                            </div>
-                            <div class="emp-detail-item">
-                                <span class="emp-label">Join Date</span>
-                                <span class="emp-val"><?= !empty($employee_details['join_date']) ? date('d M Y', strtotime($employee_details['join_date'])) : 'N/A' ?></span>
-                            </div>
-                            <div class="emp-detail-item">
-                                <span class="emp-label">Official Email</span>
-                                <span class="emp-val"><?= htmlspecialchars($employee_details['official_email'] ?? 'N/A') ?></span>
-                            </div>
-                        </div>
+                    <div class="selected-emp-chip">
+                        <input class="form-check-input select-all-emp" type="checkbox" checked id="selectAllEmp">
+                        <label class="form-check-label text-dark" for="selectAllEmp">
+                            <?= htmlspecialchars($employee_details['employee_name'] ?? '') ?> - <?= htmlspecialchars($employee_details['employee_code'] ?? '') ?>
+                        </label>
                     </div>
                 <?php endif; ?>
 
@@ -570,52 +554,58 @@ ob_start();
                     <table class="table">
                         <thead>
                             <tr>
-                                <th class="ps-4">Date And Day</th>
+                                <th style="width: 40px; padding-left: 20px;">
+                                    <input type="checkbox" class="form-check-input" checked id="selectAllRows">
+                                </th>
+                                <th>Code</th>
+                                <th>Name</th>
                                 <th>Day Status</th>
-                                <th>Shift Name</th>
+                                <th>Date</th>
                                 <th>In - Out</th>
-                                <th>Hours Worked</th>
-                                <th>Status</th>
-                                <th></th>
+                                <th>Discrepancy Type</th>
+                                <th style="width: 40px;"></th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (!empty($time_entries)): ?>
                                 <?php foreach ($time_entries as $index => $row): 
-                                    $dateFormatted = date('d M, D', strtotime($row['entry_date']));                                 
+                                    $dateFormatted = date('d-m-Y', strtotime($row['entry_date']));                                 
                                     
-                                    $isToday = ($row['entry_date'] === date('Y-m-d'));
-                                    $highlightClass = $isToday ? 'current-date-row' : '';
-
                                     $rawStatus = $row['day_status_1'] ?? '';
-                                    if (in_array($rawStatus, ['PP', 'P*A', 'A*P'])) {
-                                        $badgeClass = 'status-p';
-                                    } elseif (in_array($rawStatus, ['AA', 'LOP*', '*LOP'])) {
-                                        $badgeClass = 'status-a';
+                                    // Make badges like 'P P' for full day based on image
+                                    $statusBadgesHtml = '';
+                                    if (in_array($rawStatus, ['PP'])) {
+                                        $statusBadgesHtml = '<span class="status-badge-sm status-p-bg">P</span> <span class="status-badge-sm status-p-bg">P</span>';
+                                    } elseif (in_array($rawStatus, ['AA'])) {
+                                        $statusBadgesHtml = '<span class="status-badge-sm status-a-bg">A</span> <span class="status-badge-sm status-a-bg">A</span>';
                                     } else {
-                                        $badgeClass = 'status-other';
+                                        $displaySt = $status_options[$rawStatus] ?? ($rawStatus ?: '-');
+                                        $statusBadgesHtml = '<span class="status-badge-sm status-p-bg">'.htmlspecialchars(substr($displaySt, 0, 3)).'</span>';
                                     }
                                     
-                                    $displayStatus = $status_options[$rawStatus] ?? ($rawStatus ?: '-Select-');
-                                    
-                                    // Yaha ab shift display hoga jaisa assigned hai
-                                    $shiftDisplay = $row['assigned_shift_name'] ?? 'Not Assigned';
-                                    
+                                    // Determine discrepancy type (mock logic for demo matching design)
+                                    $discBadgeClass = 'badge-late-login';
+                                    $discText = 'Late Login';
+                                    if (!empty($row['under_time_hours']) && $row['under_time_hours'] !== '00:00:00') {
+                                        $discBadgeClass = 'badge-short-hours';
+                                        $discText = 'Short Hours';
+                                    } elseif (empty($row['check_in_time']) && empty($row['check_out_time']) && $rawStatus != 'WO') {
+                                        $discBadgeClass = 'badge-missing';
+                                        $discText = 'Missing Swipes';
+                                    }
+
                                     $rowId = "row-" . $index . "-details";
                                 ?>
-                                    <tr class="<?= $highlightClass ?>">
-                                        <td class="ps-4">
-                                            <?= htmlspecialchars($dateFormatted) ?>
-                                            <?php if($isToday): ?>
-                                                <span class="badge bg-primary ms-1" style="color: #000; font-size:10px; padding:2px 5px; border-radius:3px;">Today</span>
-                                            <?php endif; ?>
+                                    <tr>
+                                        <td style="padding-left: 20px;">
+                                            <input type="checkbox" class="form-check-input row-checkbox" checked value="<?= $row['entry_date'] ?>">
                                         </td>
+                                        <td><?= htmlspecialchars($row['employee_code']) ?></td>
+                                        <td><?= htmlspecialchars($employee_details['employee_name'] ?? 'Employee') ?></td>
                                         <td>
-                                            <span class="status-badge <?= $badgeClass ?>">
-                                                <?= htmlspecialchars($displayStatus) ?>
-                                            </span> 
+                                            <?= $statusBadgesHtml ?>
                                         </td>
-                                        <td><?= htmlspecialchars($shiftDisplay) ?></td>
+                                        <td><?= htmlspecialchars($dateFormatted) ?></td>
                                         
                                         <td>
                                             <?php if (empty($row['check_in_time']) && empty($row['check_out_time'])): ?>
@@ -627,17 +617,13 @@ ob_start();
                                         </td>
                                         
                                         <td>
-                                            <?php 
-                                            $hrs = formatTimeForDisplay($row['hours_worked'] ?? '');
-                                            echo !empty($hrs) ? htmlspecialchars($hrs) : '-';
-                                            ?>
+                                            <span class="badge-disc <?= $discBadgeClass ?>"><?= htmlspecialchars($discText) ?></span>
                                         </td>
-                                        <td><span class="system-badge"><?= htmlspecialchars($row['record_status'] ?? 'System') ?></span></td>
                                         <td class="text-end pe-4"><i class="bi bi-chevron-down text-muted" style="cursor:pointer;" onclick="toggleRow('<?= $rowId ?>', this)"></i></td>
                                     </tr>
                                     
                                     <tr id="<?= $rowId ?>" class="expandable-row">
-                                        <td colspan="7" class="p-0 border-0">
+                                        <td colspan="8" class="p-0 border-0">
                                             <div class="edit-form-container">
                                                 <div class="grid-row mb-4">
                                                     <div class="grid-col-3">
@@ -650,15 +636,11 @@ ob_start();
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Check In Time</label>
-                                                        <div class="input-icon-wrapper">
-                                                            <input type="datetime-local" step="1" class="form-control upd-check-in" value="<?= !empty($row['check_in_time']) ? date('Y-m-d\TH:i:s', strtotime($row['check_in_time'])) : '' ?>">
-                                                        </div>
+                                                        <input type="datetime-local" step="1" class="form-control upd-check-in" value="<?= !empty($row['check_in_time']) ? date('Y-m-d\TH:i:s', strtotime($row['check_in_time'])) : '' ?>">
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Check Out Time</label>
-                                                        <div class="input-icon-wrapper">
-                                                            <input type="datetime-local" step="1" class="form-control upd-check-out" value="<?= !empty($row['check_out_time']) ? date('Y-m-d\TH:i:s', strtotime($row['check_out_time'])) : '' ?>">
-                                                        </div>
+                                                        <input type="datetime-local" step="1" class="form-control upd-check-out" value="<?= !empty($row['check_out_time']) ? date('Y-m-d\TH:i:s', strtotime($row['check_out_time'])) : '' ?>">
                                                     </div>
                                                     <div class="grid-col-3">
                                                         <label class="form-label">Hours Worked</label>
@@ -706,11 +688,11 @@ ob_start();
                                                     </div>
                                                 </div>
 
-                                                <div class="flex-end gap-2 mt-5">
+                                                <div class="flex-end gap-2 mt-4">
                                                     <?php if (!empty($row['record_status']) && $row['record_status'] !== 'System'): ?>
                                                         <button class="btn btn-outline-danger" onclick="deleteTimeEntry('<?= $row['employee_code'] ?>', '<?= $row['entry_date'] ?>')">Delete</button>
                                                     <?php endif; ?>
-                                                    <button class="btn btn-outline-primary" onclick="toggleRow('<?= $rowId ?>', this.closest('.expandable-row').previousElementSibling.querySelector('i'))">Cancel</button>
+                                                    <button class="btn btn-outline-secondary" onclick="toggleRow('<?= $rowId ?>', this.closest('.expandable-row').previousElementSibling.querySelector('i'))">Cancel</button>
                                                     <button class="btn btn-primary" onclick="saveTimeEntry(this, '<?= $row['employee_code'] ?>', '<?= $row['entry_date'] ?>')">Save</button>
                                                 </div>
                                             </div>
@@ -719,20 +701,21 @@ ob_start();
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="7" style="text-align: center; padding: 40px; color: #6b7280;">No data logs matched your criteria within the specified date frame.</td>
+                                    <td colspan="8" style="text-align: center; padding: 40px; color: #6b7280;">No data logs matched your criteria within the specified date frame.</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
 
-                <div class="pagination-container">
-                    <div>
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div style="font-size: 13px; color: #6b7280;">
                         Showing 1 to <?= count($time_entries) ?> of <?= count($time_entries) ?> entries 
-                        <span class="border rounded-1 bg-white" style="margin-left:16px; padding: 4px 8px;">
+                        <span class="ms-3">
                             Show 
-                            <select style="border:none; outline:none; background:transparent;">
-                                <option>25</option>
+                            <select class="form-select d-inline-block form-select-sm" style="width: auto; height: 30px; padding: 2px 24px 2px 8px;">
+                                <option>50</option>
+                                <option>100</option>
                             </select>
                             entries
                         </span>
@@ -746,11 +729,19 @@ ob_start();
                     </div>
                 </div>
 
+                <div class="d-flex justify-content-between align-items-center mt-5 mb-2 p-3 bg-light rounded border">
+                    <p class="text-muted mb-0" style="font-size: 12px; max-width: 75%;">
+                        Note: Upon regularization, the selected employee's attendance status will be changed to 'Present'. To exclude any entries, simply uncheck them and take no further action.
+                    </p>
+                    <button class="btn btn-primary" id="btnRegularize">Regularize (<span id="regCount"><?= count($time_entries) ?></span>)</button>
+                </div>
+
             <?php endif; ?>
             
         </div>
     </div>
 </div>
+
 
 <?php
 $page_content = ob_get_clean();
@@ -759,15 +750,13 @@ echo $page_content;
 include 'includes/footer.php';
 ?>
 
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
-
 <script>
     const searchInput = document.getElementById('employeeSearchInput');
     const searchHidden = document.getElementById('employeeSearchHidden');
     const dropdown = document.getElementById('autocompleteDropdown');
     const filterForm = document.getElementById('filterForm');
 
+    // Autocomplete Logic
     if (searchInput && dropdown) {
         let debounceTimer;
 
@@ -791,7 +780,7 @@ include 'includes/footer.php';
                                 item.innerHTML = `<span class="autocomplete-name">${emp.employee_name}</span><span class="autocomplete-code">#${emp.employee_code}</span>`;
                                 item.addEventListener('click', () => {
                                     searchInput.value = emp.employee_name; 
-                                    searchHidden.value = emp.employee_name; 
+                                    searchHidden.value = emp.employee_code; // Usually pass code or ID
                                     dropdown.style.display = 'none';
                                     filterForm.submit();
                                 });
@@ -813,136 +802,79 @@ include 'includes/footer.php';
         });
     }
 
+    // Toggle Details Row
     function toggleRow(rowId, iconElement) {
         const row = document.getElementById(rowId);
         if (row.classList.contains('show')) {
             row.classList.remove('show');
             if (iconElement && iconElement.classList) {
                 iconElement.classList.replace('bi-chevron-up', 'bi-chevron-down');
-                iconElement.classList.replace('text-dark', 'text-muted');
             }
         } else {
+            // Close others
             document.querySelectorAll('.expandable-row.show').forEach(openRow => {
                 openRow.classList.remove('show');
-                let prevRowIcon = openRow.previousElementSibling.querySelector('i');
+                let prevRowIcon = openRow.previousElementSibling.querySelector('.bi-chevron-up');
                 if (prevRowIcon) {
                     prevRowIcon.classList.replace('bi-chevron-up', 'bi-chevron-down');
-                    prevRowIcon.classList.replace('text-dark', 'text-muted');
                 }
             });
 
             row.classList.add('show');
             if (iconElement && iconElement.classList) {
                 iconElement.classList.replace('bi-chevron-down', 'bi-chevron-up');
-                iconElement.classList.replace('text-muted', 'text-dark');
             }
         }
     }
 
-    function formatMsToHrs(ms) {
-        if (ms <= 0) return '00:00 Hrs';
-        let totalMins = Math.floor(ms / 60000);
-        let hours = Math.floor(totalMins / 60);
-        let mins = totalMins % 60;
-        return String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0') + ' Hrs';
-    }
+    // Checkbox Logic for Count
+    document.addEventListener('DOMContentLoaded', function() {
+        const selectAllRows = document.getElementById('selectAllRows');
+        const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+        const regCount = document.getElementById('regCount');
 
-    function runTimeCalculations(container) {
-        const checkIn = container.querySelector('.upd-check-in').value;
-        const checkOut = container.querySelector('.upd-check-out').value;
-        const isAutoCalc = container.querySelector('.upd-calc-in-out').checked;
+        function updateCount() {
+            let count = 0;
+            rowCheckboxes.forEach(cb => { if(cb.checked) count++; });
+            if(regCount) regCount.innerText = count;
+        }
 
-        const inputs = ['upd-over-time', 'upd-under-time', 'upd-normal-hours', 'upd-late-hours', 'upd-early-hours'];
-        inputs.forEach(cls => {
-            container.querySelector('.' + cls).readOnly = isAutoCalc;
+        if (selectAllRows) {
+            selectAllRows.addEventListener('change', function() {
+                rowCheckboxes.forEach(cb => cb.checked = selectAllRows.checked);
+                updateCount();
+            });
+        }
+
+        rowCheckboxes.forEach(cb => {
+            cb.addEventListener('change', function() {
+                if(!this.checked && selectAllRows) selectAllRows.checked = false;
+                updateCount();
+            });
         });
 
-        if (!isAutoCalc || !checkIn || !checkOut) return;
-
-        const inTime = new Date(checkIn);
-        const outTime = new Date(checkOut);
-        
-        if(isNaN(inTime) || isNaN(outTime)) return; 
-
-        const shiftStart = new Date(inTime);
-        shiftStart.setHours(9, 0, 0, 0); 
-        
-        const shiftEnd = new Date(inTime);
-        shiftEnd.setHours(18, 0, 0, 0); 
-        
-        const standardHoursMs = 9 * 60 * 60 * 1000; 
-
-        let hoursWorkedMs = outTime - inTime;
-        if(hoursWorkedMs < 0) hoursWorkedMs = 0; 
-
-        let lateMs = inTime > shiftStart ? (inTime - shiftStart) : 0;
-        let earlyMs = outTime < shiftEnd ? (shiftEnd - outTime) : 0;
-        let overTimeMs = hoursWorkedMs > standardHoursMs ? (hoursWorkedMs - standardHoursMs) : 0;
-        let underTimeMs = hoursWorkedMs < standardHoursMs ? (standardHoursMs - hoursWorkedMs) : 0;
-        let normalMs = Math.min(hoursWorkedMs, standardHoursMs);
-
-        container.querySelector('.upd-hours-worked').value = formatMsToHrs(hoursWorkedMs);
-        container.querySelector('.upd-late-hours').value = formatMsToHrs(lateMs);
-        container.querySelector('.upd-early-hours').value = formatMsToHrs(earlyMs);
-        container.querySelector('.upd-over-time').value = formatMsToHrs(overTimeMs);
-        container.querySelector('.upd-under-time').value = formatMsToHrs(underTimeMs);
-        container.querySelector('.upd-normal-hours').value = formatMsToHrs(normalMs);
-    }
-
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('upd-check-in') || 
-            e.target.classList.contains('upd-check-out') || 
-            e.target.classList.contains('upd-calc-in-out')) {
-            
-            const container = e.target.closest('.edit-form-container');
-            runTimeCalculations(container);
+        const selectAllEmp = document.getElementById('selectAllEmp');
+        if (selectAllEmp && selectAllRows) {
+            selectAllEmp.addEventListener('change', function(){
+                selectAllRows.checked = this.checked;
+                rowCheckboxes.forEach(cb => cb.checked = this.checked);
+                updateCount();
+            });
         }
     });
 
+    // Date Picker
     const dateRangeInput = document.getElementById("dateRange");
     if (dateRangeInput) {
         flatpickr("#dateRange", {
             mode: "range",
-            dateFormat: "d M Y",
-            monthSelectorType: "static",
-            animate: true,
-            showMonths: 2
+            dateFormat: "d-m-Y",
+            showMonths: 2,
+            animate: true
         });
     }
 
-    function showToast(title, message, type = 'success') {
-        let container = document.getElementById('toastContainer');
-        if (!container) {
-            container = document.createElement('div');
-            container.id = 'toastContainer';
-            container.className = 'toast-container';
-            document.body.appendChild(container);
-        }
-
-        const toast = document.createElement('div');
-        toast.className = `custom-toast ${type}`;
-        
-        const icon = type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
-        
-        toast.innerHTML = `
-            <i class="bi ${icon} toast-icon"></i>
-            <div class="toast-content">
-                <div class="toast-title">${title}</div>
-                <div class="toast-message">${message}</div>
-            </div>
-            <i class="bi bi-x toast-close" onclick="this.parentElement.classList.remove('show'); setTimeout(() => this.parentElement.remove(), 300);"></i>
-        `;
-
-        container.appendChild(toast);
-        setTimeout(() => toast.classList.add('show'), 10);
-        setTimeout(() => {
-            if(toast.classList.contains('show')) {
-                toast.classList.remove('show');
-                setTimeout(() => toast.remove(), 300); 
-            }
-        }, 3000);
-    }
-
+    // Save Logic (Ajax)
     function saveTimeEntry(button, empCode, entryDate) {
         const container = button.closest('.edit-form-container');
         
@@ -975,33 +907,30 @@ include 'includes/footer.php';
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showToast('Saved!', 'Time entry updated successfully.', 'success');
-                setTimeout(() => {
-                    window.location.reload(); 
-                }, 1500); 
+                Swal.fire({ toast: true, position: 'bottom-end', icon: 'success', title: 'Saved successfully', showConfirmButton: false, timer: 1500 });
+                setTimeout(() => window.location.reload(), 1500); 
             } else {
-                showToast('Error', data.error || 'Failed to update record.', 'error');
+                Swal.fire('Error', data.error || 'Failed to update', 'error');
                 button.innerHTML = originalText;
                 button.disabled = false;
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            showToast('Network Error', 'Something went wrong communicating with the server.', 'error');
+            Swal.fire('Error', 'Network Error', 'error');
             button.innerHTML = originalText;
             button.disabled = false;
         });
     }
 
+    // Delete Logic
     function deleteTimeEntry(empCode, entryDate) {
         Swal.fire({
             title: 'Are you sure?',
-            text: "You won't be able to revert this!",
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#ef4444',
-            cancelButtonColor: '#6b7280',
-            confirmButtonText: 'Yes, delete it!'
+            confirmButtonText: 'Delete'
         }).then((result) => {
             if (result.isConfirmed) {
                 const formData = new URLSearchParams();
@@ -1013,47 +942,11 @@ include 'includes/footer.php';
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: formData.toString()
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        Swal.fire(
-                            'Deleted!',
-                            'The time entry has been deleted.',
-                            'success'
-                        ).then(() => {
-                            window.location.reload();
-                        });
-                    } else {
-                        Swal.fire(
-                            'Error!',
-                            data.error || 'Failed to delete the record.',
-                            'error'
-                        );
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    Swal.fire(
-                        'Network Error',
-                        'Something went wrong communicating with the server.',
-                        'error'
-                    );
+                }).then(response => response.json()).then(data => {
+                    if (data.success) window.location.reload();
                 });
             }
         });
     }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        const editContainers = document.querySelectorAll('.edit-form-container');
-        
-        editContainers.forEach(container => {
-            const calcCheckbox = container.querySelector('.upd-calc-in-out');
-            
-            if (calcCheckbox && calcCheckbox.checked) {
-                runTimeCalculations(container);
-            }
-        });
-    });
 </script>
 <script src="includes/assets/scripts.js"></script>

@@ -1,12 +1,56 @@
 <?php
 session_start();
 if (!isset($_SESSION['login'])) {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    if (isset($_POST['action']) || isset($_GET['action'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+        exit();
+    }
+    header('Location: login');
     exit();
 }
 
 require_once 'includes/config.php';
 require_once 'includes/db_client.php';
+
+// Handle Saving Attendance (POST request)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_attendance'])) {
+    if (isset($_POST['attendance']) && is_array($_POST['attendance'])) {
+        $attendance_data = $_POST['attendance'];
+        
+        foreach ($attendance_data as $emp_code => $dates) {
+            $clean_emp_code = mysqli_real_escape_string($conn, $emp_code);
+            
+            foreach ($dates as $date => $status) {
+                $clean_date = mysqli_real_escape_string($conn, $date);
+                $clean_status = mysqli_real_escape_string($conn, $status);
+                
+                // Check if a record already exists for this employee and date
+                $check_sql = "SELECT id FROM time_entries WHERE employee_code = '$clean_emp_code' AND entry_date = '$clean_date'";
+                $check_res = mysqli_query($conn, $check_sql);
+                
+                if ($check_res && mysqli_num_rows($check_res) > 0) {
+                    // Update existing record
+                    $update_sql = "UPDATE time_entries 
+                                   SET day_status_1 = '$clean_status', updated_at = NOW() 
+                                   WHERE employee_code = '$clean_emp_code' AND entry_date = '$clean_date'";
+                    mysqli_query($conn, $update_sql);
+                } else {
+                    // Insert new record
+                    $insert_sql = "INSERT INTO time_entries 
+                                   (employee_code, entry_date, day_status_1, created_at, updated_at) 
+                                   VALUES ('$clean_emp_code', '$clean_date', '$clean_status', NOW(), NOW())";
+                    mysqli_query($conn, $insert_sql);
+                }
+            }
+        }
+        
+        // Redirect to same URL to prevent form resubmission
+        $query_string = $_SERVER['QUERY_STRING'] ? '&' . $_SERVER['QUERY_STRING'] : '';
+        header("Location: ?msg=saved" . $query_string);
+        exit;
+    }
+}
 
 // Handle AJAX Request for Live Employee Search
 if (isset($_GET['ajax_search'])) {
@@ -60,7 +104,7 @@ $start_iso = array_key_first($dates_header);
 $end_iso = array_key_last($dates_header);
 
 $calendar_data = [];
-$employee_display_names = []; // Keep track of names for the checkbox list UI
+$employee_display_names = [];
 
 if ($is_searched && isset($conn)) {
     $emp_in_clause = [];
@@ -113,7 +157,7 @@ if ($is_searched && isset($conn)) {
         'attendance' => []
     ];
     $idx = 0;
-    $sample_statuses = ['Present', 'A*P', 'WO', 'Absent', 'Absent', 'Absent', 'Present'];
+    $sample_statuses = ['Present', 'Loss of Pay', 'Casual Leave', 'Absent', 'Absent', 'Absent', 'Present'];
     foreach($dates_header as $iso => $display) {
         $calendar_data['1104']['attendance'][$iso] = $sample_statuses[$idx]; 
         $idx++;
@@ -129,7 +173,7 @@ function renderStatusIcon($statusCode) {
         return '<i class="bi bi-check-lg text-success status-icon" data-status="Present"></i>';
     } else if (in_array($status, ['absent', 'a', 'aa'])) {
         return '<i class="bi bi-x-lg text-danger status-icon" data-status="Absent"></i>';
-    } else if ($status == 'wo' || $status == 'weekoff') {
+    } else if ($status == 'wo' || $status == 'week off') {
         return '<span class="status-icon text-muted" data-status="WO">WO</span>';
     } else if ($status == 'a*p') {
         return '<span class="status-icon text-dark" data-status="A*P">A*P</span>';
@@ -147,6 +191,7 @@ ob_start();
 <style>
     /* Layout & Generic */
     .flex-between { display: flex; justify-content: space-between; align-items: center; }
+    .mb-1 { margin-bottom: 4px; }
     .d-flex { display: flex; align-items: center; }
     .text-dark { color: #111827; }
     .text-muted { color: #6b7280; }
@@ -158,8 +203,8 @@ ob_start();
 
     /* Tabs */
     .attendance-tabs { border-bottom: 1px solid #dee2e6; }
-    .attendance-tabs a { color: #6c757d; text-decoration: none; padding: 6px 8px; gap: 12px; display: inline-block; font-size: 14.5px; transition: color 0.2s; }
-    .attendance-tabs .separator { color: #D1D5DB; font-size: 14px; margin: 0 4px; }
+    .attendance-tabs a { color: #6c757d; text-decoration: none; padding: 3px 5px; gap: 12px; display: inline-block; font-size: 14px; transition: color 0.2s; }
+    .attendance-tabs .separator { color: #D1D5DB; font-size: 14px; }
     .attendance-tabs a:hover { color: #495057; }
     .attendance-tabs a.active { color: #0d6efd; border-bottom: 2px solid #0d6efd; font-weight: 500; }
     
@@ -170,8 +215,9 @@ ob_start();
     .search-wrapper .form-control { padding-left: 35px; border-radius: 4px; font-size: 14px; border: 1px solid #d1d5db; height: 38px; width: 100%; outline: none; }
     .search-wrapper .bi-search { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 15px; }
     
+    .form-control:focus, .form-select:focus { border-color: #0d6efd; }
     /* Autocomplete */
-    .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #d1d5db; border-radius: 4px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 1000; max-height: 250px; overflow-y: auto; display: none; margin-top: 4px; }
+    .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; border-top:none; background: #fff; border: 1px solid #d1d5db; border-radius: 4px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 1000; max-height: 250px; overflow-y: auto; display: none; margin-top: 4px; }
     .autocomplete-item { padding: 10px 14px; cursor: pointer; font-size: 13.5px; border-bottom: 1px solid #f3f4f6; display: flex; flex-direction: column; }
     .autocomplete-item:hover { background-color: #eff6ff; }
     .autocomplete-name { font-weight: 600; color: #111827; }
@@ -183,7 +229,7 @@ ob_start();
     .employee-checkbox-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: #0d6efd; cursor: pointer; }
 
     /* Date Dropdown & Buttons */
-    .date-dropdown { display: flex; align-items: center; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; height: 38px; width: 160px; padding: 0 12px; gap: 8px; }
+    .date-dropdown { display: flex; align-items: center; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; height: 38px; width: 194px; padding: 0 12px; gap: 8px; }
     .date-dropdown .bi-calendar { color: #6b7280; }
     .date-dropdown input { border: none; background: transparent; flex: 1; outline: none; font-size: 14px; color: #4b5563; cursor: pointer; width: 100%; }
 
@@ -200,12 +246,12 @@ ob_start();
 
     /* Calendar Grid Specific Styles */
     .table-container { border-radius: 6px; overflow-x: auto; width: 100%; border: 1px solid #e5e7eb; margin-bottom: 20px; }
-    .table-calendar { width: 100%; border-collapse: collapse; text-align: center; white-space: nowrap; }
+    .table-calendar { width: 100%; border-collapse: collapse; text-align: center; white-space: nowrap; table-layout: fixed; }
     .table-calendar th { background-color: #f8f9fa; font-weight: 600; font-size: 13px; color: #374151; border-bottom: 1px solid #e5e7eb; padding: 14px 10px; border-right: 1px solid #e5e7eb; }
-    .table-calendar td { vertical-align: middle; padding: 14px 10px; border-bottom: 1px solid #f3f4f6; border-right: 1px solid #f3f4f6; position: relative; cursor: pointer; }
+    .table-calendar td { vertical-align: middle; padding: 14px 10px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; position: relative; cursor: pointer; height: 50px; }
     .table-calendar td:hover { background-color: #f9fafb; }
     
-    .table-calendar th:first-child, .table-calendar td:first-child { text-align: left; padding-left: 16px; border-right: 1px solid #e5e7eb; background: #fff; cursor: default; }
+    .table-calendar th:first-child, .table-calendar td:first-child { text-align: left; padding-left: 16px; border-right: 1px solid #e5e7eb; background: #fff; cursor: default; width: 250px; }
     .table-calendar th:first-child { background: #f8f9fa; }
     
     /* Small arrow columns */
@@ -217,21 +263,97 @@ ob_start();
     .emp-mini-avatar img { width: 100%; height: 100%; object-fit: cover; }
     .emp-name-text { font-size: 14px; font-weight: 400; color: #374151; }
 
-    .status-icon { font-size: 1.25rem; font-weight: bold; }
+    .status-icon { font-size: 1rem; font-weight: 500; }
     .status-icon.empty { color: #d1d5db; }
     
-    /* Cell Dropdown Menu UI */
-    .cell-dropdown { position: absolute; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); width: 140px; z-index: 50; text-align: left; display: none; overflow: hidden; }
+    /* In-Cell Scrollable Hover Menu matching the image */
+    .attendance-cell {
+        position: relative; 
+    }
+    .cell-dropdown { 
+        position: absolute; 
+        top: -1px; /* Align precisely with top border */
+        left: -1px; /* Align precisely with left border */
+        width: calc(100% + 2px); /* Span exactly across the td borders */
+        background: #f8f9fa; 
+        border: 1px solid #cbd5e1; 
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
+        z-index: 100; 
+        text-align: left; 
+        display: none; 
+        max-height: 120px; /* Forces scroll bar matching the image style */
+        overflow-y: auto;
+    }
     .cell-dropdown.show { display: block; }
-    .dropdown-option { padding: 8px 12px; font-size: 13px; display: flex; align-items: center; gap: 10px; cursor: pointer; color: #374151; transition: background 0.2s; }
-    .dropdown-option:hover { background: #f3f4f6; }
-    .dropdown-option i { font-size: 14px; width: 16px; text-align: center; }
-    .dropdown-option i.bi-calendar-event { color: #f59e0b; }
+    
+    .dropdown-option { 
+        padding: 8px 12px; 
+        font-size: 13px; 
+        display: flex; 
+        align-items: center; 
+        gap: 8px; 
+        cursor: pointer; 
+        color: #1e293b; 
+        background-color: #f8f9fa;
+        transition: background 0.1s; 
+    }
+    .dropdown-option:hover { background: #e2e8f0; }
+    .dropdown-option i { font-size: 13px; }
+    
+    /* Custom Scrollbar for Dropdown to match image */
+    .cell-dropdown::-webkit-scrollbar {
+        width: 8px;
+    }
+    .cell-dropdown::-webkit-scrollbar-track {
+        background: transparent;
+        margin: 2px 0;
+    }
+    .cell-dropdown::-webkit-scrollbar-thumb {
+        background-color: #94a3b8;
+        border-radius: 10px;
+        border: 2px solid #f8f9fa; /* Matches dropdown background for padding effect */
+    }
+    
+    /* Toast Notification Style */
+   .toast-notification {
+    position: fixed;
+    bottom: 25px;
+    right: 25px;
+    background-color: #10b981;
+    color: #fff;
+    padding: 14px 24px;
+    border-radius: 6px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14.5px;
+    font-weight: 500;
+    z-index: 9999;
+    opacity: 0;
+    transform: translateX(100%);
+    animation: slideInRight 0.4s ease-out forwards;
+    pointer-events: none;
+}
+    @keyframes slideInRight {
+        to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes fadeOutRight {
+        to { opacity: 0; transform: translateX(100%); }
+    }
 </style>
 
-<div class="container-fluid" style="padding: 20px;">
-    <div class="flex-between mb-4">
-        <h4 class="text-dark fw-bold m-0" style="font-size: 1.5rem;">Attendance</h4>
+<!-- Toast Element -->
+<?php if (isset($_GET['msg']) && $_GET['msg'] === 'saved'): ?>
+    <div id="successToast" class="toast-notification">
+        <i class="bi bi-check-circle-fill" style="font-size: 18px;"></i>
+        Attendance records saved successfully.
+    </div>
+<?php endif; ?>
+
+<div class="container">
+    <div class="flex-between mb-1">
+        <h4 class="text-dark fw-bold m-0" style="font-size: 1.25rem;">Attendance</h4>
         <div class="attendance-tabs m-0 border-0">
             <a href="attendance">Time Entries</a>
             <span class="separator">|</span>
@@ -248,14 +370,14 @@ ob_start();
     </div>
 
     <div class="card shadow-sm">
-        <div class="card-body p-4" style="padding-top: 24px;">
-            <h6 class="text-dark fw-bold mb-4" style="font-size: 14px; letter-spacing: 0.5px;">MANUAL ATTENDANCE</h6>
-            
-            <form method="GET" action="" id="attendanceForm">
+        <div class="card-body p-4">
+            <h6 class="text-dark fw-bold mb-4" style="font-size: 13.5px; letter-spacing: 0.5px; margin-top: 0; text-transform: uppercase;">MANUAL ATTENDANCE</h6>            
+            <!-- Filters Form (GET) -->
+            <form method="GET" action="" id="filterForm">
                 <div class="filter-bar">
                     <div class="search-wrapper">
                         <i class="bi bi-search"></i>
-                        <input type="text" id="employeeSearchInput" class="form-control" placeholder="Search by Employee Name or #code(eg - ..." autocomplete="off">
+                        <input type="text" id="employeeSearchInput" class="form-control" placeholder="Search by Employee Name or #code" autocomplete="off">
                         <div id="autocompleteDropdown" class="autocomplete-dropdown"></div>
                     </div>
                     
@@ -277,28 +399,33 @@ ob_start();
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </div>
+            </form>
 
-                <?php if (!$is_searched): ?>
+            <?php if (!$is_searched): ?>
+                <div class="empty-state">
+                    <h6>Add employees to process manual attendance</h6>
+                    <img src="https://cdni.iconscout.com/illustration/premium/thumb/empty-state-2130362-1800926.png" class="empty-illustration" alt="Add employees illustration" style="opacity: 0.8; max-width: 320px;">
+                </div>
+            <?php else: ?>
+                <?php if (empty($calendar_data)): ?>
                     <div class="empty-state">
-                        <h6>Add employees to process manual attendance</h6>
-                        <img src="https://cdni.iconscout.com/illustration/premium/thumb/empty-state-2130362-1800926.png" class="empty-illustration" alt="Add employees illustration" style="opacity: 0.8; max-width: 320px;">
+                        <h6 class="text-muted">No attendance data found for the selected criteria.</h6>
                     </div>
                 <?php else: ?>
-                    <?php if (empty($calendar_data)): ?>
-                        <div class="empty-state">
-                            <h6 class="text-muted">No attendance data found for the selected criteria.</h6>
-                        </div>
-                    <?php else: ?>
-                        
-                        <div class="d-flex justify-content-end mb-3" style="justify-content: flex-end;">
-                            <button type="button" class="btn-outline-green" id="btnMarkAllPresent">Mark all Present</button>
-                        </div>
+                    
+                    <div class="d-flex justify-content-end mb-3" style="justify-content: flex-end;">
+                        <button type="button" class="btn-outline-green" id="btnMarkAllPresent">Mark all Present</button>
+                    </div>
 
+                    <!-- Attendance Saving Form (POST) -->
+                    <form method="POST" action="" id="attendanceForm">
+                        <input type="hidden" name="save_attendance" value="1">
+                        
                         <div class="table-container" style="overflow: visible;">
                             <table class="table-calendar" id="attendanceTable">
                                 <thead>
                                     <tr>
-                                        <th style="min-width: 250px;">Employee Name</th>
+                                        <th>Employee Name</th>
                                         <th class="col-arrow" onclick="shiftDate(-7)"><i class="bi bi-chevron-left"></i></th>
                                         
                                         <?php foreach($dates_header as $iso => $display_date): ?>
@@ -345,23 +472,28 @@ ob_start();
                         </div>
                         
                         <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
-                            <button type="button" class="btn-blue" id="btnSaveAttendance">SAVE</button>
+                            <button type="submit" class="btn-blue" id="btnSaveAttendance">SAVE</button>
                         </div>
-                        
-                    <?php endif; ?>
+                    </form>
+                    
                 <?php endif; ?>
-            </form>
+            <?php endif; ?>
         </div>
     </div>
 </div>
 
+<!-- Updated template based exactly on the provided image styling -->
 <div id="statusDropdownTemplate" class="cell-dropdown">
     <div class="dropdown-option" data-val="Present"><i class="bi bi-check-lg text-success"></i> Present</div>
     <div class="dropdown-option" data-val="Absent"><i class="bi bi-x-lg text-danger"></i> Absent</div>
-    <div class="dropdown-option" data-val="Loss of Pay"><i class="bi bi-calendar-event"></i> Loss of Pay</div>
-    <div class="dropdown-option" data-val="WO"><span style="width:16px; font-size:11px; text-align:center; color:#6b7280; font-weight:bold;">WO</span> Week Off</div>
+    <div class="dropdown-option" data-val="Loss of Pay"><i class="bi bi-calendar-event" style="color: #f59e0b;"></i> Loss of Pay</div>
+    <div class="dropdown-option" data-val="Compensatory Leave"><i class="bi bi-calendar-event" style="color: #f59e0b;"></i> Compensatory Leave</div>
+    <div class="dropdown-option" data-val="Casual Leave"><i class="bi bi-calendar-event" style="color: #f59e0b;"></i> Casual Leave</div>
+    <div class="dropdown-option" data-val="Sick Leave"><i class="bi bi-calendar-event" style="color: #f59e0b;"></i> Sick Leave</div>
+    <div class="dropdown-option" data-val="Week Off"><i class="bi bi-calendar-event text-muted"></i> Week Off</div>
+    <div class="dropdown-option" data-val="A*P"><i class="bi bi-calendar-event" style="color: #3b82f6;"></i> A*P</div>
+    <div class="dropdown-option" data-val="P*A"><i class="bi bi-calendar-event" style="color: #3b82f6;"></i> P*A</div>
 </div>
-
 
 <?php
 $page_content = ob_get_clean();
@@ -376,16 +508,22 @@ include 'includes/footer.php';
 <script>
     document.addEventListener("DOMContentLoaded", function() {
         
-        // 1. Single Date Picker Setup
+        // 1. Toast Notification Auto-Hide
+        const toast = document.getElementById('successToast');
+        if (toast) {
+            setTimeout(() => {
+                toast.style.animation = 'fadeOutRight 0.4s ease-in forwards';
+                setTimeout(() => toast.remove(), 400); // Remove from DOM after animation
+            }, 3000);
+        }
+
+        // 2. Single Date Picker Setup
         flatpickr("#targetDate", {
             dateFormat: "d M Y",
-            allowInput: false,
-            onChange: function(selectedDates, dateStr, instance) {
-                // Optional: auto-submit when date changes if employees are selected
-            }
+            allowInput: false
         });
 
-        // 2. Search & Autocomplete Logic
+        // 3. Search & Autocomplete Logic
         const searchInput = document.getElementById('employeeSearchInput');
         const dropdown = document.getElementById('autocompleteDropdown');
         const selectedContainer = document.getElementById('selectedEmployeesContainer');
@@ -439,7 +577,6 @@ include 'includes/footer.php';
 
         // Add employee to checkbox list
         function addEmployeeCheckbox(code, name) {
-            // Check if already added
             if (selectedContainer.querySelector(`[data-code="${code}"]`)) {
                 return; // Already exists
             }
@@ -455,12 +592,11 @@ include 'includes/footer.php';
             selectedContainer.appendChild(div);
         }
 
-        // 3. Arrow Navigation for Dates
+        // 4. Arrow Navigation for Dates
         window.shiftDate = function(daysToAdd) {
             const dateInput = document.getElementById('targetDate');
             if (!dateInput.value) return;
 
-            // Parse "03 Jul 2026"
             const currentObj = new Date(dateInput.value);
             currentObj.setDate(currentObj.getDate() + daysToAdd);
             
@@ -471,29 +607,27 @@ include 'includes/footer.php';
             
             dateInput.value = `${d} ${m} ${y}`;
             
-            // Auto submit form to load new dates
-            document.getElementById('attendanceForm').submit();
+            // Auto submit filter form to load new dates
+            document.getElementById('filterForm').submit();
         };
 
-        // 4. Interactive Cell Dropdown Logic
+        // 5. In-Cell Hover Scroll Logic (Flushed to cell)
         const cells = document.querySelectorAll('.attendance-cell');
         const dropdownMenu = document.getElementById('statusDropdownTemplate');
         let activeCell = null;
 
         if (cells.length > 0 && dropdownMenu) {
-            // Append dropdown to body to avoid table overflow hiding
-            document.body.appendChild(dropdownMenu);
-
+            
             cells.forEach(cell => {
-                cell.addEventListener('click', function(e) {
-                    e.stopPropagation();
+                cell.addEventListener('mouseenter', function() {
                     activeCell = this;
-                    
-                    // Position dropdown
-                    const rect = this.getBoundingClientRect();
-                    dropdownMenu.style.top = (rect.bottom + window.scrollY) + 'px';
-                    dropdownMenu.style.left = (rect.left + window.scrollX) + 'px';
+                    // Move the dropdown element inside the currently hovered table cell
+                    this.appendChild(dropdownMenu);
                     dropdownMenu.classList.add('show');
+                });
+                
+                cell.addEventListener('mouseleave', function() {
+                    dropdownMenu.classList.remove('show');
                 });
             });
 
@@ -513,53 +647,35 @@ include 'includes/footer.php';
                         contentDiv.innerHTML = '<i class="bi bi-check-lg text-success status-icon"></i>';
                     } else if (val === 'Absent') {
                         contentDiv.innerHTML = '<i class="bi bi-x-lg text-danger status-icon"></i>';
-                    } else if (val === 'WO') {
+                    } else if (val === 'Week Off') {
                         contentDiv.innerHTML = '<span class="status-icon text-muted">WO</span>';
                     } else {
-                        // Custom text (e.g. Loss of Pay fallback)
+                        // Display text for leaves (Loss of Pay, Casual Leave, etc.)
                         contentDiv.innerHTML = `<span class="status-icon text-dark">${val}</span>`;
                     }
                     
-                    // Update hidden input
+                    // Update hidden input for POST request
                     hiddenInput.value = val;
                     dropdownMenu.classList.remove('show');
                 });
             });
-
-            // Close dropdown clicking outside
-            document.addEventListener('click', function(e) {
-                if (!dropdownMenu.contains(e.target)) {
-                    dropdownMenu.classList.remove('show');
-                }
-            });
         }
 
-        // 5. Mark All Present Logic
+        // 6. Mark All Present Logic
         const btnMarkAll = document.getElementById('btnMarkAllPresent');
         if (btnMarkAll) {
             btnMarkAll.addEventListener('click', function() {
                 const allCells = document.querySelectorAll('.attendance-cell');
                 allCells.forEach(cell => {
                     const hiddenInput = cell.querySelector('.status-input');
-                    // Usually you don't override Week Offs, but adjust logic as needed
-                    if (hiddenInput.value !== 'WO') {
+                    // Skip over Week Off unless you want to override it
+                    if (hiddenInput.value !== 'WO' && hiddenInput.value !== 'Week Off') {
                         cell.querySelector('.cell-content').innerHTML = '<i class="bi bi-check-lg text-success status-icon"></i>';
                         hiddenInput.value = 'Present';
                     }
                 });
             });
         }
-
-        // 6. Save Button logic
-        const btnSave = document.getElementById('btnSaveAttendance');
-        if (btnSave) {
-            btnSave.addEventListener('click', function(e) {
-                e.preventDefault();
-                // Submitting the form posts all the updated hidden inputs arrays
-                alert("Attendance data ready to be saved! Implement backend POST handling.");
-                // document.getElementById('attendanceForm').method = "POST";
-                // document.getElementById('attendanceForm').submit();
-            });
-        }
+        
     });
 </script>

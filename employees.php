@@ -361,7 +361,7 @@ ob_start();
 .emp-toast {
     position: fixed;
     bottom: 24px;
-    left: 50%;
+    left: 80%;
     transform: translateX(-50%) translateY(80px);
     background: #111827;
     color: #fff;

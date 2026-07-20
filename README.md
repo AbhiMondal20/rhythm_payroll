@@ -101,6 +101,18 @@ Edit Payslip - Done
 Loans - Working
 Process Payslip - Working
 
+Leave Policy  - Pending
+Work on AttDiscrepancies - Working
+
+
+GMB Updates
+Successfully published 2 GMB posts for each location: 
+Siliguri, Coochbehar, and Raiganj.
+
+Payroll Module Progress
+   Fetch Employee Attendance from Biometric Devices – Completed
+   Calendar View - Completed
+   Manual Attendance - In Progress
 
 Insert
  check
