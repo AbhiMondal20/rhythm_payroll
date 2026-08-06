@@ -9,10 +9,59 @@ if (!isset($_SESSION['login'])) {
 }
 
 require_once 'includes/config.php';
-require_once 'includes/db_client.php'; // Required for database access
+require_once 'includes/db_client.php';
 
 if (!isset($conn) || !($conn instanceof mysqli)) {
     die("Database connection not found.");
+}
+
+$now = date('Y-m-d H:i:s');
+// ========================================================================
+// AJAX SEARCH ENDPOINT FOR EMPLOYEES
+// ========================================================================
+if (isset($_GET['ajax_search'])) {
+    header('Content-Type: application/json');
+    $search = '%' . $_GET['ajax_search'] . '%';
+    $stmt = $conn->prepare("SELECT id, employee_name, employee_code FROM employees WHERE employee_name LIKE ? OR employee_code LIKE ? LIMIT 10");
+    $data = [];
+    if ($stmt) {
+        $stmt->bind_param("ss", $search, $search);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while($row = $res->fetch_assoc()) {
+            $data[] = $row;
+        }
+        $stmt->close();
+    }
+    echo json_encode($data);
+    exit();
+}
+
+// ========================================================================
+// AJAX ENDPOINT TO CANCEL/REJECT SELECTED LEAVES
+// ========================================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cancel_leaves') {
+    header('Content-Type: application/json');
+    $ids = json_decode($_POST['ids'] ?? '[]');
+    if (is_array($ids) && count($ids) > 0) {
+        // Sanitize IDs
+        $ids = array_map('intval', $ids);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $types = str_repeat('i', count($ids));
+        
+        $stmt = $conn->prepare("UPDATE leave_requests SET status = 'rejected' WHERE id IN ($placeholders)");
+        if ($stmt) {
+            $stmt->bind_param($types, ...$ids);
+            if($stmt->execute()) {
+                echo json_encode(['success' => true]);
+                $stmt->close();
+                exit();
+            }
+            $stmt->close();
+        }
+    }
+    echo json_encode(['success' => false]);
+    exit();
 }
 
 // ========================================================================
@@ -51,6 +100,7 @@ $conn->query("
 CREATE TABLE IF NOT EXISTS leave_requests (
     id INT AUTO_INCREMENT PRIMARY KEY,
     emp_id INT NOT NULL,
+    emp_code VARCHAR(50) NULL, 
     leave_type_id INT NOT NULL,
     from_date DATE NOT NULL,
     to_date DATE NOT NULL,
@@ -72,20 +122,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'apply
     $lt_id = (int)$_POST['leave_type_id'];
     $from = $_POST['from_date'];
     $to = $_POST['to_date'];
-    $day_type = $_POST['day_type'];
+    $day_type = isset($_POST['is_half_day']) ? 'Half Day' : 'Full Day';
     $reason = $_POST['reason'];
 
-    $ins = $conn->prepare("INSERT INTO leave_requests (emp_id, leave_type_id, from_date, to_date, day_type, reason, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')");
+    // FIX: Avoid fatal errors by safely fetching associative arrays
+    $emp_res = $conn->query("SELECT employee_code, employee_name FROM employees WHERE id = $e_id");
+    $emp_data = $emp_res ? $emp_res->fetch_assoc() : [];
+    $emp_code = $emp_data['employee_code'] ?? '';
+    $emp_name = $emp_data['employee_name'] ?? '';
+
+    $lt_res = $conn->query("SELECT leave_code, leave_name FROM leave_types WHERE id = $lt_id");
+    $lt_data = $lt_res ? $lt_res->fetch_assoc() : [];
+    $leave_code = $lt_data['leave_code'] ?? '';
+    $leave_name = $lt_data['leave_name'] ?? '';
+
+    // Proceed with Insert now that $emp_code is defined safely
+    $ins = $conn->prepare("INSERT INTO leave_requests (emp_id, emp_code, leave_type_id, from_date, to_date, day_type, reason, status) VALUES (?, ?, ?, ?, ?, ?, ?,'pending')");
     if ($ins) {
-        $ins->bind_param("iissss", $e_id, $lt_id, $from, $to, $day_type, $reason);
+        $ins->bind_param("isissss", $e_id, $emp_code, $lt_id, $from, $to, $day_type, $reason);
         $ins->execute();
         $ins->close();
+
+        // Safely insert into approval_requests
+        $src = $conn->prepare("INSERT INTO `approval_requests`(`emp_code`, `emp_name`, `type`, `stage`, `request_date`, `requested_on`, `shift_date`, `leave_type`, `reasons`, `status`, `created_at`) VALUES (?, ?, 'leave', 'Stage_1', ?, ?, ?, ?, ?, 'pending', ?)");
+        if ($src) {
+            $src->bind_param("ssssssss", $emp_code, $emp_name, $from, $now, $from, $leave_name, $reason, $now);
+            $src->execute();
+            $src->close();
+        }
+
         $_SESSION['lv_flash'] = "Leave applied successfully on behalf of employee!";
         header("Location: ?tab=calendar");
         exit();
     }
 }
-
 $flash_message = $_SESSION['lv_flash'] ?? '';
 unset($_SESSION['lv_flash']);
 
@@ -102,7 +172,7 @@ if ($cal_month < 1)  { $cal_month = 12; $cal_year--; }
 if ($cal_month > 12) { $cal_month = 1;  $cal_year++; }
 
 $hist_year  = isset($_GET['hy']) ? (int)$_GET['hy'] : (int)date('Y');
-$hist_month = isset($_GET['hm']) ? (int)$_GET['hm'] : (int)date('m') - 1;
+$hist_month = isset($_GET['hm']) ? (int)$_GET['hm'] : (int)date('m');
 
 if ($hist_month < 1)  { $hist_month = 12; $hist_year--; }
 if ($hist_month > 12) { $hist_month = 1;  $hist_year++; }
@@ -118,12 +188,6 @@ function month_name($m) {
 // ========================================================================
 // FETCH DATA FROM DB
 // ========================================================================
-$employees = [];
-$emp_res = $conn->query("SELECT id, employee_name, department FROM employees WHERE status='Active' ORDER BY employee_name ASC");
-if ($emp_res) {
-    while($row = $emp_res->fetch_assoc()) $employees[] = $row;
-}
-
 $leave_types_db = [];
 $colors = ['#F59E0B', '#7C3AED', '#3B82F6', '#22C55E', '#EF4444', '#EC4899', '#06B6D4'];
 $lt_res = $conn->query("SELECT id, leave_name, leave_code FROM leave_types ORDER BY leave_name ASC");
@@ -131,7 +195,7 @@ $color_index = 0;
 if ($lt_res) {
     while($row = $lt_res->fetch_assoc()) {
         $row['color'] = $colors[$color_index % count($colors)];
-        $row['count'] = 0; // Will be aggregated below
+        $row['count'] = 0; 
         $row['pct'] = 0;
         $row['up'] = true;
         $leave_types_db[$row['id']] = $row;
@@ -139,14 +203,28 @@ if ($lt_res) {
     }
 }
 
-// Aggregate Leave Stats for current month (Insights)
+// Apply Filters for Insights Tab
+$insight_filter = $_GET['filter'] ?? 'this_month';
+$start_date_filter = date('Y-m-01');
+$end_date_filter = date('Y-m-t');
+
+if ($insight_filter === 'last_month') {
+    $start_date_filter = date('Y-m-01', strtotime('first day of last month'));
+    $end_date_filter = date('Y-m-t', strtotime('last day of last month'));
+} elseif ($insight_filter === 'last_3_months') {
+    $start_date_filter = date('Y-m-01', strtotime('-2 months'));
+    $end_date_filter = date('Y-m-t');
+} elseif ($insight_filter === 'this_year') {
+    $start_date_filter = date('Y-01-01');
+    $end_date_filter = date('Y-12-31');
+}
+
+// FIX: Exclude rejected leaves from stats and use overlap logic (from_date <= End AND to_date >= Start)
 $total_leaves_month = 0;
-$stats_sql = "SELECT leave_type_id, COUNT(*) as cnt FROM leave_requests WHERE MONTH(from_date) = ? AND YEAR(from_date) = ? GROUP BY leave_type_id";
+$stats_sql = "SELECT leave_type_id, COUNT(*) as cnt FROM leave_requests WHERE from_date <= ? AND to_date >= ? AND status != 'rejected' GROUP BY leave_type_id";
 $s_stmt = $conn->prepare($stats_sql);
 if ($s_stmt) {
-    $m_now = (int)date('m');
-    $y_now = (int)date('Y');
-    $s_stmt->bind_param("ii", $m_now, $y_now);
+    $s_stmt->bind_param("ss", $end_date_filter, $start_date_filter);
     $s_stmt->execute();
     $s_res = $s_stmt->get_result();
     while($r = $s_res->fetch_assoc()) {
@@ -190,13 +268,15 @@ if ($rec_res) {
 $days_in_month = cal_days_in_month(CAL_GREGORIAN, $cal_month, $cal_year);
 $mock_approved = array_fill(1, $days_in_month, 0);
 $mock_pending = array_fill(1, $days_in_month, 0);
+$mock_rejected = array_fill(1, $days_in_month, 0);
 $cal_leaves_js_db = []; 
 
 $start_date = sprintf('%04d-%02d-01', $cal_year, $cal_month);
 $end_date = sprintf('%04d-%02d-%02d', $cal_year, $cal_month, $days_in_month);
 
+// FIX: Added lr.id to be able to cancel requests via checkboxes
 $c_sql = "
-    SELECT lr.from_date, lr.to_date, lr.status, e.employee_name, lt.leave_code 
+    SELECT lr.id, lr.from_date, lr.to_date, lr.status, e.employee_name, lt.leave_code 
     FROM leave_requests lr
     JOIN employees e ON lr.emp_id = e.id
     JOIN leave_types lt ON lr.leave_type_id = lt.id
@@ -223,10 +303,13 @@ if ($c_stmt) {
                     $mock_approved[$d]++;
                 } elseif ($r['status'] === 'pending') {
                     $mock_pending[$d]++;
+                } elseif ($r['status'] === 'rejected') {
+                    $mock_rejected[$d]++;
                 }
                 
                 if(!isset($cal_leaves_js_db[$dt_key])) { $cal_leaves_js_db[$dt_key] = []; }
                 $cal_leaves_js_db[$dt_key][] = [
+                    'id' => $r['id'], // passed to script
                     'name' => $r['employee_name'],
                     'type' => $r['leave_code'],
                     'status' => $r['status']
@@ -244,10 +327,10 @@ for ($d = 1; $d <= $days_in_month; $d++) {
     $calendar_leaves[$key] = [
         'approved' => $mock_approved[$d] ?? 0,
         'pending'  => $mock_pending[$d] ?? 0,
+        'rejected' => $mock_rejected[$d] ?? 0,
     ];
 }
 
-// Fetch Leave History if on history tab
 $history_data = [];
 if ($active_tab === 'history') {
     $h_start = sprintf('%04d-%02d-01', $hist_year, $hist_month);
@@ -258,12 +341,12 @@ if ($active_tab === 'history') {
         FROM leave_requests lr
         JOIN employees e ON lr.emp_id = e.id
         JOIN leave_types lt ON lr.leave_type_id = lt.id
-        WHERE lr.from_date >= ? AND lr.from_date <= ?
+        WHERE lr.from_date <= ? AND lr.to_date >= ?
         ORDER BY lr.created_at DESC
     ";
     $h_stmt = $conn->prepare($h_sql);
     if($h_stmt) {
-        $h_stmt->bind_param("ss", $h_start, $h_end);
+        $h_stmt->bind_param("ss", $h_end, $h_start);
         $h_stmt->execute();
         $h_res = $h_stmt->get_result();
         while($r = $h_res->fetch_assoc()) $history_data[] = $r;
@@ -271,7 +354,7 @@ if ($active_tab === 'history') {
     }
 }
 
-// Data for Insights Charts (Dynamically generated JS)
+// Data for Insights Charts
 $donut_labels = [];
 $donut_data = [];
 $donut_colors = [];
@@ -283,7 +366,6 @@ foreach ($leave_types_db as $lt) {
     }
 }
 if(empty($donut_data)) {
-    // Fallback if empty
     $donut_labels = ['No Leaves']; $donut_data = [1]; $donut_colors = ['#E2E8F0'];
 }
 
@@ -371,10 +453,13 @@ const toastMessage = <?= json_encode($flash_message) ?>;
         <div class="p-5 border-b xl:border-b-0 xl:border-r border-slate-200 dark:border-slate-700">
             <div class="flex items-center justify-between gap-3 mb-4">
                 <h3 class="text-sm font-bold text-slate-900 dark:text-white">Team Leave Stats</h3>
-                <button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-blue-500">
-                    Last 3 Months
-                    <span>⌄</span>
-                </button>
+                
+                <select onchange="window.location.href='?tab=insights&filter='+this.value" class="inline-flex items-center px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 dark:bg-slate-900 bg-white hover:border-blue-500 cursor-pointer outline-none">
+                    <option value="this_month" <?= $insight_filter === 'this_month' ? 'selected' : '' ?>>This Month</option>
+                    <option value="last_month" <?= $insight_filter === 'last_month' ? 'selected' : '' ?>>Last Month</option>
+                    <option value="last_3_months" <?= $insight_filter === 'last_3_months' ? 'selected' : '' ?>>Last 3 Months</option>
+                    <option value="this_year" <?= $insight_filter === 'this_year' ? 'selected' : '' ?>>This Year</option>
+                </select>
             </div>
             <div class="relative h-[190px]">
                 <canvas id="teamStatsChart"></canvas>
@@ -385,10 +470,13 @@ const toastMessage = <?= json_encode($flash_message) ?>;
         <div class="p-5 border-b xl:border-b-0 xl:border-r border-slate-200 dark:border-slate-700">
             <div class="flex items-center justify-between gap-3 mb-4">
                 <h3 class="text-sm font-bold text-slate-900 dark:text-white">Leaves Overview</h3>
-                <button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-blue-500">
-                    This Month
-                    <span>⌄</span>
-                </button>
+                
+                <select onchange="window.location.href='?tab=insights&filter='+this.value" class="inline-flex items-center px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 dark:bg-slate-900 bg-white hover:border-blue-500 cursor-pointer outline-none">
+                    <option value="this_month" <?= $insight_filter === 'this_month' ? 'selected' : '' ?>>This Month</option>
+                    <option value="last_month" <?= $insight_filter === 'last_month' ? 'selected' : '' ?>>Last Month</option>
+                    <option value="last_3_months" <?= $insight_filter === 'last_3_months' ? 'selected' : '' ?>>Last 3 Months</option>
+                    <option value="this_year" <?= $insight_filter === 'this_year' ? 'selected' : '' ?>>This Year</option>
+                </select>
             </div>
 
             <div class="flex items-center justify-center gap-6 flex-wrap py-3">
@@ -426,10 +514,13 @@ const toastMessage = <?= json_encode($flash_message) ?>;
         <div class="p-5">
             <div class="flex items-center justify-between gap-3 mb-4">
                 <h3 class="text-sm font-bold text-slate-900 dark:text-white">Leaves Taken</h3>
-                <button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-blue-500">
-                    This Month
-                    <span>⌄</span>
-                </button>
+                
+                <select onchange="window.location.href='?tab=insights&filter='+this.value" class="inline-flex items-center px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 dark:bg-slate-900 bg-white hover:border-blue-500 cursor-pointer outline-none">
+                    <option value="this_month" <?= $insight_filter === 'this_month' ? 'selected' : '' ?>>This Month</option>
+                    <option value="last_month" <?= $insight_filter === 'last_month' ? 'selected' : '' ?>>Last Month</option>
+                    <option value="last_3_months" <?= $insight_filter === 'last_3_months' ? 'selected' : '' ?>>Last 3 Months</option>
+                    <option value="this_year" <?= $insight_filter === 'this_year' ? 'selected' : '' ?>>This Year</option>
+                </select>
             </div>
 
             <div class="relative h-[160px]">
@@ -593,7 +684,7 @@ const toastMessage = <?= json_encode($flash_message) ?>;
                             } else {
                                 $date_key = sprintf('%04d-%02d-%02d', $cal_year, $cal_month, $day);
                                 $is_today = ($day === $today && $cal_month === $this_month && $cal_year === $this_year);
-                                $leaves = $calendar_leaves[$date_key] ?? ['approved'=>0,'pending'=>0];
+                                $leaves = $calendar_leaves[$date_key] ?? ['approved'=>0,'pending'=>0,'rejected'=>0];
 
                                 echo '<td class="h-[96px] align-top p-2 border border-slate-200 dark:border-slate-700 ' . ($is_today ? 'bg-blue-50 dark:bg-blue-950/30' : 'bg-white dark:bg-slate-900') . '">';
                                 echo '<span class="block mb-1 text-sm font-bold ' . ($is_today ? 'text-blue-600' : 'text-slate-700 dark:text-slate-200') . '">' . $day . '</span>';
@@ -604,6 +695,11 @@ const toastMessage = <?= json_encode($flash_message) ?>;
 
                                 if ($leaves['approved'] > 0) {
                                     echo '<button type="button" class="lv-cal-pill block w-full mb-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white hover:opacity-90 truncate" data-date="' . esc($date_key) . '" data-status="approved" data-count="' . (int)$leaves['approved'] . '">' . (int)$leaves['approved'] . ' Approved</button>';
+                                }
+
+                                // FIX: Added code to show Rejected Leaves button pill on the Calendar
+                                if ($leaves['rejected'] > 0) {
+                                    echo '<button type="button" class="lv-cal-pill block w-full mb-1 rounded-md bg-red-500 px-2 py-1 text-[11px] font-bold text-white hover:opacity-90 truncate" data-date="' . esc($date_key) . '" data-status="rejected" data-count="' . (int)$leaves['rejected'] . '">' . (int)$leaves['rejected'] . ' Rejected</button>';
                                 }
 
                                 echo '</td>';
@@ -621,191 +717,220 @@ const toastMessage = <?= json_encode($flash_message) ?>;
     </div>
 </div>
 
-    <!-- APPLY MODAL -->
-    <div class="lv-modal-bg fixed inset-0 z-[600] bg-slate-950/50 backdrop-blur-sm items-center justify-center p-4"
-        id="applyOnBehalfModal" onclick="if(event.target===this)this.classList.remove('open')">
-
-        <div class="lv-pop w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 shadow-2xl">
-            <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                <h3 class="text-base font-bold text-slate-900 dark:text-white">Apply Leave on Behalf</h3>
-                <button type="button" onclick="document.getElementById('applyOnBehalfModal').classList.remove('open')"
-                    class="text-2xl leading-none text-slate-400 hover:text-slate-900 dark:hover:text-white">
-                    ×
-                </button>
-            </div>
-
-            <div class="p-6">
-    <form id="applyBehalfForm" method="POST" action="?tab=calendar" class="space-y-4">
-        <input type="hidden" name="action" value="apply_leave">
-        
-        <!-- Searchable Employee Select -->
-        <div>
-            <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">Select Employee <span class="text-red-600">*</span></label>
-            <input type="text" id="empSearch" placeholder="Search employee..." 
-                onkeyup="filterSelect('empSearch', 'empSelect')"
-                class="w-full mb-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm outline-none focus:border-blue-500">
-            
-            <select name="emp_id" id="empSelect" required
-                class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500">
-                <option value="">-- Select Employee --</option>
-                <?php foreach($employees as $emp): ?>
-                    <option value="<?= esc($emp['id']) ?>"><?= esc($emp['employee_name']) ?> (<?= esc($emp['department']) ?>)</option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
-        <!-- Searchable Leave Type Select -->
-        <div>
-            <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">Leave Type <span class="text-red-600">*</span></label>
-            <input type="text" id="typeSearch" placeholder="Search leave type..." 
-                onkeyup="filterSelect('typeSearch', 'typeSelect')"
-                class="w-full mb-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm outline-none focus:border-blue-500">
-
-            <select name="leave_type_id" id="typeSelect" required
-                class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500">
-                <option value="">-- Select Type --</option>
-                <?php foreach($leave_types_db as $lt): ?>
-                    <option value="<?= esc($lt['id']) ?>"><?= esc($lt['leave_name']) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
-        <!-- Remaining fields (Date, Day Type, Reason) -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">From Date <span class="text-red-600">*</span></label>
-                <input type="date" name="from_date" required value="<?= date('Y-m-d') ?>" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500">
-            </div>
-            <div>
-                <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">To Date <span class="text-red-600">*</span></label>
-                <input type="date" name="to_date" required value="<?= date('Y-m-d') ?>" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500">
-            </div>
-        </div>
-        
-        <div>
-            <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">Day Type</label>
-            <select name="day_type" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500">
-                <option value="Full Day">Full Day</option>
-                <option value="First Half">First Half</option>
-                <option value="Second Half">Second Half</option>
-            </select>
-        </div>
-
-        <div>
-            <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">Reason</label>
-            <textarea name="reason" rows="3" placeholder="Reason for leave..." class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500"></textarea>
-        </div>
-        
-        <div class="flex justify-end gap-2 pt-4">
-            <button type="button" onclick="document.getElementById('applyOnBehalfModal').classList.remove('open')" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100">Cancel</button>
-            <button type="submit" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700">Apply Leave</button>
-        </div>
-    </form>
-</div>
-        </div>
-    </div>
-
-    <!-- DAY MODAL -->
-    <div class="lv-modal-bg fixed inset-0 z-[600] bg-slate-950/50 backdrop-blur-sm items-center justify-center p-4"
-        id="leaveDayModal" onclick="if(event.target===this)this.classList.remove('open')">
-
-        <div class="lv-pop w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 shadow-2xl">
-            <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center gap-4">
-                <h3 id="leaveDayModalTitle" class="text-base font-bold text-slate-900 dark:text-white">Leave Requests
-                </h3>
-                <div id="leaveDayModalDate" class="ml-auto text-sm font-semibold text-slate-700 dark:text-slate-200">
-                </div>
-                <button type="button" onclick="document.getElementById('leaveDayModal').classList.remove('open')"
-                    class="text-2xl leading-none text-slate-400 hover:text-slate-900 dark:hover:text-white">
-                    ×
-                </button>
-            </div>
-
-            <div class="p-6">
-                <input type="text" id="leaveDaySearch" oninput="filterLeaveDayItems(this.value)"
-                    placeholder="Filter items"
-                    class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10">
-
-                <label class="flex items-center gap-2 my-5 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    <input type="checkbox" id="leaveDaySelectAll" onchange="toggleLeaveDaySelectAll(this)"
-                        class="w-4 h-4 accent-blue-600">
-                    Selected -
-                    <span id="leaveDaySelectedCount">0</span>
-                </label>
-
-                <div id="leaveDayList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4"></div>
-            </div>
-
-            <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 flex justify-end gap-2">
-                <button type="button" onclick="document.getElementById('leaveDayModal').classList.remove('open')"
-                    class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800">
-                    Back
-                </button>
-
-                <button type="button" onclick="cancelSelectedLeaves()"
-                    class="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700">
-                    Cancel Selected
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <?php elseif ($active_tab === 'history'): ?>
-
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
-        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap">
-            <h3 class="text-sm font-bold text-slate-900 dark:text-white">Team Leave History</h3>
-
-            <button type="button" onclick="showMonthPicker()"
-                class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 hover:border-blue-500">
-                <?= month_name($hist_month) . '-' . $hist_year ?>
+<!-- APPLY MODAL -->
+<div class="lv-modal-bg fixed inset-0 z-[600] bg-slate-950/50 backdrop-blur-sm items-center justify-center p-4"
+    id="applyOnBehalfModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="lv-pop w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 shadow-2xl">
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Apply Leave on Behalf</h3>
+            <button type="button" onclick="document.getElementById('applyOnBehalfModal').classList.remove('open')"
+                class="text-2xl leading-none text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                ×
             </button>
         </div>
+        <div class="p-6">
+            <form id="applyBehalfForm" method="POST" action="?tab=calendar" class="space-y-4">
+                <input type="hidden" name="action" value="apply_leave">               
+                
+                <!-- NEW CUSTOM SEARCH BAR -->
+                <div>
+                    <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">Select Employee <span class="text-red-600">*</span></label>
+                    <div class="relative w-full">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                            <svg class="w-4 h-4 text-slate-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
+                            </svg>
+                        </span>
+                        <input type="text" id="employeeSearchInput" placeholder="Search by name or #code" autocomplete="off" required
+                            class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 transition-colors">
+                        
+                        <!-- Hidden input to store selected employee ID for form submission -->
+                        <input type="hidden" id="hiddenEmpId" name="emp_id" required>
+                        
+                        <!-- Dropdown for autocomplete results -->
+                        <div id="autocompleteDropdown" class="absolute z-50 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg hidden max-h-48 overflow-y-auto"></div>
+                    </div>
+                </div>
+                <!-- Leave Type Select -->
+                <div>
+                    <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">Leave Type <span class="text-red-600">*</span></label>
+                    <select name="leave_type_id" id="typeSelect" required
+                        class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500">
+                        <option value="">Select</option>
+                        <?php foreach($leave_types_db as $lt): 
+                            $balance = '0.00';
+                            if (stripos($lt['leave_name'], 'Compensatory') !== false) {
+                                $balance = '17.00';
+                            } elseif (stripos($lt['leave_name'], 'Casual') !== false || stripos($lt['leave_name'], 'Sick') !== false) {
+                                $balance = '14.00';
+                            }
+                        ?>
+                            <option value="<?= esc($lt['id']) ?>"><?= esc($lt['leave_name']) ?> (<?= $balance ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
 
-        <div class="px-5 pt-4">
-            <div class="max-w-sm flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10">
-                <span class="text-slate-400">⌕</span>
-                <input type="text" id="histSearch" placeholder="Search table items"
-                    oninput="filterHistTable(this.value)"
-                    class="w-full bg-transparent outline-none text-sm text-slate-700 dark:text-slate-200">
-            </div>
-        </div>
+                <!-- Remaining fields (Date, Day Type, Reason) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">From Date <span class="text-red-600">*</span></label>
+                        <input type="date" name="from_date" required value="<?= date('Y-m-d') ?>" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">To Date <span class="text-red-600">*</span></label>
+                        <input type="date" name="to_date" required value="<?= date('Y-m-d') ?>" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                
+                <div class="flex items-center pt-2 pb-1">
+                    <label class="flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700 dark:text-slate-300 select-none">
+                        <input type="checkbox" name="is_half_day" value="1" class="w-4 h-4 text-blue-600 bg-slate-100 border-slate-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-slate-800 focus:ring-2 dark:bg-slate-700 dark:border-slate-600">
+                        Apply as Half Day
+                    </label>
+                </div>
 
-        <?php if(empty($history_data)): ?>
-        <div class="py-16 px-6 text-center" id="histEmpty">
-            <p class="text-sm text-slate-400">No Leave statement available!</p>
+                <div>
+                    <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">Reason</label>
+                    <textarea name="reason" rows="3" placeholder="Reason for leave..." class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500"></textarea>
+                </div>
+                
+                <div class="flex justify-end gap-2 pt-4">
+                    <button type="button" onclick="document.getElementById('applyOnBehalfModal').classList.remove('open')" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100">Cancel</button>
+                    <button type="submit" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors">Apply Leave</button>
+                </div>
+            </form>
         </div>
-        <?php else: ?>
-        <div class="overflow-x-auto w-full mb-4">
-            <table class="w-full text-left border-collapse">
-                <thead>
-                    <tr class="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                        <th class="p-3 text-xs font-bold text-slate-500 uppercase">Employee</th>
-                        <th class="p-3 text-xs font-bold text-slate-500 uppercase">Leave Type</th>
-                        <th class="p-3 text-xs font-bold text-slate-500 uppercase">Duration</th>
-                        <th class="p-3 text-xs font-bold text-slate-500 uppercase">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach($history_data as $h): ?>
-                    <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                        <td class="p-3 text-sm font-semibold text-slate-900 dark:text-white"><?= esc($h['employee_name']) ?></td>
-                        <td class="p-3 text-sm text-slate-600 dark:text-slate-300"><?= esc($h['leave_name']) ?></td>
-                        <td class="p-3 text-sm text-slate-600 dark:text-slate-300"><?= date('d M', strtotime($h['from_date'])) ?> to <?= date('d M', strtotime($h['to_date'])) ?> <span class="text-slate-400 ml-1">(<?= $h['days'] ?> Days)</span></td>
-                        <td class="p-3">
-                            <span class="px-2 py-1 text-[11px] font-bold rounded-full <?= $h['status'] === 'approved' ? 'bg-emerald-100 text-emerald-700' : ($h['status'] === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700') ?>">
-                                <?= strtoupper($h['status']) ?>
-                            </span>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        <?php endif; ?>
     </div>
+</div>
 
+<!-- DAY MODAL -->
+<div class="lv-modal-bg fixed inset-0 z-[600] bg-slate-950/50 backdrop-blur-sm items-center justify-center p-4"
+    id="leaveDayModal" onclick="if(event.target===this)this.classList.remove('open')">
+
+    <div class="lv-pop w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 shadow-2xl">
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center gap-4">
+            <h3 id="leaveDayModalTitle" class="text-base font-bold text-slate-900 dark:text-white">Leave Requests
+            </h3>
+            <div id="leaveDayModalDate" class="ml-auto text-sm font-semibold text-slate-700 dark:text-slate-200">
+            </div>
+            <button type="button" onclick="document.getElementById('leaveDayModal').classList.remove('open')"
+                class="text-2xl leading-none text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                ×
+            </button>
+        </div>
+        <div class="p-6">
+            <input type="text" id="leaveDaySearch" oninput="filterLeaveDayItems(this.value)"
+                placeholder="Filter items"
+                class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10">
+
+            <label class="flex items-center gap-2 my-5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <input type="checkbox" id="leaveDaySelectAll" onchange="toggleLeaveDaySelectAll(this)"
+                    class="w-4 h-4 accent-blue-600">
+                Selected -
+                <span id="leaveDaySelectedCount">0</span>
+            </label>
+
+            <div id="leaveDayList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4"></div>
+        </div>
+
+        <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 flex justify-end gap-2">
+            <button type="button" onclick="document.getElementById('leaveDayModal').classList.remove('open')"
+                class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800">
+                Back
+            </button>
+
+            <button type="button" onclick="cancelSelectedLeaves()"
+                class="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700">
+                Cancel Selected
+            </button>
+        </div>
+    </div>
+</div>
+
+<?php elseif ($active_tab === 'history'): ?>
+<div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
+    <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap">
+        <h3 class="text-sm font-bold text-slate-900 dark:text-white">Team Leave History</h3>
+        
+        <!-- Functional Month Navigator -->
+        <div class="inline-flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm">
+            <a href="?tab=history&hy=<?= $hist_month === 1 ? $hist_year - 1 : $hist_year ?>&hm=<?= $hist_month === 1 ? 12 : $hist_month - 1 ?>" 
+                class="w-10 h-10 flex items-center justify-center text-xl text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800">
+                ‹
+            </a>
+            
+            <div class="relative flex items-center justify-center h-10 min-w-[140px] px-5 border-x border-slate-200 dark:border-slate-700">
+                <input type="month" 
+                       onchange="window.location.href='?tab=history&hy=' + this.value.split('-')[0] + '&hm=' + this.value.split('-')[1]"
+                       value="<?= sprintf('%04d-%02d', $hist_year, $hist_month) ?>"
+                       class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                <span class="text-sm font-bold text-slate-900 dark:text-white pointer-events-none">
+                    <?= month_name($hist_month) . ' ' . $hist_year ?>
+                </span>
+            </div>
+
+            <a href="?tab=history&hy=<?= $hist_month === 12 ? $hist_year + 1 : $hist_year ?>&hm=<?= $hist_month === 12 ? 1 : $hist_month + 1 ?>" 
+                class="w-10 h-10 flex items-center justify-center text-xl text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800">
+                ›
+            </a>
+        </div>
+    </div>
+    
+    <div class="px-5 pt-4">
+        <div class="max-w-sm flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10">
+            <span class="text-slate-400">⌕</span>
+            <input type="text" id="histSearch" placeholder="Search team members or leave types..." 
+                oninput="filterHistTable(this.value)" 
+                class="w-full bg-transparent outline-none text-sm text-slate-700 dark:text-slate-200">
+        </div>
+    </div>
+    
+    <?php if(empty($history_data)): ?>
+    <div class="py-16 px-6 text-center" id="histEmpty">
+        <p class="text-sm text-slate-400 mb-2">No leave records found for <?= month_name($hist_month) . ' ' . $hist_year ?>.</p>
+    </div>
+    <?php else: ?>
+    <div class="overflow-x-auto w-full mb-4 mt-4">
+        <table class="w-full text-left border-collapse">
+            <thead>
+                <tr class="bg-slate-50 dark:bg-slate-800 border-y border-slate-200 dark:border-slate-700">
+                    <th class="p-3 pl-5 text-xs font-bold text-slate-500 uppercase tracking-wider">Employee</th>
+                    <th class="p-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Leave Type</th>
+                    <th class="p-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Duration</th>
+                    <th class="p-3 pr-5 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach($history_data as $h): ?>
+                <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <td class="p-3 pl-5 text-sm font-semibold text-slate-900 dark:text-white"><?= esc($h['employee_name']) ?></td>
+                    <td class="p-3 text-sm text-slate-600 dark:text-slate-300">
+                        <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800 font-medium text-xs">
+                            <?= esc($h['leave_name']) ?>
+                        </span>
+                    </td>
+                    <td class="p-3 text-sm text-slate-600 dark:text-slate-300">
+                        <?= date('d M Y', strtotime($h['from_date'])) ?> <span class="mx-1 text-slate-400">→</span> <?= date('d M Y', strtotime($h['to_date'])) ?> 
+                        <span class="text-slate-400 ml-1 text-xs font-semibold">(<?= $h['days'] ?> Day<?= $h['days'] > 1 ? 's' : '' ?>)</span>
+                        <?php if($h['day_type'] === 'Half Day'): ?>
+                            <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700 font-bold">1/2</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="p-3 pr-5">
+                        <span class="inline-flex px-2.5 py-1 text-[11px] font-bold rounded-full border 
+                            <?= $h['status'] === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
+                               ($h['status'] === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200') ?>">
+                            <?= strtoupper($h['status']) ?>
+                        </span>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
     <?php endif; ?>
+</div>
+<?php endif; ?>
 </div>
 
 <!-- TOAST -->
@@ -814,6 +939,131 @@ const toastMessage = <?= json_encode($flash_message) ?>;
     <span id="lvToastIcon">✅</span>
     <span id="lvToastMsg">Done!</span>
 </div>
+
+<script>
+    // FORM VALIDATION SCRIPT 
+    document.getElementById('applyBehalfForm')?.addEventListener('submit', function(e) {
+        if (!document.getElementById('hiddenEmpId').value) {
+            e.preventDefault();
+            lvToast('⚠️', 'Please select a valid employee from the search dropdown.');
+            document.getElementById('employeeSearchInput').focus();
+        }
+    });
+
+    // NEW CUSTOM AUTOCOMPLETE SEARCH SCRIPT
+    const searchInput = document.getElementById('employeeSearchInput');
+    const hiddenEmpId = document.getElementById('hiddenEmpId');
+    const dropdown = document.getElementById('autocompleteDropdown');
+
+    if (searchInput && dropdown) {
+        let debounceTimer;
+
+        searchInput.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            
+            // Clear hidden ID if user changes the text manually without selecting
+            hiddenEmpId.value = ''; 
+            
+            const query = this.value.trim();
+            if (query.length < 2) {
+                dropdown.style.display = 'none';
+                return;
+            }
+
+            debounceTimer = setTimeout(() => {
+                fetch(`?ajax_search=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        dropdown.innerHTML = '';
+                        if (data.length > 0) {
+                            data.forEach(emp => {
+                                const item = document.createElement('div');
+                                item.className = 'px-4 py-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 flex justify-between items-center border-b border-slate-100 dark:border-slate-800 last:border-0 transition-colors';
+                                item.innerHTML = `<span class="text-sm font-semibold text-slate-700 dark:text-slate-200">${emp.employee_name}</span><span class="text-xs text-slate-400">#${emp.employee_code}</span>`;
+                                item.addEventListener('click', () => {
+                                    searchInput.value = emp.employee_name; 
+                                    hiddenEmpId.value = emp.id; // Assign ID to hidden input for main form submission
+                                    dropdown.style.display = 'none';
+                                });
+                                dropdown.appendChild(item);
+                            });
+                        } else {
+                            dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 text-center">No employees found</div>';
+                        }
+                        dropdown.style.display = 'block';
+                    })
+                    .catch(error => console.error('Error:', error));
+            }, 300); 
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+    }
+
+    // GENERAL SCRIPT LOGIC
+    function formatMsToHrs(ms) {
+        if (ms <= 0) return '00:00 Hrs';
+        let totalMins = Math.floor(ms / 60000);
+        let hours = Math.floor(totalMins / 60);
+        let mins = totalMins % 60;
+        return String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0') + ' Hrs';
+    }
+
+    function runTimeCalculations(container) {
+        const checkIn = container.querySelector('.upd-check-in').value;
+        const checkOut = container.querySelector('.upd-check-out').value;
+        const isAutoCalc = container.querySelector('.upd-calc-in-out').checked;
+
+        const inputs = ['upd-over-time', 'upd-under-time', 'upd-normal-hours', 'upd-late-hours', 'upd-early-hours'];
+        inputs.forEach(cls => {
+            container.querySelector('.' + cls).readOnly = isAutoCalc;
+        });
+
+        if (!isAutoCalc || !checkIn || !checkOut) return;
+
+        const inTime = new Date(checkIn);
+        const outTime = new Date(checkOut);
+        
+        if(isNaN(inTime) || isNaN(outTime)) return; 
+
+        const shiftStart = new Date(inTime);
+        shiftStart.setHours(9, 0, 0, 0); 
+        
+        const shiftEnd = new Date(inTime);
+        shiftEnd.setHours(18, 0, 0, 0); 
+        
+        const standardHoursMs = 9 * 60 * 60 * 1000; 
+
+        let hoursWorkedMs = outTime - inTime;
+        if(hoursWorkedMs < 0) hoursWorkedMs = 0; 
+
+        let lateMs = inTime > shiftStart ? (inTime - shiftStart) : 0;
+        let earlyMs = outTime < shiftEnd ? (shiftEnd - outTime) : 0;
+        let overTimeMs = hoursWorkedMs > standardHoursMs ? (hoursWorkedMs - standardHoursMs) : 0;
+        let underTimeMs = hoursWorkedMs < standardHoursMs ? (standardHoursMs - hoursWorkedMs) : 0;
+        let normalMs = Math.min(hoursWorkedMs, standardHoursMs);
+
+        container.querySelector('.upd-hours-worked').value = formatMsToHrs(hoursWorkedMs);
+        container.querySelector('.upd-late-hours').value = formatMsToHrs(lateMs);
+        container.querySelector('.upd-early-hours').value = formatMsToHrs(earlyMs);
+        container.querySelector('.upd-over-time').value = formatMsToHrs(overTimeMs);
+        container.querySelector('.upd-under-time').value = formatMsToHrs(underTimeMs);
+        container.querySelector('.upd-normal-hours').value = formatMsToHrs(normalMs);
+    }
+
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('upd-check-in') || 
+            e.target.classList.contains('upd-check-out') || 
+            e.target.classList.contains('upd-calc-in-out')) {
+            
+            const container = e.target.closest('.edit-form-container');
+            if(container) runTimeCalculations(container);
+        }
+    });
+</script>
 
 <script>
 // Trigger Toast if message was set in PHP session
@@ -875,7 +1125,15 @@ function openLeaveDayModal(date, status, count) {
         year: 'numeric'
     });
 
-    title.textContent = status === 'approved' ? 'Approved Leave requests' : 'Pending Leave requests';
+    // FIX: Update title logic to include Rejected status
+    if (status === 'approved') {
+        title.textContent = 'Approved Leave requests';
+    } else if (status === 'rejected') {
+        title.textContent = 'Rejected Leave requests';
+    } else {
+        title.textContent = 'Pending Leave requests';
+    }
+
     if (dateEl) dateEl.textContent = dateText;
 
     // Fetch dynamically loaded requests from PHP injection
@@ -886,10 +1144,11 @@ function openLeaveDayModal(date, status, count) {
     filteredItems.forEach((item, index) => {
         const safeName = escapeHtml(item.name || 'Unknown');
         const safeType = escapeHtml(item.type || 'Leave');
+        const itemId = item.id || 0;
 
         html += `
             <div class="leave-day-item flex items-center gap-3 min-w-0" data-name="${safeName.toLowerCase()}">
-                <input type="checkbox" class="leave-day-check w-4 h-4 accent-blue-600 shrink-0" onchange="updateLeaveDaySelected()">
+                <input type="checkbox" class="leave-day-check w-4 h-4 accent-blue-600 shrink-0" value="${itemId}" onchange="updateLeaveDaySelected()">
                 <div class="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-200 shrink-0">
                     ${safeName.charAt(0)}
                 </div>
@@ -938,17 +1197,35 @@ function toggleLeaveDaySelectAll(chk) {
 }
 
 function cancelSelectedLeaves() {
-    const total = document.querySelectorAll('.leave-day-check:checked').length;
+    const checkboxes = document.querySelectorAll('.leave-day-check:checked');
+    const total = checkboxes.length;
     if (!total) {
         lvToast('⚠️', 'Please select at least one leave request.');
         return;
     }
-    document.getElementById('leaveDayModal')?.classList.remove('open');
-    lvToast('✅', total + ' leave request(s) selected.');
-}
 
-function showMonthPicker() {
-    lvToast('📅', 'Month picker opened');
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+
+    // Backend AJAX to process cancelling the request IDs
+    fetch(window.location.href, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'action=cancel_leaves&ids=' + encodeURIComponent(JSON.stringify(ids))
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('leaveDayModal')?.classList.remove('open');
+            lvToast('✅', total + ' leave request(s) cancelled/rejected.');
+            setTimeout(() => window.location.reload(), 1200);
+        } else {
+            lvToast('❌', 'Failed to update leaves. Please try again.');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        lvToast('❌', 'An error occurred.');
+    });
 }
 
 function filterHistTable(q) {

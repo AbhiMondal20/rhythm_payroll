@@ -12,8 +12,8 @@ header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers
 $host = 'localhost';
 $username = 'root'; 
 $password = '';    
-$dbname = 'ramkrishna_ivf_db'; // Make sure this matches your actual database name in phpMyAdmin
-$port = 3307; // Default MySQL port
+$dbname = 'ramkrishna_ivf_db';
+$port = 3307; 
 
 // Create connection
 $conn = new mysqli($host, $username, $password, $dbname, $port);
@@ -26,8 +26,6 @@ if ($conn->connect_error) {
 }
 
 require_once '../includes/config.php';
-
-
 
 // Allow only POST
 if ($_SERVER['REQUEST_METHOD'] != 'POST') {
@@ -61,17 +59,6 @@ if (empty($data['employee_code']) || empty($data['entry_date'])) {
     exit;
 }
 
-// Escape values
-$employee_id   = mysqli_real_escape_string($conn, $data['employee_id'] ?? '');
-$employee_code = mysqli_real_escape_string($conn, trim($data['employee_code']));
-$employee_name = mysqli_real_escape_string($conn, $data['employee_name'] ?? '');
-
-$day_status_1  = mysqli_real_escape_string($conn, $data['day_status_1'] ?? '');
-$day_status_2  = mysqli_real_escape_string($conn, $data['day_status_2'] ?? '');
-$shift_name    = mysqli_real_escape_string($conn, $data['shift_name'] ?? '');
-$hours_worked  = mysqli_real_escape_string($conn, $data['hours_worked'] ?? '');
-$record_status = mysqli_real_escape_string($conn, $data['record_status'] ?? 'System');
-
 // Format entry date
 $entry_date = date('Y-m-d', strtotime($data['entry_date']));
 
@@ -84,25 +71,65 @@ if ($entry_date == '1970-01-01') {
     exit;
 }
 
-// Format check-in time
-$check_in_time = "";
+// ==========================================
+// TIME & STATUS LOGIC
+// ==========================================
 
+$check_in_time = "";
 if (!empty($data['check_in_time'])) {
     $check_in_time = date('H:i:s', strtotime($data['check_in_time']));
     $check_in_time = mysqli_real_escape_string($conn, $check_in_time);
+    
+    // Automatically set First Half to Present if check_in_time exists
+    $day_status_1 = 'P'; 
+} else {
+    // Fallback to request data or default to Absent ('A')
+    $day_status_1 = !empty($data['day_status_1']) ? $data['day_status_1'] : 'A';
 }
 
-// Format check-out time
 $check_out_time = "";
-
 if (!empty($data['check_out_time'])) {
     $check_out_time = date('H:i:s', strtotime($data['check_out_time']));
     $check_out_time = mysqli_real_escape_string($conn, $check_out_time);
+    
+    // Automatically set Second Half to Present if check_out_time exists
+    $day_status_2 = 'P';
+} else {
+    // Fallback to request data or default to Absent ('A')
+    $day_status_2 = !empty($data['day_status_2']) ? $data['day_status_2'] : 'A';
 }
 
-// Convert empty values to NULL
+// Convert empty values to NULL for SQL
 $check_in_sql = ($check_in_time == "") ? "NULL" : "'$check_in_time'";
 $check_out_sql = ($check_out_time == "") ? "NULL" : "'$check_out_time'";
+
+// Escape remaining values
+$employee_id   = mysqli_real_escape_string($conn, $data['employee_id'] ?? '');
+$employee_code = mysqli_real_escape_string($conn, trim($data['employee_code']));
+$employee_name = mysqli_real_escape_string($conn, $data['employee_name'] ?? '');
+$shift_name    = mysqli_real_escape_string($conn, $data['shift_name'] ?? '');
+$hours_worked  = mysqli_real_escape_string($conn, $data['hours_worked'] ?? '');
+$record_status = mysqli_real_escape_string($conn, $data['record_status'] ?? 'System');
+$day_status_1  = mysqli_real_escape_string($conn, $day_status_1);
+$day_status_2  = mysqli_real_escape_string($conn, $day_status_2);
+
+// OPTIONAL: Mapping array (for reference or if you add an `overall_status` column later)
+$status_options = [
+    'P P' => 'Present (PP)',
+    'A A' => 'Absent (AA)',
+    'P*A' => 'First Half Present (P*A)',
+    'A*P' => 'Second Half Present (A*P)',
+    'HO'  => 'Holiday (HO)',
+    'WO'  => 'Week Off (WO)',
+    'WW'  => 'Worked On Week Off (WW)',
+    'HW'  => 'Worked On Holiday (HW)',
+    'WW*' => 'Worked On Week Off First Half (WW*)',
+    '*WW' => 'Worked On Week Off Second Half (*WW)',
+    'HW*' => 'Worked On Holiday First Half (HW*)',
+    '*HW' => 'Worked On Holiday Second Half (*HW)',
+    '*LOP'=> 'Loss Of Pay in Second Half (*LOP)',
+    'LOP*'=> 'Loss Of Pay in First Half (LOP*)'
+];
 
 // Check existing record
 $checkQuery = "SELECT id
@@ -123,7 +150,6 @@ if (!$checkResult) {
 }
 
 if (mysqli_num_rows($checkResult) > 0) {
-
     // Existing record -> UPDATE
     $row = mysqli_fetch_assoc($checkResult);
     $record_id = $row['id'];
@@ -143,25 +169,20 @@ if (mysqli_num_rows($checkResult) > 0) {
     ";
 
     if (mysqli_query($conn, $updateQuery)) {
-
         http_response_code(200);
         echo json_encode([
             "status" => "success",
             "message" => "Attendance record updated successfully."
         ]);
-
     } else {
-
         http_response_code(500);
         echo json_encode([
             "status" => "error",
             "message" => mysqli_error($conn)
         ]);
-
     }
 
 } else {
-
     // New record -> INSERT
     $insertQuery = "
         INSERT INTO time_entries (
@@ -196,24 +217,19 @@ if (mysqli_num_rows($checkResult) > 0) {
     ";
 
     if (mysqli_query($conn, $insertQuery)) {
-
         http_response_code(201);
         echo json_encode([
             "status" => "success",
             "message" => "Attendance record created successfully."
         ]);
-
     } else {
-
         http_response_code(500);
         echo json_encode([
             "status" => "error",
             "message" => mysqli_error($conn)
         ]);
-
     }
-
 }
 
 mysqli_close($conn);
-?>
+?>j

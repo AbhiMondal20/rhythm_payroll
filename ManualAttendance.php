@@ -491,8 +491,6 @@ ob_start();
     <div class="dropdown-option" data-val="Casual Leave"><i class="bi bi-calendar-event" style="color: #f59e0b;"></i> Casual Leave</div>
     <div class="dropdown-option" data-val="Sick Leave"><i class="bi bi-calendar-event" style="color: #f59e0b;"></i> Sick Leave</div>
     <div class="dropdown-option" data-val="Week Off"><i class="bi bi-calendar-event text-muted"></i> Week Off</div>
-    <div class="dropdown-option" data-val="A*P"><i class="bi bi-calendar-event" style="color: #3b82f6;"></i> A*P</div>
-    <div class="dropdown-option" data-val="P*A"><i class="bi bi-calendar-event" style="color: #3b82f6;"></i> P*A</div>
 </div>
 
 <?php

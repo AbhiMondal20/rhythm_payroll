@@ -8,10 +8,137 @@ if (!isset($_SESSION['login'])) {
 require_once 'includes/db_client.php';
 require_once 'includes/config.php';
 
+// Ensure DB connection is active
+if (!isset($conn) || !($conn instanceof mysqli)) {
+    die("Database connection not found.");
+}
+
 $page_title = 'Approval Rules';
 
 /* ─────────────────────────────────────────
-   DATA
+   DATABASE SETUP (Runs once if table doesn't exist)
+───────────────────────────────────────── */
+$create_table = $conn->query("
+CREATE TABLE IF NOT EXISTS `approval_rules` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `module` VARCHAR(100) NOT NULL,
+    `module_name` VARCHAR(100) NOT NULL,
+    `rule_name` VARCHAR(255) NOT NULL,
+    `levels` TEXT NOT NULL,
+    `auto_approve_days` INT DEFAULT 0,
+    `is_deleted` TINYINT(1) DEFAULT 0,
+    `is_active` TINYINT(1) DEFAULT 1,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+");
+
+if (!$create_table) {
+    die("Table creation failed: " . $conn->error);
+}
+
+// Failsafe: Ensure 'levels' column exists if table was created manually without it
+$check_levels = $conn->query("SHOW COLUMNS FROM `approval_rules` LIKE 'levels'");
+if ($check_levels && $check_levels->num_rows == 0) {
+    $conn->query("ALTER TABLE `approval_rules` ADD `levels` TEXT NOT NULL AFTER `rule_name`");
+}
+
+/* ─────────────────────────────────────────
+   HANDLE POST ACTIONS (Create, Update, Delete)
+───────────────────────────────────────── */
+$save_ok = false; 
+$save_msg = '';
+$mode = $_GET['mode'] ?? 'list'; // list | add | view | edit
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $act = $_POST['_action'] ?? '';
+    
+    // Process form data safely
+    $module_name = $_POST['module_name'] ?? '';
+    $module = strtolower(str_replace([' ', '/'], ['_', ''], $module_name)); // e.g. "Leave Request" -> "leave_request"
+    $rule_name = $_POST['rule_name'] ?? '';
+    $auto_approve_days = (int)($_POST['auto_approve_days'] ?? 0);
+    $is_active = isset($_POST['is_active']) ? 1 : 0;
+    
+    // Format levels safely into JSON
+    $raw_levels = $_POST['levels'] ?? [];
+    $levels = [];
+    $lvl_count = 1;
+    if (is_array($raw_levels)) {
+        foreach ($raw_levels as $l) {
+            $levels[] = [
+                'level' => $lvl_count++,
+                'approver' => $l['approver'] ?? '',
+                'action' => $l['action'] ?? '',
+                'notify' => isset($l['notify']) ? true : false
+            ];
+        }
+    }
+    $levels_json = json_encode($levels);
+
+    if ($act === 'add') {
+        $stmt = $conn->prepare("INSERT INTO approval_rules (module, module_name, rule_name, levels, auto_approve_days, is_active, is_deleted) VALUES (?, ?, ?, ?, ?, ?, 0)");
+        if ($stmt) {
+            $stmt->bind_param("ssssii", $module, $module_name, $rule_name, $levels_json, $auto_approve_days, $is_active);
+            if($stmt->execute()) {
+                $save_ok = true; 
+                $save_msg = 'Approval rule added successfully!'; 
+                $mode = 'list';
+            } else {
+                $save_ok = true; 
+                $save_msg = 'Insert Error: ' . $stmt->error;
+            }
+            $stmt->close();
+        } else {
+            $save_ok = true; 
+            $save_msg = 'Prepare Error: ' . $conn->error;
+        }
+    } 
+    elseif ($act === 'save') {
+        $rule_id = (int)($_POST['rule_id'] ?? 0);
+        $stmt = $conn->prepare("UPDATE approval_rules SET module=?, module_name=?, rule_name=?, levels=?, auto_approve_days=?, is_active=? WHERE id=?");
+        if ($stmt) {
+            $stmt->bind_param("ssssiii", $module, $module_name, $rule_name, $levels_json, $auto_approve_days, $is_active, $rule_id);
+            if($stmt->execute()) {
+                $save_ok = true; 
+                $save_msg = 'Approval rule updated successfully!';
+                $mode = 'view'; // Return to view after saving
+                $_GET['id'] = $rule_id; // maintain active view
+            } else {
+                $save_ok = true; 
+                $save_msg = 'Update Error: ' . $stmt->error;
+            }
+            $stmt->close();
+        } else {
+            $save_ok = true; 
+            $save_msg = 'Prepare Error: ' . $conn->error;
+        }
+    } 
+    elseif ($act === 'delete') {
+        $rule_id = (int)($_POST['rule_id'] ?? 0);
+        // Using Soft Delete (Update is_deleted = 1)
+        $stmt = $conn->prepare("UPDATE approval_rules SET is_deleted=1 WHERE id=?");
+        if ($stmt) {
+            $stmt->bind_param("i", $rule_id);
+            if($stmt->execute()) {
+                $save_ok = true; 
+                $save_msg = 'Approval rule deleted.'; 
+                $mode = 'list';
+                $_GET['id'] = null; // clear active id
+            } else {
+                $save_ok = true; 
+                $save_msg = 'Delete Error: ' . $stmt->error;
+            }
+            $stmt->close();
+        } else {
+            $save_ok = true; 
+            $save_msg = 'Prepare Error: ' . $conn->error;
+        }
+    }
+}
+
+/* ─────────────────────────────────────────
+   DATA (Static lists & Dynamic DB Fetch)
 ───────────────────────────────────────── */
 $modules_list = [
     'Attendance Regularization',
@@ -23,86 +150,46 @@ $modules_list = [
     'Exit / Resignation',
 ];
 
-$approver_roles = [
-    'Reporting Manager',
-    'HR Manager',
-    'Department Head',
-    'Admin',
-    'Super Admin',
-    'Payroll Officer',
-];
-
-$approval_rules = [
-    [
-        'id'         => 1,
-        'module'     => 'Attendance Regularization',
-        'rule_name'  => 'Attendance Approval Flow',
-        'levels'     => [
-            ['level'=>1,'approver'=>'Reporting Manager','action'=>'Approve / Reject','notify'=>true],
-            ['level'=>2,'approver'=>'HR Manager',       'action'=>'Final Approve',    'notify'=>true],
-        ],
-        'auto_approve_days' => 3,
-        'active'    => true,
-    ],
-    [
-        'id'         => 2,
-        'module'     => 'Leave Request',
-        'rule_name'  => 'Leave Approval Flow',
-        'levels'     => [
-            ['level'=>1,'approver'=>'Reporting Manager','action'=>'Approve / Reject','notify'=>true],
-        ],
-        'auto_approve_days' => 2,
-        'active'    => true,
-    ],
-    [
-        'id'         => 3,
-        'module'     => 'Overtime',
-        'rule_name'  => 'Overtime Approval Flow',
-        'levels'     => [
-            ['level'=>1,'approver'=>'Department Head','action'=>'Approve / Reject','notify'=>true],
-            ['level'=>2,'approver'=>'HR Manager',     'action'=>'Final Approve',    'notify'=>false],
-        ],
-        'auto_approve_days' => 1,
-        'active'    => false,
-    ],
-    [
-        'id'         => 4,
-        'module'     => 'Reimbursement',
-        'rule_name'  => 'Expense Reimbursement Flow',
-        'levels'     => [
-            ['level'=>1,'approver'=>'Reporting Manager','action'=>'Approve / Reject','notify'=>true],
-            ['level'=>2,'approver'=>'Admin',            'action'=>'Final Approve',    'notify'=>true],
-        ],
-        'auto_approve_days' => 5,
-        'active'    => true,
-    ],
-];
-
 $action_options = ['Approve / Reject', 'Final Approve', 'Recommend', 'Notify Only'];
 
+// Fetch Roles dynamically from database
+$approver_roles = [];
+$roles_query = $conn->query("SELECT role_name FROM user_roles WHERE is_deleted = 0 ORDER BY role_name ASC");
+if ($roles_query) {
+    while ($row = $roles_query->fetch_assoc()) {
+        $approver_roles[] = trim($row['role_name']);
+    }
+}
+// Fallback in case table is empty so it doesn't break the JS dropdown logic
+if (empty($approver_roles)) {
+    $approver_roles = ['Reporting Manager', 'HR Manager', 'Admin']; 
+}
+
+// Fetch all rules from database (Only active/non-deleted rules)
+$approval_rules = [];
+$res = $conn->query("SELECT * FROM approval_rules WHERE is_deleted = 0 ORDER BY id DESC");
+if ($res) {
+    while ($row = $res->fetch_assoc()) {
+        $row['id'] = (int)$row['id'];
+        $row['levels'] = json_decode($row['levels'], true) ?: [];
+        $row['auto_approve_days'] = (int)$row['auto_approve_days'];
+        $row['is_active'] = (bool)$row['is_active'];
+        $approval_rules[] = $row;
+    }
+}
+
 /* ── URL params ── */
-$active_id = isset($_GET['id'])   ? (int)$_GET['id']  : null;
-$mode      = $_GET['mode'] ?? 'list';   // list | add | view | edit
+$active_id = isset($_GET['id']) ? (int)$_GET['id'] : null;
 
 $active_rule = null;
 if ($active_id) {
     foreach ($approval_rules as $r) {
         if ($r['id'] === $active_id) { $active_rule = $r; break; }
     }
-    if (!$active_rule) $mode = 'list';
+    if (!$active_rule && $mode !== 'add') $mode = 'list';
 }
 
-/* ── POST ── */
-$save_ok = false; $save_msg = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $act = $_POST['_action'] ?? '';
-    if ($act === 'add')    { $save_ok=true; $save_msg='Approval rule added successfully!';   $mode='list'; }
-    if ($act === 'save')   { $save_ok=true; $save_msg='Approval rule updated successfully!'; }
-    if ($act === 'delete') { $save_ok=true; $save_msg='Approval rule deleted.';              $mode='list'; }
-    if ($act === 'toggle') { $save_ok=true; $save_msg='Status updated!'; }
-}
-
-function esc($v){ return htmlspecialchars($v??'',ENT_QUOTES,'UTF-8'); }
+function esc($v){ return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8'); }
 
 ob_start();
 ?>
@@ -253,12 +340,12 @@ ob_start();
 @media(max-width:640px){.ar-row-2{grid-template-columns:1fr}.ar-level-edit-row{grid-template-columns:24px 1fr;row-gap:8px}.ar-right{padding:18px 16px}}
 </style>
 
-<?php if($save_ok): ?>
-<script>document.addEventListener('DOMContentLoaded',function(){ arToast('✅','<?= esc($save_msg) ?>'); });</script>
+<?php if($save_msg): ?>
+<script>document.addEventListener('DOMContentLoaded',function(){ arToast('<?= $save_ok ? '✅' : '❌' ?>','<?= esc($save_msg) ?>'); });</script>
 <?php endif; ?>
 
 <!-- ════════════════════════════════════════
-     CONFIG TAB BAR
+    CONFIG TAB BAR
 ════════════════════════════════════════ -->
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
     <h1 class="page-title">Configuration</h1>
@@ -305,15 +392,18 @@ ob_start();
             <?php foreach($approval_rules as $r): ?>
             <a href="?id=<?= $r['id'] ?>&mode=view"
                class="ar-rule-item <?= ($active_id===$r['id']&&$mode!=='add')?'active':'' ?>"
-               data-search="<?= strtolower(esc($r['rule_name'])).' '.strtolower(esc($r['module'])) ?>">
+               data-search="<?= strtolower(esc($r['rule_name'])).' '.strtolower(esc($r['module_name'])) ?>">
                 <div>
-                    <div class="ar-rule-module"><?= esc($r['module']) ?></div>
+                    <div class="ar-rule-module"><?= esc($r['module_name']) ?></div>
                     <div class="ar-rule-name"><?= esc($r['rule_name']) ?></div>
                     <div class="ar-rule-meta"><?= count($r['levels']) ?> approval level<?= count($r['levels'])>1?'s':'' ?> · Auto-approve after <?= $r['auto_approve_days'] ?> day<?= $r['auto_approve_days']>1?'s':'' ?></div>
                 </div>
-                <div class="ar-rule-dot <?= $r['active']?'on':'off' ?>"></div>
+                <div class="ar-rule-dot <?= $r['is_active']?'on':'off' ?>"></div>
             </a>
             <?php endforeach; ?>
+            <?php if(empty($approval_rules)): ?>
+                <div style="padding:20px; text-align:center; color:#9CA3AF; font-size:13px;">No rules found.</div>
+            <?php endif; ?>
             </div>
         </div>
 
@@ -330,10 +420,10 @@ ob_start();
         <div class="ar-row-2">
             <div class="ar-fg">
                 <label><span class="req">* </span>Module</label>
-                <select name="module" required>
+                <select name="module_name" required>
                     <option value="">-- Select Module --</option>
                     <?php foreach($modules_list as $m): ?>
-                    <option><?= esc($m) ?></option>
+                    <option value="<?= esc($m) ?>"><?= esc($m) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -394,7 +484,7 @@ ob_start();
         <div class="ar-status-row">
             <span class="ar-status-lbl">Status:</span>
             <label class="ar-status-toggle" title="Toggle status">
-                <input type="checkbox" name="active" checked>
+                <input type="checkbox" name="is_active" checked>
                 <span class="ar-status-sl"></span>
             </label>
             <span style="font-size:13px;color:#374151">Active</span>
@@ -402,7 +492,7 @@ ob_start();
 
         <div class="ar-actions">
             <a href="?" class="ar-cancel-btn">Cancel</a>
-            <button type="submit" class="ar-save-btn" onclick="return validateArForm()">Add Rule</button>
+            <button type="submit" class="ar-save-btn" onclick="return validateArForm('arAddForm')">Add Rule</button>
         </div>
         </form>
 
@@ -421,7 +511,7 @@ ob_start();
             <div class="ar-fg">
                 <label>Module</label>
                 <div class="ar-view-val">
-                    <span class="ar-badge" style="background:#EDE9FE;color:#6D28D9"><?= esc($active_rule['module']) ?></span>
+                    <span class="ar-badge" style="background:#EDE9FE;color:#6D28D9"><?= esc($active_rule['module_name']) ?></span>
                 </div>
             </div>
             <div class="ar-fg">
@@ -436,7 +526,7 @@ ob_start();
             <div class="ar-section-block-body">
                 <?php foreach($active_rule['levels'] as $lv): ?>
                 <div class="ar-level-view-row">
-                    <span class="ar-level-badge"><?= $lv['level'] ?></span>
+                    <span class="ar-level-badge"><?= (int)$lv['level'] ?></span>
                     <div style="flex:1">
                         <div style="font-size:13.5px;font-weight:600;color:#111827"><?= esc($lv['approver']) ?></div>
                         <div style="font-size:12px;color:#9CA3AF;margin-top:1px"><?= esc($lv['action']) ?></div>
@@ -469,8 +559,8 @@ ob_start();
         <div class="ar-fg">
             <label>Status</label>
             <div class="ar-view-val">
-                <span class="ar-badge" style="background:<?= $active_rule['active']?'#D1FAE5':'#F3F4F6' ?>;color:<?= $active_rule['active']?'#065F46':'#6B7280' ?>">
-                    ● <?= $active_rule['active']?'Active':'Inactive' ?>
+                <span class="ar-badge" style="background:<?= $active_rule['is_active']?'#D1FAE5':'#F3F4F6' ?>;color:<?= $active_rule['is_active']?'#065F46':'#6B7280' ?>">
+                    ● <?= $active_rule['is_active']?'Active':'Inactive' ?>
                 </span>
             </div>
         </div>
@@ -486,9 +576,9 @@ ob_start();
         <div class="ar-row-2">
             <div class="ar-fg">
                 <label><span class="req">* </span>Module</label>
-                <select name="module" required>
+                <select name="module_name" required>
                     <?php foreach($modules_list as $m): ?>
-                    <option <?= $m===$active_rule['module']?'selected':'' ?>><?= esc($m) ?></option>
+                    <option value="<?= esc($m) ?>" <?= $m===$active_rule['module_name']?'selected':'' ?>><?= esc($m) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -512,7 +602,7 @@ ob_start();
                 <div id="arLevelRows">
                 <?php foreach($active_rule['levels'] as $li => $lv): ?>
                 <div class="ar-level-edit-row" id="arLevel-<?= $li ?>">
-                    <span class="ar-level-badge"><?= $lv['level'] ?></span>
+                    <span class="ar-level-badge"><?= (int)$lv['level'] ?></span>
                     <select name="levels[<?= $li ?>][approver]">
                         <?php foreach($approver_roles as $role): ?>
                         <option <?= $role===$lv['approver']?'selected':'' ?>><?= esc($role) ?></option>
@@ -554,10 +644,10 @@ ob_start();
         <div class="ar-status-row">
             <span class="ar-status-lbl">Status:</span>
             <label class="ar-status-toggle" title="Toggle status">
-                <input type="checkbox" name="active" <?= $active_rule['active']?'checked':'' ?>>
+                <input type="checkbox" name="is_active" <?= $active_rule['is_active']?'checked':'' ?>>
                 <span class="ar-status-sl"></span>
             </label>
-            <span style="font-size:13px;color:#374151"><?= $active_rule['active']?'Active':'Inactive' ?></span>
+            <span style="font-size:13px;color:#374151"><?= $active_rule['is_active']?'Active':'Inactive' ?></span>
         </div>
 
         <div class="ar-actions">
@@ -621,8 +711,8 @@ function addLevel() {
     var idx = levelCount++;
     var lvNum = container.querySelectorAll('.ar-level-edit-row').length + 1;
 
-    var roleOpts  = approverRoles.map(function(r){ return '<option>'+r+'</option>'; }).join('');
-    var actionOpts = actionOptions.map(function(a){ return '<option>'+a+'</option>'; }).join('');
+    var roleOpts  = approverRoles.map(function(r){ return '<option value="'+r+'">'+r+'</option>'; }).join('');
+    var actionOpts = actionOptions.map(function(a){ return '<option value="'+a+'">'+a+'</option>'; }).join('');
 
     var div = document.createElement('div');
     div.className = 'ar-level-edit-row';

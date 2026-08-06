@@ -4,6 +4,7 @@ ini_set('display_errors', 1);
 
 require '../../vendor/autoload.php';
 require '../db_client.php';
+$now = date('Y-m-d H:i:s');
 
 use Rats\Zkteco\Lib\ZKTeco;
 
@@ -26,15 +27,9 @@ while ($device = mysqli_fetch_assoc($devices)) {
 
         mysqli_query($conn, "
             UPDATE att_devices
-            SET last_ping = NOW()
+            SET last_ping = $now
             WHERE id='{$device['id']}'
         ");
-
-        /*
-        |--------------------------------------------------------------------------
-        | Load Device Users & Sync to Employees Table
-        |--------------------------------------------------------------------------
-        */
 
         $users = [];
         $deviceUsers = $zk->getUser();
@@ -83,7 +78,7 @@ while ($device = mysqli_fetch_assoc($devices)) {
                             INSERT INTO employees (
                                 employee_code, employee_name, status, created_at, updated_at
                             ) VALUES (
-                                '$emp_code_db', '$emp_name_db', '1', NOW(), NOW()
+                                '$emp_code_db', '$emp_name_db', '1',$now, $now
                             )
                         ";
 
@@ -151,11 +146,8 @@ while ($device = mysqli_fetch_assoc($devices)) {
             $punch_key = $employee_code . '_' . $punch_time;
             if (isset($existing_punches[$punch_key])) {
                 $duplicate++;
-                continue; // Skip instantly. It's old and already in the DB!
+                continue;
             }
-
-            // IF THE SCRIPT REACHES HERE, IT MEANS THIS RECORD IS NEW!
-            // (Either it happened today, OR it is an old date that was missing from the DB).
 
             $employee_name = $users[$employee_code] ?? '';
 
@@ -192,7 +184,7 @@ while ($device = mysqli_fetch_assoc($devices)) {
             (
                 '{$device['id']}', '{$device['code']}', '{$device['serial_number']}', '$employee_code_db',
                 '$employee_name_db', '$punch_time', '$punch_date', '$punch_type',
-                '$verify_type', '$raw', NOW(), NOW()
+                '$verify_type', '$raw', $now, $now
             )";
 
             if (!mysqli_query($conn, $sql)) {
@@ -223,7 +215,7 @@ while ($device = mysqli_fetch_assoc($devices)) {
                             check_in_time, record_status, created_at, updated_at
                         ) VALUES (
                             '$employee_id_db', '$employee_code_db', '$employee_name_db', 
-                            '$punch_date', '$punch_time', 'System', NOW(), NOW()
+                            '$punch_date', '$punch_time', 'System', $now, $now
                         )
                     ";
                     mysqli_query($conn, $te_insert);
@@ -236,7 +228,7 @@ while ($device = mysqli_fetch_assoc($devices)) {
                             UPDATE time_entries 
                             SET check_out_time = '$punch_time', 
                                 hours_worked = TIMEDIFF('$punch_time', check_in_time),
-                                updated_at = NOW() 
+                                updated_at = $now 
                             WHERE id = '$te_id'
                         ";
                         mysqli_query($conn, $te_update);
@@ -247,7 +239,7 @@ while ($device = mysqli_fetch_assoc($devices)) {
 
         mysqli_query($conn, "
             UPDATE att_devices
-            SET last_download=NOW()
+            SET last_download=$now
             WHERE id='{$device['id']}'
         ");
 

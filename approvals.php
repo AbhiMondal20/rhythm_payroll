@@ -4,12 +4,10 @@ if (!isset($_SESSION['login'])) {
     header('Location: login');
     exit();
 }
-
-
 require_once 'includes/db_client.php';
 require_once 'includes/config.php';
-
 $page_title = 'Approval Request';
+$now = date('Y-m-d H:i:s');
 
 function esc($v) {
     return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
@@ -45,26 +43,118 @@ $toast_icon = $_SESSION['toast_icon'] ?? '✅';
 unset($_SESSION['toast_msg'], $_SESSION['toast_icon']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-    $req_id = (int)($_POST['req_id'] ?? 0);
+    $action   = $_POST['action'] ?? '';
+    $req_id   = (int)($_POST['req_id'] ?? 0);
+    $emp_code = $_POST['emp_code'] ?? ''; 
 
     if (($action === 'approve' || $action === 'reject') && $req_id > 0) {
-        $new_status = $action === 'approve' ? 'approved' : 'rejected';
-        $action_by  = (int)($_SESSION['user_id'] ?? $_SESSION['userid'] ?? 0);
+        $action_by = (int)($_SESSION['user_id'] ?? $_SESSION['userid'] ?? 0);
 
-        $stmt = $conn->prepare("
-            UPDATE approval_requests
-            SET status = ?, action_by = ?, action_at = NOW()
-            WHERE id = ?
-        ");
-        $stmt->bind_param("sii", $new_status, $action_by, $req_id);
+        // 1. Fetch current request details to determine type and current stage
+        $stmt_req = $conn->prepare("SELECT type, stage FROM approval_requests WHERE id = ?");
+        if ($stmt_req) {
+            $stmt_req->bind_param("i", $req_id);
+            $stmt_req->execute();
+            $res_req = $stmt_req->get_result();
+            $req_data = $res_req->fetch_assoc();
+            $stmt_req->close();
+        }
 
-        if ($stmt->execute()) {
-            $_SESSION['toast_icon'] = $action === 'approve' ? '✅' : '✕';
-            $_SESSION['toast_msg']  = $action === 'approve' ? 'Request approved successfully!' : 'Request rejected.';
+        if (!empty($req_data)) {
+            $req_type = $req_data['type']; 
+            
+            // Fix: Keep current_stage as a strict integer for database math
+            $current_stage = (int)$req_data['stage'];
+            if ($current_stage <= 0) {
+                $current_stage = 1; // Default to integer 1
+            }
+
+            $new_status = 'pending';
+            $new_stage  = $current_stage;
+            $is_final   = false;
+
+            if ($action === 'reject') {
+                $new_status = 'rejected';
+                $is_final   = true;
+            } else {
+                // 2. Fetch the required approval levels from approval_rules based on the module/type
+                $stmt_rule = $conn->prepare("
+                    SELECT levels 
+                    FROM approval_rules 
+                    WHERE module = ? AND is_active = 1 AND is_deleted = 0 
+                    LIMIT 1
+                ");
+                
+                $max_levels = 1; // Fallback to 1 level if no rule is found
+                
+                if ($stmt_rule) {
+                    $stmt_rule->bind_param("s", $req_type);
+                    $stmt_rule->execute();
+                    $res_rule = $stmt_rule->get_result();
+                    if ($rule_data = $res_rule->fetch_assoc()) {
+                        $max_levels = (int)$rule_data['levels'];
+                    }
+                    $stmt_rule->close();
+                }
+
+                // 3. Determine if we move to the next stage or grant final approval
+                if ($current_stage < $max_levels) {
+                    $new_stage = $current_stage + 1;
+                    $new_status = 'pending';
+                } else {
+                    $new_status = 'approved';
+                    $is_final   = true;
+                }
+            }
+
+            // 4. Update the approval request (storing integer for stage)
+            $stmt = $conn->prepare("
+                UPDATE approval_requests
+                SET status = ?, stage = ?, action_by = ?, action_at = NOW()
+                WHERE id = ?
+            ");
+
+            if ($stmt) {
+                $stmt->bind_param("siii", $new_status, $new_stage, $action_by, $req_id);
+
+                if ($stmt->execute()) {
+                    $stmt->close();
+
+                    // 5. Update secondary tables (e.g., leave_requests) ONLY if this is the final decision
+                    if ($is_final) {
+                        $stmt2 = $conn->prepare("UPDATE `leave_requests` SET `status`=?, `updated_at`=? WHERE `emp_code`=? AND `id`=?");
+                        if ($stmt2) {
+                            $stmt2->bind_param("sssi", $new_status, $now, $emp_code, $req_id);
+                            $stmt2->execute();
+                            $stmt2->close();
+                        } else {
+                            error_log("Failed to update leave_requests: " . $conn->error);
+                        }
+                    }
+
+                    // 6. Set appropriate UI notifications
+                    if ($new_status === 'approved') {
+                        $_SESSION['toast_icon'] = '✅';
+                        $_SESSION['toast_msg']  = 'Request fully approved!';
+                    } elseif ($new_status === 'pending') {
+                        $_SESSION['toast_icon'] = '⏳';
+                        $_SESSION['toast_msg']  = 'Request advanced to Stage ' . $new_stage;
+                    } else {
+                        $_SESSION['toast_icon'] = '✕';
+                        $_SESSION['toast_msg']  = 'Request rejected.';
+                    }
+                } else {
+                    $_SESSION['toast_icon'] = '❌';
+                    $_SESSION['toast_msg']  = 'Action failed: ' . $stmt->error;
+                    $stmt->close();
+                }
+            } else {
+                $_SESSION['toast_icon'] = '❌';
+                $_SESSION['toast_msg']  = 'Action failed: ' . $conn->error;
+            }
         } else {
             $_SESSION['toast_icon'] = '❌';
-            $_SESSION['toast_msg']  = 'Action failed: ' . $stmt->error;
+            $_SESSION['toast_msg']  = 'Request record not found in the database.';
         }
 
         header("Location: ?tab=" . urlencode($active_tab));
@@ -116,12 +206,17 @@ $res = $stmt->get_result();
 
 $pending_requests = [];
 while ($row = $res->fetch_assoc()) {
+    $stage_num = (int)$row['stage'];
+    if ($stage_num <= 0) $stage_num = 1;
+
     $pending_requests[] = [
         'id'         => $row['id'],
         'emp_code'   => $row['emp_code'],
         'emp_name'   => $row['emp_name'],
+        'avatar'     => $row['avatar'] ?? null,
         'type'       => $row['type'],
-        'stage'      => $row['stage'],
+        'stage_num'  => $stage_num,
+        'stage'      => 'Stage ' . $stage_num, // Formatted for UI display
         'date'       => fmtDate($row['request_date']),
         'requested'  => fmtDateTime($row['requested_on']),
         'shift_date' => fmtDate($row['shift_date']),
@@ -130,6 +225,7 @@ while ($row = $res->fetch_assoc()) {
         'out_old'    => $row['out_old'],
         'out_new'    => $row['out_new'],
         'reasons'    => $row['reasons'],
+        'leave_type' => $row['leave_type'] ?? '',
         'remarks'    => $row['remarks'],
         'status'     => $row['status'],
         'action_at'  => fmtDateTime($row['action_at']),
@@ -184,12 +280,17 @@ function renderRightPanel($selected_req) {
     ob_start();
     ?>
 
-    
     <div class="ar-right-head">
-        <div class="ar-right-av"><?= initials($selected_req['emp_name'] ?? '') ?></div>
+        <div class="ar-right-av">
+            <?php if (!empty($selected_req['avatar'])): ?>
+                <img src="<?= esc($selected_req['avatar']) ?>" alt="<?= esc($selected_req['emp_name']) ?>">
+            <?php else: ?>
+                <?= initials($selected_req['emp_name'] ?? '') ?>
+            <?php endif; ?>
+        </div>
         <div>
             <div class="ar-right-name"><?= esc($selected_req['emp_name'] ?? '') ?></div>
-            <div class="ar-right-type"><?= esc($selected_req['type'] ?? '') ?> Request</div>
+            <div class="ar-right-type"><?= esc($selected_req['type'] ?? '') ?> Request • <?= esc($selected_req['stage'] ?? '') ?></div>
         </div>
     </div>
 
@@ -224,7 +325,7 @@ function renderRightPanel($selected_req) {
     <?php else: ?>
         <div class="ar-detail-row">
             <span class="ar-detail-label">Leave Type :</span>
-            <span class="ar-detail-val"><?= esc($selected_req['reasons'] ?? '—') ?></span>
+            <span class="ar-detail-val"><?= esc($selected_req['leave_type'] ?? '—') ?></span>
         </div>
     <?php endif; ?>
 
@@ -243,12 +344,14 @@ function renderRightPanel($selected_req) {
         <form method="POST" style="flex:1">
             <input type="hidden" name="action" value="reject">
             <input type="hidden" name="req_id" value="<?= esc($selected_req['id'] ?? '') ?>">
+            <input type="hidden" name="emp_code" value="<?= esc($selected_req['emp_code'] ?? '') ?>">
             <button type="submit" class="ar-btn-reject" style="width:100%;padding:8px">Reject</button>
         </form>
 
         <form method="POST" style="flex:1">
             <input type="hidden" name="action" value="approve">
             <input type="hidden" name="req_id" value="<?= esc($selected_req['id'] ?? '') ?>">
+            <input type="hidden" name="emp_code" value="<?= esc($selected_req['emp_code'] ?? '') ?>">
             <button type="submit" class="ar-btn-approve" style="width:100%;padding:8px">Approve</button>
         </form>
     </div>
@@ -287,239 +390,106 @@ ob_start();
 
 <link rel="stylesheet" href="includes/assets/style.css">
 
-
 <style>
 /* ═══════════════════════════════════════
    APPROVAL REQUEST PAGE
 ═══════════════════════════════════════ */
 
-.ar-tabs {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    margin-bottom: 0;
-}
+.ar-tabs { display: flex; align-items: center; gap: 0; margin-bottom: 0; }
 .ar-tab {
-    padding: 10px 18px;
-    font-size: 13.5px;
-    font-weight: 500;
-    color: #6B7280;
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    border-bottom: 2.5px solid transparent;
-    white-space: nowrap;
-    transition: color .15s, border-color .15s;
-    text-decoration: none;
-    display: inline-block;
-    margin-bottom: -1px;
-    font-family: inherit;
+    padding: 10px 18px; font-size: 13.5px; font-weight: 500; color: #6B7280;
+    cursor: pointer; border: none; background: transparent;
+    border-bottom: 2.5px solid transparent; white-space: nowrap;
+    transition: color .15s, border-color .15s; text-decoration: none;
+    display: inline-block; margin-bottom: -1px; font-family: inherit;
 }
 .ar-tab:hover   { color: #111827; }
 .ar-tab.active  { color: #2563EB; border-bottom-color: #2563EB; font-weight: 600; }
 .ar-tab-divider { color: #E5E7EB; padding: 0 2px; line-height: 38px; }
 
 .ar-stat-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 0;
-    border: 1px solid #E5E7EB;
-    border-radius: 10px;
-    overflow: hidden;
-    margin-bottom: 20px;
-    background: #fff;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0;
+    border: 1px solid #E5E7EB; border-radius: 10px; overflow: hidden;
+    margin-bottom: 20px; background: #fff;
 }
-.ar-stat-card {
-    padding: 18px 20px;
-    border-right: 1px solid #E5E7EB;
-    min-height: 210px;
-}
+.ar-stat-card { padding: 18px 20px; border-right: 1px solid #E5E7EB; min-height: 210px; }
 .ar-stat-card:last-child { border-right: none; }
 
 .ar-stat-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-    gap: 6px;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; flex-wrap: wrap; gap: 6px;
 }
-.ar-stat-title {
-    font-size: 13.5px;
-    font-weight: 600;
-    color: #111827;
-}
+.ar-stat-title { font-size: 13.5px; font-weight: 600; color: #111827; }
 .ar-stat-filter {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 10px;
-    border: 1.5px solid #E5E7EB;
-    border-radius: 7px;
-    font-size: 12px;
-    font-weight: 500;
-    color: #374151;
-    cursor: pointer;
-    background: #fff;
-    font-family: inherit;
-    transition: border-color .15s;
+    display: flex; align-items: center; gap: 6px; padding: 5px 10px;
+    border: 1.5px solid #E5E7EB; border-radius: 7px; font-size: 12px;
+    font-weight: 500; color: #374151; cursor: pointer; background: #fff;
+    font-family: inherit; transition: border-color .15s;
 }
 .ar-stat-filter:hover { border-color: #2563EB; }
 .ar-stat-filter svg { width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round; }
 
 .ar-stat-big {
-    font-size: 52px;
-    font-weight: 700;
-    color: #2563EB;
-    line-height: 1;
-    margin-bottom: 6px;
-    text-align: center;
+    font-size: 52px; font-weight: 700; color: #2563EB; line-height: 1;
+    margin-bottom: 6px; text-align: center;
 }
-.ar-stat-sub {
-    font-size: 12.5px;
-    color: #9CA3AF;
-    text-align: center;
-    margin-bottom: 20px;
-}
+.ar-stat-sub { font-size: 12.5px; color: #9CA3AF; text-align: center; margin-bottom: 20px; }
 .ar-stat-row-items { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
-.ar-stat-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 13px;
-    color: #374151;
-}
+.ar-stat-item { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #374151; }
 .ar-stat-item-left { display: flex; align-items: center; gap: 8px; }
 .ar-stat-item-left svg { width:16px;height:16px;flex-shrink:0; }
 .ar-stat-count { font-weight: 600; color: #111827; }
 
-.ar-empty-mini {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 130px;
-    gap: 10px;
-}
+.ar-empty-mini { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 130px; gap: 10px; }
 .ar-empty-mini p { font-size: 12.5px; color: #9CA3AF; text-align: center; }
 
 .ar-split {
-    display: grid;
-    grid-template-columns: 360px 1fr 320px;
-    gap: 0;
-    background: #fff;
-    border: 1px solid #E5E7EB;
-    border-radius: 10px;
-    overflow: hidden;
-    min-height: 360px;
+    display: grid; grid-template-columns: 360px 1fr 320px; gap: 0;
+    background: #fff; border: 1px solid #E5E7EB; border-radius: 10px;
+    overflow: hidden; min-height: 360px;
 }
 .ar-split.no-right { grid-template-columns: 360px 1fr; }
 
-.ar-left {
-    border-right: 1px solid #E5E7EB;
-    padding: 16px 0;
-}
-.ar-left-head {
-    font-size: 13.5px;
-    font-weight: 700;
-    color: #111827;
-    padding: 0 16px 14px;
-}
+.ar-left { border-right: 1px solid #E5E7EB; padding: 16px 0; }
+.ar-left-head { font-size: 13.5px; font-weight: 700; color: #111827; padding: 0 16px 14px; }
 .ar-total-row {
-    padding: 10px 16px;
-    background: #F3F4F6;
-    font-size: 13px;
-    color: #374151;
-    font-weight: 500;
-    margin: 0 0 8px;
-    border-radius: 0;
+    padding: 10px 16px; background: #F3F4F6; font-size: 13px; color: #374151;
+    font-weight: 500; margin: 0 0 8px; border-radius: 0;
 }
 .ar-type-row {
-    padding: 9px 16px;
-    font-size: 13px;
-    color: #374151;
-    cursor: pointer;
-    transition: background .15s;
-    border-radius: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    padding: 9px 16px; font-size: 13px; color: #374151; cursor: pointer;
+    transition: background .15s; border-radius: 0; display: flex;
+    align-items: center; justify-content: space-between;
 }
 .ar-type-row:hover  { background: #F9FAFB; }
 .ar-type-row.active { background: #EFF6FF; color: #1D4ED8; font-weight: 600; }
 
-.ar-mid {
-    border-right: 1px solid #E5E7EB;
-    overflow-y: auto;
-    max-height: 560px;
-}
+.ar-mid { border-right: 1px solid #E5E7EB; overflow-y: auto; max-height: 560px; }
 
 .ar-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    border-bottom: 1px solid #E5E7EB;
-    background: #fff;
-    flex-wrap: wrap;
-    position: sticky;
-    top: 0;
-    z-index: 10;
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+    border-bottom: 1px solid #E5E7EB; background: #fff; flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 10;
 }
 .ar-search {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-    min-width: 160px;
-    padding: 8px 12px;
-    border: 1.5px solid #E5E7EB;
-    border-radius: 8px;
-    background: #fff;
-    transition: border-color .15s;
+    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 160px;
+    padding: 8px 12px; border: 1.5px solid #E5E7EB; border-radius: 8px;
+    background: #fff; transition: border-color .15s;
 }
 .ar-search:focus-within { border-color: #2563EB; }
 .ar-search svg { width:14px;height:14px;stroke:#9CA3AF;fill:none;stroke-width:2;stroke-linecap:round;flex-shrink:0; }
-.ar-search input {
-    border: none;
-    outline: none;
-    font-size: 13px;
-    font-family: inherit;
-    color: #374151;
-    background: transparent;
-    width: 100%;
-}
-.ar-select-all {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 13px;
-    font-weight: 500;
-    color: #374151;
-    cursor: pointer;
-    white-space: nowrap;
-}
+.ar-search input { border: none; outline: none; font-size: 13px; font-family: inherit; color: #374151; background: transparent; width: 100%; }
+.ar-select-all { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; color: #374151; cursor: pointer; white-space: nowrap; }
 .ar-select-all input { width: 15px; height: 15px; cursor: pointer; accent-color: #2563EB; }
 .ar-type-filter {
-    padding: 7px 12px;
-    border: 1.5px solid #E5E7EB;
-    border-radius: 8px;
-    font-size: 13px;
-    font-family: inherit;
-    color: #374151;
-    outline: none;
-    min-width: 80px;
-    cursor: pointer;
+    padding: 7px 12px; border: 1.5px solid #E5E7EB; border-radius: 8px;
+    font-size: 13px; font-family: inherit; color: #374151; outline: none;
+    min-width: 80px; cursor: pointer;
 }
 
 .ar-req-card {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 14px 16px;
-    border-bottom: 1px solid #F3F4F6;
-    cursor: pointer;
-    transition: background .15s;
+    display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+    border-bottom: 1px solid #F3F4F6; cursor: pointer; transition: background .15s;
     position: relative;
 }
 .ar-req-card:hover     { background: #F9FAFB; }
@@ -527,18 +497,11 @@ ob_start();
 .ar-req-card input[type=checkbox] { margin-top: 4px; width:14px;height:14px;accent-color:#2563EB;cursor:pointer;flex-shrink:0; }
 
 .ar-req-av {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    background: #E5E7EB;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 700;
-    color: #374151;
-    flex-shrink: 0;
+    width: 38px; height: 38px; border-radius: 50%; background: #E5E7EB;
+    display: flex; align-items: center; justify-content: center; font-size: 12px;
+    font-weight: 700; color: #374151; flex-shrink: 0; overflow: hidden;
 }
+.ar-req-av img { width: 100%; height: 100%; object-fit: cover; }
 
 .ar-req-body { flex: 1; min-width: 0; }
 .ar-req-name { font-size: 13.5px; font-weight: 600; color: #111827; margin-bottom: 2px; }
@@ -547,94 +510,49 @@ ob_start();
 .ar-req-btns  { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .ar-btn-reject {
-    padding: 4px 12px;
-    border: 1.5px solid #DC2626;
-    border-radius: 5px;
-    background: #fff;
-    color: #DC2626;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    transition: background .15s;
+    padding: 4px 12px; border: 1.5px solid #DC2626; border-radius: 5px;
+    background: #fff; color: #DC2626; font-size: 12px; font-weight: 600;
+    cursor: pointer; font-family: inherit; transition: background .15s;
 }
 .ar-btn-reject:hover { background: #FEE2E2; }
 
 .ar-btn-approve {
-    padding: 4px 12px;
-    border: 1.5px solid #2563EB;
-    border-radius: 5px;
-    background: #fff;
-    color: #2563EB;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    transition: background .15s;
+    padding: 4px 12px; border: 1.5px solid #2563EB; border-radius: 5px;
+    background: #fff; color: #2563EB; font-size: 12px; font-weight: 600;
+    cursor: pointer; font-family: inherit; transition: background .15s;
 }
 .ar-btn-approve:hover { background: #EFF6FF; }
 
 .ar-btn-detail {
-    font-size: 12px;
-    font-weight: 500;
-    color: #2563EB;
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
-    padding: 4px 0;
-    text-decoration: none;
+    font-size: 12px; font-weight: 500; color: #2563EB; background: none;
+    border: none; cursor: pointer; font-family: inherit; padding: 4px 0; text-decoration: none;
 }
 .ar-btn-detail:hover { text-decoration: underline; }
 
 .ar-type-badge {
-    position: absolute;
-    top: 14px;
-    right: 14px;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-size: 11.5px;
-    font-weight: 600;
+    position: absolute; top: 14px; right: 14px; padding: 3px 10px;
+    border-radius: 20px; font-size: 11.5px; font-weight: 600;
 }
 .ar-type-badge.Attendance { background: #D1FAE5; color: #065F46; }
 .ar-type-badge.Leave      { background: #FEE2E2; color: #991B1B; }
 
-.ar-right {
-    padding: 18px 18px 24px;
-    overflow-y: auto;
-    max-height: 560px;
-}
+.ar-right { padding: 18px 18px 24px; overflow-y: auto; max-height: 560px; }
 .ar-right-head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 16px;
-    padding-bottom: 14px;
-    border-bottom: 1px solid #F3F4F6;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+    padding-bottom: 14px; border-bottom: 1px solid #F3F4F6;
 }
 .ar-right-av {
-    width: 42px;
-    height: 42px;
-    border-radius: 50%;
-    background: #E5E7EB;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: 700;
-    color: #374151;
-    flex-shrink: 0;
+    width: 42px; height: 42px; border-radius: 50%; background: #E5E7EB;
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+    font-weight: 700; color: #374151; flex-shrink: 0; overflow: hidden;
 }
+.ar-right-av img { width: 100%; height: 100%; object-fit: cover; }
 .ar-right-name { font-size: 14px; font-weight: 700; color: #111827; }
 .ar-right-type { font-size: 12px; color: #9CA3AF; margin-top: 2px; }
 
 .ar-detail-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 9px 0;
-    border-bottom: 1px solid #F9FAFB;
-    gap: 8px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 9px 0; border-bottom: 1px solid #F9FAFB; gap: 8px;
 }
 .ar-detail-row:last-child { border-bottom: none; }
 .ar-detail-label { font-size: 12.5px; color: #6B7280; font-weight: 400; white-space: nowrap; flex-shrink: 0; min-width: 110px; }
@@ -645,68 +563,44 @@ ob_start();
 .ar-comp-head { padding:18px 22px 14px; border-bottom:1px solid #F3F4F6; }
 .ar-comp-head h3 { font-size:15px;font-weight:700;color:#111827;margin-bottom:4px; }
 .ar-comp-head p  { font-size:12.5px;color:#9CA3AF; }
-.ar-comp-toolbar {
-    display:flex;align-items:center;gap:10px;padding:14px 22px;
-    flex-wrap:wrap;
-}
+.ar-comp-toolbar { display:flex;align-items:center;gap:10px;padding:14px 22px; flex-wrap:wrap; }
 .ar-comp-search {
-    display:flex;align-items:center;gap:8px;
-    padding:8px 12px;border:1.5px solid #E5E7EB;border-radius:8px;
-    background:#fff;transition:border-color .15s;flex:1;min-width:200px;
+    display:flex;align-items:center;gap:8px; padding:8px 12px;border:1.5px solid #E5E7EB;
+    border-radius:8px; background:#fff;transition:border-color .15s;flex:1;min-width:200px;
 }
 .ar-comp-search:focus-within { border-color:#2563EB; }
 .ar-comp-search svg { width:13px;height:13px;stroke:#9CA3AF;fill:none;stroke-width:2;stroke-linecap:round;flex-shrink:0; }
 .ar-comp-search input { border:none;outline:none;font-size:13px;font-family:inherit;color:#374151;background:transparent;width:100%; }
 .ar-comp-date-btn {
-    display:flex;align-items:center;gap:7px;padding:8px 14px;
-    border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;
-    font-weight:500;color:#374151;cursor:pointer;background:#fff;font-family:inherit;
-    transition:border-color .15s;white-space:nowrap;
+    display:flex;align-items:center;gap:7px;padding:8px 14px; border:1.5px solid #E5E7EB;
+    border-radius:8px;font-size:13px; font-weight:500;color:#374151;cursor:pointer;
+    background:#fff;font-family:inherit; transition:border-color .15s;white-space:nowrap;
 }
 .ar-comp-date-btn:hover { border-color:#2563EB; }
 .ar-comp-date-btn svg { width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round; }
 .ar-comp-filter-btn {
-    display:flex;align-items:center;gap:7px;padding:8px 14px;
-    border:1.5px solid #E5E7EB;border-radius:8px;font-size:13px;
-    font-weight:500;color:#374151;cursor:pointer;background:#fff;font-family:inherit;
-    transition:border-color .15s;
+    display:flex;align-items:center;gap:7px;padding:8px 14px; border:1.5px solid #E5E7EB;
+    border-radius:8px;font-size:13px; font-weight:500;color:#374151;cursor:pointer;
+    background:#fff;font-family:inherit; transition:border-color .15s;
 }
 .ar-comp-filter-btn:hover { border-color:#2563EB; }
 .ar-comp-filter-btn svg { width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2; }
-.ar-comp-select {
-    padding:8px 12px;border:1.5px solid #E5E7EB;border-radius:8px;
-    font-size:13px;font-family:inherit;color:#374151;outline:none;min-width:80px;
-}
+.ar-comp-select { padding:8px 12px;border:1.5px solid #E5E7EB;border-radius:8px; font-size:13px;font-family:inherit;color:#374151;outline:none;min-width:80px; }
 .ar-comp-search-btn {
     padding:8px 22px;background:#2563EB;color:#fff;border:none;border-radius:8px;
-    font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;
-    white-space:nowrap;
+    font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s; white-space:nowrap;
 }
 .ar-comp-search-btn:hover { background:#1D4ED8; }
 
-.ar-empty {
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    padding:50px 24px;gap:12px;
-}
+.ar-empty { display:flex;flex-direction:column;align-items:center;justify-content:center; padding:50px 24px;gap:12px; }
 .ar-empty p { font-size:13px;color:#9CA3AF;text-align:center; }
 
-.ar-empty-doc {
-    width:80px;height:96px;position:relative;
-}
-.ar-empty-doc-bg {
-    width:72px;height:88px;border-radius:8px;background:#E9EEF7;
-    position:relative;overflow:hidden;margin:0 auto;
-}
-.ar-empty-doc-top {
-    width:100%;height:22px;background:#8BA7CC;border-radius:8px 8px 0 0;
-}
+.ar-empty-doc { width:80px;height:96px;position:relative; }
+.ar-empty-doc-bg { width:72px;height:88px;border-radius:8px;background:#E9EEF7; position:relative;overflow:hidden;margin:0 auto; }
+.ar-empty-doc-top { width:100%;height:22px;background:#8BA7CC;border-radius:8px 8px 0 0; }
 .ar-empty-doc-lines { padding:8px 10px;display:flex;flex-direction:column;gap:6px; }
-.ar-empty-doc-line {
-    height:5px;border-radius:3px;background:#C8D8ED;
-}
-.ar-empty-robot-svg {
-    width:90px;height:90px;opacity:.35;
-}
+.ar-empty-doc-line { height:5px;border-radius:3px;background:#C8D8ED; }
+.ar-empty-robot-svg { width:90px;height:90px;opacity:.35; }
 
 .ar-toast {
     position:fixed;bottom:24px;left:90%;transform:translateX(-50%) translateY(80px);
@@ -717,96 +611,28 @@ ob_start();
 .ar-toast.show { transform:translateX(-50%) translateY(0); }
 
 /* only functional css for dropdown/date modal */
-.ar-filter-wrap {
-    position: relative;
-}
+.ar-filter-wrap { position: relative; }
 .ar-filter-menu {
-    display: none;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 8px);
-    min-width: 150px;
-    background: #fff;
-    border: 1px solid #E5E7EB;
-    border-radius: 10px;
-    box-shadow: 0 12px 35px rgba(0,0,0,.12);
-    padding: 6px;
-    z-index: 50;
+    display: none; position: absolute; right: 0; top: calc(100% + 8px);
+    min-width: 150px; background: #fff; border: 1px solid #E5E7EB;
+    border-radius: 10px; box-shadow: 0 12px 35px rgba(0,0,0,.12); padding: 6px; z-index: 50;
 }
-.ar-filter-wrap.open .ar-filter-menu {
-    display: block;
-}
+.ar-filter-wrap.open .ar-filter-menu { display: block; }
 .ar-filter-menu button {
-    width: 100%;
-    border: none;
-    background: transparent;
-    padding: 9px 10px;
-    text-align: left;
-    border-radius: 8px;
-    font-size: 12.5px;
-    color: #374151;
-    cursor: pointer;
-    font-family: inherit;
+    width: 100%; border: none; background: transparent; padding: 9px 10px;
+    text-align: left; border-radius: 8px; font-size: 12.5px; color: #374151;
+    cursor: pointer; font-family: inherit;
 }
-.ar-filter-menu button:hover {
-    background: #EFF6FF;
-    color: #2563EB;
-}
-.ar-date-modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,.45);
-    z-index: 9999;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-}
-.ar-date-modal.show {
-    display: flex;
-}
-.ar-date-box {
-    width: 100%;
-    max-width: 360px;
-    background: #fff;
-    border-radius: 16px;
-    padding: 18px;
-    box-shadow: 0 20px 60px rgba(0,0,0,.25);
-}
-.ar-date-box h3 {
-    font-size: 16px;
-    font-weight: 700;
-    margin-bottom: 14px;
-    color: #111827;
-}
-.ar-date-field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 12px;
-}
-.ar-date-field label {
-    font-size: 12px;
-    font-weight: 600;
-    color: #6B7280;
-}
-.ar-date-field input {
-    border: 1.5px solid #E5E7EB;
-    border-radius: 9px;
-    padding: 9px 10px;
-    font-size: 13px;
-    outline: none;
-    font-family: inherit;
-}
-.ar-date-field input:focus {
-    border-color: #2563EB;
-}
-.ar-date-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 16px;
-}
+.ar-filter-menu button:hover { background: #EFF6FF; color: #2563EB; }
+.ar-date-modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9999; display: none; align-items: center; justify-content: center; padding: 20px; }
+.ar-date-modal.show { display: flex; }
+.ar-date-box { width: 100%; max-width: 360px; background: #fff; border-radius: 16px; padding: 18px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.ar-date-box h3 { font-size: 16px; font-weight: 700; margin-bottom: 14px; color: #111827; }
+.ar-date-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.ar-date-field label { font-size: 12px; font-weight: 600; color: #6B7280; }
+.ar-date-field input { border: 1.5px solid #E5E7EB; border-radius: 9px; padding: 9px 10px; font-size: 13px; outline: none; font-family: inherit; }
+.ar-date-field input:focus { border-color: #2563EB; }
+.ar-date-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
 @media(max-width:1000px){
     .ar-split { grid-template-columns:260px 1fr; }
@@ -837,7 +663,7 @@ ob_start();
         ?>
         <a href="?tab=<?= esc($tkey) ?>"
            class="ar-tab <?= $active_tab === $tkey ? 'active' : '' ?>">
-           <?= esc($tlabel) ?>
+            <?= esc($tlabel) ?>
         </a>
         <?php endforeach; ?>
     </div>
@@ -846,7 +672,6 @@ ob_start();
 <?php if ($active_tab === 'insights'): ?>
 
 <div class="ar-stat-row">
-
     <div class="ar-stat-card">
         <div class="ar-stat-head">
             <span class="ar-stat-title">Total Approvals</span>
@@ -887,7 +712,6 @@ ob_start();
             </p>
         </div>
     </div>
-
 </div>
 
 <div class="ar-split no-right">
@@ -920,7 +744,13 @@ ob_start();
                 <?php $rid = (int)$req['id']; ?>
                 <div class="ar-req-card" data-type="<?= esc($req['type']) ?>" data-name="<?= esc(strtolower($req['emp_name'] . ' ' . $req['emp_code'])) ?>">
                     <input type="checkbox" class="req-chk" onclick="event.stopPropagation()">
-                    <div class="ar-req-av"><?= initials($req['emp_name']) ?></div>
+                    <div class="ar-req-av">
+                        <?php if (!empty($req['avatar'])): ?>
+                            <img src="<?= esc($req['avatar']) ?>" alt="<?= esc($req['emp_name']) ?>">
+                        <?php else: ?>
+                            <?= initials($req['emp_name']) ?>
+                        <?php endif; ?>
+                    </div>
                     <div class="ar-req-body">
                         <div class="ar-req-name"><?= esc($req['emp_name']) ?> - <?= esc($req['emp_code']) ?></div>
                         <div class="ar-req-stage"><?= esc($req['stage']) ?></div>
@@ -966,7 +796,13 @@ ob_start();
                 <?php $rid = (int)$req['id']; ?>
                 <div class="ar-req-card" data-type="<?= esc($req['type']) ?>" data-name="<?= esc(strtolower($req['emp_name'] . ' ' . $req['emp_code'])) ?>">
                     <input type="checkbox" class="req-chk" onclick="event.stopPropagation()">
-                    <div class="ar-req-av"><?= initials($req['emp_name']) ?></div>
+                    <div class="ar-req-av">
+                        <?php if (!empty($req['avatar'])): ?>
+                            <img src="<?= esc($req['avatar']) ?>" alt="<?= esc($req['emp_name']) ?>">
+                        <?php else: ?>
+                            <?= initials($req['emp_name']) ?>
+                        <?php endif; ?>
+                    </div>
                     <div class="ar-req-body">
                         <div class="ar-req-name"><?= esc($req['emp_name']) ?> - <?= esc($req['emp_code']) ?></div>
                         <div class="ar-req-stage"><?= esc($req['stage']) ?></div>
@@ -975,11 +811,13 @@ ob_start();
                             <form method="POST" style="display:inline">
                                 <input type="hidden" name="action" value="reject">
                                 <input type="hidden" name="req_id" value="<?= $rid ?>">
+                                <input type="hidden" name="emp_code" value="<?= esc($req['emp_code']) ?>">
                                 <button type="submit" class="ar-btn-reject">Reject</button>
                             </form>
                             <form method="POST" style="display:inline">
                                 <input type="hidden" name="action" value="approve">
                                 <input type="hidden" name="req_id" value="<?= $rid ?>">
+                                <input type="hidden" name="emp_code" value="<?= esc($req['emp_code']) ?>">
                                 <button type="submit" class="ar-btn-approve">Approve</button>
                             </form>
                         </div>
@@ -1035,7 +873,18 @@ ob_start();
                 <tbody>
                     <?php foreach ($pending_requests as $req): ?>
                     <tr style="border-bottom:1px solid #F3F4F6">
-                        <td style="padding:11px 16px;font-weight:500"><?= esc($req['emp_name']) ?> - <?= esc($req['emp_code']) ?></td>
+                        <td style="padding:11px 16px;font-weight:500">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <div class="ar-req-av" style="width:28px;height:28px;font-size:10px;">
+                                    <?php if (!empty($req['avatar'])): ?>
+                                        <img src="<?= esc($req['avatar']) ?>" alt="<?= esc($req['emp_name']) ?>">
+                                    <?php else: ?>
+                                        <?= initials($req['emp_name']) ?>
+                                    <?php endif; ?>
+                                </div>
+                                <?= esc($req['emp_name']) ?> - <?= esc($req['emp_code']) ?>
+                            </div>
+                        </td>
                         <td style="padding:11px 16px;color:#6B7280"><?= esc($req['type']) ?></td>
                         <td style="padding:11px 16px;color:#6B7280"><?= esc($req['action_at']) ?></td>
                         <td style="padding:11px 16px;color:#6B7280"><?= esc($req['stage']) ?></td>
@@ -1105,7 +954,13 @@ ob_start();
              data-name="<?= esc(strtolower(($req['emp_name'] ?? '') . ' ' . ($req['emp_code'] ?? ''))) ?>"
              onclick="selectReq(<?= $rid ?>)">
             <input type="checkbox" class="req-chk" onclick="event.stopPropagation()">
-            <div class="ar-req-av"><?= initials($req['emp_name'] ?? '') ?></div>
+            <div class="ar-req-av">
+                <?php if (!empty($req['avatar'])): ?>
+                    <img src="<?= esc($req['avatar']) ?>" alt="<?= esc($req['emp_name']) ?>">
+                <?php else: ?>
+                    <?= initials($req['emp_name'] ?? '') ?>
+                <?php endif; ?>
+            </div>
             <div class="ar-req-body">
                 <div class="ar-req-name"><?= esc($req['emp_name'] ?? '') ?> - <?= esc($req['emp_code'] ?? '') ?></div>
                 <div class="ar-req-stage"><?= esc($req['stage'] ?? '') ?></div>
@@ -1114,11 +969,13 @@ ob_start();
                     <form method="POST" style="display:inline" onclick="event.stopPropagation()">
                         <input type="hidden" name="action" value="reject">
                         <input type="hidden" name="req_id" value="<?= $rid ?>">
+                        <input type="hidden" name="emp_code" value="<?= esc($req['emp_code'] ?? '') ?>">
                         <button type="submit" class="ar-btn-reject">Reject</button>
                     </form>
                     <form method="POST" style="display:inline" onclick="event.stopPropagation()">
                         <input type="hidden" name="action" value="approve">
                         <input type="hidden" name="req_id" value="<?= $rid ?>">
+                        <input type="hidden" name="emp_code" value="<?= esc($req['emp_code'] ?? '') ?>">
                         <button type="submit" class="ar-btn-approve">Approve</button>
                     </form>
                     <button class="ar-btn-detail" onclick="event.stopPropagation();selectReq(<?= $rid ?>)">Detailed View</button>
@@ -1219,12 +1076,16 @@ function selectReq(id) {
         return;
     }
 
+    var avatarHtml = req.avatar 
+        ? `<img src="${escHtml(req.avatar)}" alt="${escHtml(req.emp_name)}">` 
+        : makeInitials(req.emp_name);
+
     var html = `
         <div class="ar-right-head">
-            <div class="ar-right-av">${makeInitials(req.emp_name)}</div>
+            <div class="ar-right-av">${avatarHtml}</div>
             <div>
                 <div class="ar-right-name">${escHtml(req.emp_name || '')}</div>
-                <div class="ar-right-type">${escHtml(req.type || '')} Request</div>
+                <div class="ar-right-type">${escHtml(req.type || '')} Request • ${escHtml(req.stage || '')}</div>
             </div>
         </div>
 
@@ -1265,7 +1126,7 @@ function selectReq(id) {
         html += `
             <div class="ar-detail-row">
                 <span class="ar-detail-label">Leave Type :</span>
-                <span class="ar-detail-val">${escHtml(req.reasons || '—')}</span>
+                <span class="ar-detail-val">${escHtml(req.leave_type || '—')}</span>
             </div>
         `;
     }
@@ -1285,12 +1146,14 @@ function selectReq(id) {
             <form method="POST" style="flex:1">
                 <input type="hidden" name="action" value="reject">
                 <input type="hidden" name="req_id" value="${escHtml(req.id || '')}">
+                <input type="hidden" name="emp_code" value="${escHtml(req.emp_code || '')}">
                 <button type="submit" class="ar-btn-reject" style="width:100%;padding:8px">Reject</button>
             </form>
 
             <form method="POST" style="flex:1">
                 <input type="hidden" name="action" value="approve">
                 <input type="hidden" name="req_id" value="${escHtml(req.id || '')}">
+                <input type="hidden" name="emp_code" value="${escHtml(req.emp_code || '')}">
                 <button type="submit" class="ar-btn-approve" style="width:100%;padding:8px">Approve</button>
             </form>
         </div>
@@ -1434,5 +1297,4 @@ include 'includes/header.php';
 echo $page_content;
 include 'includes/footer.php';
 ?>
-
 <script src="includes/assets/scripts.js"></script>

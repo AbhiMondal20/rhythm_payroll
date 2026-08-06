@@ -78,7 +78,8 @@ if outpunch time is over and employee forgot out punch then after 1 hour send a 
 
 Leave Accumulations - Pending (not urgent)
 Apply Leave - Pending (urgent)
-Leave - Pending (urgent)
+<!-- 05-08-26 -->
+Leave - Done
 Payroll - Pending (urgent)
 Taxes - Pending (urgent)
 Reports - Pending (not urgent)
@@ -110,9 +111,8 @@ Successfully published 2 GMB posts for each location:
 Siliguri, Coochbehar, and Raiganj.
 
 Payroll Module Progress
-   Fetch Employee Attendance from Biometric Devices – Completed
-   Calendar View - Completed
-   Manual Attendance - In Progress
+   Discrepancies - Done
+   Process Time Card - Working
 
 Insert
  check

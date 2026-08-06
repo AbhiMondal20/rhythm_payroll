@@ -44,7 +44,7 @@ if (isset($_POST['ajax_action'])) {
             $sql .= " AND `status` = '$status'";
         }
         if (!empty($group)) {
-            $sql .= " AND `grade` = '$group'"; // maps to structural configuration column
+            $sql .= " AND `grade` = '$group'";
         }
 
         $res = @mysqli_query($conn, $sql);

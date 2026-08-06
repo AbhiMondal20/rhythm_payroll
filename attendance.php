@@ -10,6 +10,58 @@ if (!isset($_SESSION['login'])) {
     exit();
 }
 
+// Helper: Split full status code into two halves (day_status_1 & day_status_2)
+function splitStatusToHalves($code) {
+    switch (trim($code)) {
+        case 'PP':   return ['P', 'P'];
+        case 'AA':   return ['A', 'A'];
+        case 'P*A':  return ['P', 'A'];
+        case 'A*P':  return ['A', 'P'];
+        case 'HO':   return ['HO', 'HO'];
+        case 'WO':   return ['WO', 'WO'];
+        case 'WW':   return ['WW', 'WW'];
+        case 'HW':   return ['HW', 'HW'];
+        case 'WW*':  return ['WW', 'WO'];
+        case '*WW':  return ['WO', 'WW'];
+        case 'HW*':  return ['HW', 'HO'];
+        case '*HW':  return ['HO', 'HW'];
+        case '*LOP': return ['P', 'LOP'];
+        case 'LOP*': return ['LOP', 'P'];
+        default:     return [$code ?: '-', $code ?: '-'];
+    }
+}
+
+function getCodeFromHalves($s1, $s2) {
+    $s1 = trim($s1);
+    $s2 = trim($s2);
+    if (in_array($s1, ['PP', 'AA', 'P*A', 'A*P', 'HO', 'WO', 'WW', 'HW', 'WW*', '*WW', 'HW*', '*HW', '*LOP', 'LOP*'])) {
+        return $s1;
+    }
+    if ($s1 === 'P' && $s2 === 'P') return 'PP';
+    if ($s1 === 'A' && $s2 === 'A') return 'AA';
+    if ($s1 === 'P' && $s2 === 'A') return 'P*A';
+    if ($s1 === 'A' && $s2 === 'P') return 'A*P';
+    if ($s1 === 'HO' && $s2 === 'HO') return 'HO';
+    if ($s1 === 'WO' && $s2 === 'WO') return 'WO';
+    if ($s1 === 'WW' && $s2 === 'WW') return 'WW';
+    if ($s1 === 'HW' && $s2 === 'HW') return 'HW';
+    if ($s1 === 'WW' && $s2 === 'WO') return 'WW*';
+    if ($s1 === 'WO' && $s2 === 'WW') return '*WW';
+    if ($s1 === 'HW' && $s2 === 'HO') return 'HW*';
+    if ($s1 === 'HO' && $s2 === 'HW') return '*HW';
+    if ($s1 === 'P' && $s2 === 'LOP') return '*LOP';
+    if ($s1 === 'LOP' && $s2 === 'P') return 'LOP*';
+    return 'PP';
+}
+
+function getPillClass($status) {
+    $status = strtoupper(trim($status));
+    if ($status === 'P') return 'pill-p';
+    if ($status === 'A' || $status === 'LOP') return 'pill-a';
+    if ($status === 'WO' || $status === 'HO') return 'pill-wo';
+    return 'pill-other';
+}
+
 if (isset($_GET['ajax_search'])) {
     require_once 'includes/config.php';
     require_once 'includes/db_client.php';
@@ -18,7 +70,7 @@ if (isset($_GET['ajax_search'])) {
     $results = [];
     
     if (isset($conn)) {
-        $search = mysqli_real_escape_string($conn, trim($_GET['ajax_search']));
+        $search = mysqli_real_escape_string($conn, trim($_GET['ajax_search'] ?? ''));
         if (!empty($search)) {
             $sql = "SELECT employee_code, employee_name FROM employees 
                     WHERE employee_name LIKE '%$search%' 
@@ -43,9 +95,14 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_entry') {
     header('Content-Type: application/json');
 
     if (isset($conn)) {
-        $emp_code = mysqli_real_escape_string($conn, $_POST['emp_code']);
-        $entry_date = mysqli_real_escape_string($conn, $_POST['entry_date']);
+        $emp_code = mysqli_real_escape_string($conn, $_POST['emp_code'] ?? '');
+        $entry_date = mysqli_real_escape_string($conn, $_POST['entry_date'] ?? '');
         
+        if (empty($emp_code) || empty($entry_date)) {
+            echo json_encode(['success' => false, 'error' => 'Missing employee code or entry date.']);
+            exit;
+        }
+
         $delete_sql = "DELETE FROM time_entries WHERE employee_code = '$emp_code' AND entry_date = '$entry_date'";
 
         if (mysqli_query($conn, $delete_sql)) {
@@ -66,21 +123,30 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
     header('Content-Type: application/json');
 
     if (isset($conn)) {
-        $emp_code = mysqli_real_escape_string($conn, $_POST['emp_code']);
-        $entry_date = mysqli_real_escape_string($conn, $_POST['entry_date']);
+        $emp_code = mysqli_real_escape_string($conn, $_POST['emp_code'] ?? '');
+        $entry_date = mysqli_real_escape_string($conn, $_POST['entry_date'] ?? '');
         
-        $day_status = mysqli_real_escape_string($conn, $_POST['day_status']);
-        $check_in = mysqli_real_escape_string($conn, $_POST['check_in']);
-        $check_out = mysqli_real_escape_string($conn, $_POST['check_out']);
-        $hours_worked = mysqli_real_escape_string($conn, $_POST['hours_worked']);
-        $over_time = mysqli_real_escape_string($conn, $_POST['over_time']);
-        $under_time = mysqli_real_escape_string($conn, $_POST['under_time']);
-        $normal_hours = mysqli_real_escape_string($conn, $_POST['normal_hours']);
-        $late_hours = mysqli_real_escape_string($conn, $_POST['late_hours']);
-        $early_hours = mysqli_real_escape_string($conn, $_POST['early_hours']);
-        $status_code = mysqli_real_escape_string($conn, $_POST['status_code']);
-        $remarks = mysqli_real_escape_string($conn, $_POST['remarks']);
-        $calc_in_out = ($_POST['calc_in_out'] === 'true') ? 1 : 0;
+        if (empty($emp_code) || empty($entry_date)) {
+            echo json_encode(['success' => false, 'error' => 'Missing employee code or entry date.']);
+            exit;
+        }
+
+        $day_status = mysqli_real_escape_string($conn, $_POST['day_status'] ?? '');
+        $halves = splitStatusToHalves($day_status);
+        $day_status_1 = mysqli_real_escape_string($conn, $halves[0]);
+        $day_status_2 = mysqli_real_escape_string($conn, $halves[1]);
+
+        $check_in = mysqli_real_escape_string($conn, $_POST['check_in'] ?? '');
+        $check_out = mysqli_real_escape_string($conn, $_POST['check_out'] ?? '');
+        $hours_worked = mysqli_real_escape_string($conn, $_POST['hours_worked'] ?? '');
+        $over_time = mysqli_real_escape_string($conn, $_POST['over_time'] ?? '');
+        $under_time = mysqli_real_escape_string($conn, $_POST['under_time'] ?? '');
+        $normal_hours = mysqli_real_escape_string($conn, $_POST['normal_hours'] ?? '');
+        $late_hours = mysqli_real_escape_string($conn, $_POST['late_hours'] ?? '');
+        $early_hours = mysqli_real_escape_string($conn, $_POST['early_hours'] ?? '');
+        $status_code = mysqli_real_escape_string($conn, $_POST['status_code'] ?? '');
+        $remarks = mysqli_real_escape_string($conn, $_POST['remarks'] ?? '');
+        $calc_in_out = (isset($_POST['calc_in_out']) && $_POST['calc_in_out'] === 'true') ? 1 : 0;
 
         $check_in_val = !empty($check_in) ? "'$check_in'" : "NULL";
         $check_out_val = !empty($check_out) ? "'$check_out'" : "NULL";
@@ -90,7 +156,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
 
         if (mysqli_num_rows($check_res) > 0) {
             $sql = "UPDATE time_entries SET 
-                day_status_1 = '$day_status',
+                day_status_1 = '$day_status_1',
+                day_status_2 = '$day_status_2',
                 check_in_time = $check_in_val,
                 check_out_time = $check_out_val,
                 hours_worked = '$hours_worked',
@@ -106,11 +173,11 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_entry') {
                 WHERE employee_code = '$emp_code' AND entry_date = '$entry_date'";
         } else {
             $sql = "INSERT INTO time_entries (
-                employee_code, entry_date, day_status_1, check_in_time, check_out_time, 
+                employee_code, entry_date, day_status_1, day_status_2, check_in_time, check_out_time, 
                 hours_worked, over_time_hours, under_time_hours, normal_hours, 
                 late_hours, early_hours, status_code, remarks, calculate_per_in_out, record_status
             ) VALUES (
-                '$emp_code', '$entry_date', '$day_status', $check_in_val, $check_out_val, 
+                '$emp_code', '$entry_date', '$day_status_1', '$day_status_2', $check_in_val, $check_out_val, 
                 '$hours_worked', '$over_time', '$under_time', '$normal_hours', 
                 '$late_hours', '$early_hours', '$status_code', '$remarks', '$calc_in_out', 'Manual'
             )";
@@ -167,23 +234,31 @@ function formatTimeForDisplay($timeString) {
     return $timeString;
 }
 
-if (!empty($date_range) && strpos($date_range, ' to ') !== false) {
-    $dates = explode(' to ', $date_range);
-    if (count($dates) == 2) {
-        $start_timestamp = strtotime($dates[0]);
-        $end_timestamp = strtotime($dates[1]);
-        if ($start_timestamp !== false && $end_timestamp !== false) {
-            $start_date = date('Y-m-d', $start_timestamp);
-            $end_date = date('Y-m-d', $end_timestamp);
+if (!empty($date_range)) {
+    if (strpos($date_range, ' to ') !== false) {
+        $dates = explode(' to ', $date_range);
+        if (count($dates) == 2) {
+            $start_timestamp = strtotime($dates[0]);
+            $end_timestamp = strtotime($dates[1]);
+            if ($start_timestamp !== false && $end_timestamp !== false) {
+                $start_date = date('Y-m-d', $start_timestamp);
+                $end_date = date('Y-m-d', $end_timestamp);
+            } else {
+                $start_date = date('Y-m-01');
+                $end_date = date('Y-m-d'); 
+                $date_range = date('d M Y', strtotime($start_date)) . ' to ' . date('d M Y', strtotime($end_date));
+            }
+        }
+    } else {
+        $single_timestamp = strtotime($date_range);
+        if ($single_timestamp !== false) {
+            $start_date = date('Y-m-d', $single_timestamp);
+            $end_date = date('Y-m-d', $single_timestamp);
         } else {
             $start_date = date('Y-m-01');
             $end_date = date('Y-m-d'); 
             $date_range = date('d M Y', strtotime($start_date)) . ' to ' . date('d M Y', strtotime($end_date));
         }
-    } else {
-        $start_date = date('Y-m-01');
-        $end_date = date('Y-m-d'); 
-        $date_range = date('d M Y', strtotime($start_date)) . ' to ' . date('d M Y', strtotime($end_date));
     }
 } else {
     $start_date = date('Y-m-01');
@@ -212,7 +287,6 @@ if ($is_searched && isset($conn)) {
         
         $time_sql .= "employee_code = '$safe_emp_code'";
         
-        // Fetch Shift Assignments checking BOTH id and employee_code
         $assign_sql = "SELECT sa.start_date, sa.end_date, sa.weekdays, s.shift_name 
                        FROM att_shift_assignments sa
                        LEFT JOIN att_shifts s ON sa.shift_id = s.id
@@ -252,10 +326,9 @@ if ($is_searched && isset($conn)) {
 
         foreach ($period as $dt) {
             $date_str = $dt->format('Y-m-d');
-            $day_num = $dt->format('N'); // 1-7 (Mon-Sun)
-            $day_short = $dt->format('D'); // Mon, Tue...
+            $day_num = $dt->format('N');
+            $day_short = $dt->format('D');
             
-            // Shift Assignment Logic
             $assigned_shift_name = 'Not Assigned';
             
             foreach ($shift_assignments as $assign) {
@@ -287,11 +360,13 @@ if ($is_searched && isset($conn)) {
             } else {
                 $is_sunday = ($day_num == 7);
                 $default_status = $is_sunday ? 'WO' : 'AA'; 
+                $default_halves = splitStatusToHalves($default_status);
                 
                 $time_entries[] = [
                     'employee_code' => $emp_code,
                     'entry_date' => $date_str,
-                    'day_status_1' => $default_status,
+                    'day_status_1' => $default_halves[0],
+                    'day_status_2' => $default_halves[1],
                     'check_in_time' => null,
                     'check_out_time' => null,
                     'hours_worked' => '',
@@ -312,7 +387,6 @@ if ($is_searched && isset($conn)) {
 }
 ob_start();
 ?>
-
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="includes/assets/style.css">
 
@@ -396,10 +470,45 @@ ob_start();
     .empty-state h5 { font-size: 15px; font-weight: 600; color: #111827; margin-bottom: 20px; }
     .empty-state-svg { max-width: 300px; height: auto; opacity: 0.9; }
 
-    .status-badge { display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 11px; font-weight: 600; padding: 2px 6px; margin-right: 2px; }
-    .status-p { background-color: #e6f4ea; color: #1e8e3e; border: 1px solid #ceead6; }
-    .status-a { background-color: #fce8e6; color: #d93025; border: 1px solid #fad2cf; }
-    .status-other { background-color: #fef3c7; color: #d97706; border: 1px solid #fde68a; }
+    /* Updated Dual Status Pill Styling */
+    .status-pill-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 34px;
+        height: 28px;
+        padding: 0 8px;
+        border-radius: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    }
+    .status-pill.pill-p {
+        background-color: #ecfdf5;
+        color: #059669;
+        border: 1px solid #a7f3d0;
+    }
+    .status-pill.pill-a {
+        background-color: #fef2f2;
+        color: #dc2626;
+        border: 1px solid #fecaca;
+    }
+    .status-pill.pill-wo {
+        background-color: #f3f4f6;
+        color: #4b5563;
+        border: 1px solid #e5e7eb;
+    }
+    .status-pill.pill-other {
+        background-color: #fffbeb;
+        color: #d97706;
+        border: 1px solid #fde68a;
+    }
+
     .system-badge { background-color: #e8f0fe; color: #1967d2; border-radius: 20px; padding: 3px 25px; border: 1px solid #d2e3fc; font-size: 12.5px; font-weight: 500; }
     
     .table-container { border-radius: 6px; overflow: hidden; width: 100%; border: 1px solid #e5e7eb; }
@@ -451,8 +560,7 @@ ob_start();
     }
 </style>
 
-<div class="container">
-    
+<div class="container">    
     <div class="flex-between mb-1">
         <h4 class="text-dark fw-bold m-0" style="font-size: 1.25rem;">Attendance</h4>
         <div class="attendance-tabs m-0 border-0">
@@ -472,8 +580,7 @@ ob_start();
 
     <div class="card shadow-sm mt-2">
         <div class="card-body p-4">
-            <h6 class="text-dark fw-bold mb-4" style="font-size: 13.5px; letter-spacing: 0.5px; margin-top: 0; text-transform: uppercase;">TIME ENTRIES</h6>
-            
+            <h6 class="text-dark fw-bold mb-4" style="font-size: 13.5px; letter-spacing: 0.5px; margin-top: 0; text-transform: uppercase;">TIME ENTRIES</h6>            
             <form method="GET" action="" class="filter-bar" id="filterForm">
                 <div class="search-wrapper">
                     <?php if ($is_searched): ?>
@@ -489,8 +596,7 @@ ob_start();
                         <input type="hidden" id="employeeSearchHidden" name="employee" value="">
                         <div id="autocompleteDropdown" class="autocomplete-dropdown"></div>
                     <?php endif; ?>
-                </div>
-                
+                </div>                
                 <div class="date-dropdown">
                     <i class="bi bi-calendar"></i>
                     <input type="text" name="date_range" id="dateRange" placeholder="Select Date Range" value="<?= htmlspecialchars($date_range) ?>">
@@ -499,7 +605,6 @@ ob_start();
             </form>
 
             <?php if (!$is_searched): ?>
-                
                 <div class="empty-state">
                     <h5>Search employees to edit their time entries</h5>
                     <svg class="empty-state-svg mt-3" viewBox="0 0 400 250" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -582,25 +687,26 @@ ob_start();
                         <tbody>
                             <?php if (!empty($time_entries)): ?>
                                 <?php foreach ($time_entries as $index => $row): 
-                                    $dateFormatted = date('d M, D', strtotime($row['entry_date']));                                 
-                                    
+                                    $dateFormatted = date('d M, D', strtotime($row['entry_date']));                                    
                                     $isToday = ($row['entry_date'] === date('Y-m-d'));
                                     $highlightClass = $isToday ? 'current-date-row' : '';
 
-                                    $rawStatus = $row['day_status_1'] ?? '';
-                                    if (in_array($rawStatus, ['PP', 'P*A', 'A*P'])) {
-                                        $badgeClass = 'status-p';
-                                    } elseif (in_array($rawStatus, ['AA', 'LOP*', '*LOP'])) {
-                                        $badgeClass = 'status-a';
-                                    } else {
-                                        $badgeClass = 'status-other';
+                                    // Get status halves for side-by-side pills
+                                    $half1 = !empty($row['day_status_1']) ? trim($row['day_status_1']) : '-';
+                                    $half2 = !empty($row['day_status_2']) ? trim($row['day_status_2']) : '-';
+
+                                    // If old row only had full code like 'PP' stored in day_status_1, split it
+                                    if ($half2 === '-' && in_array($half1, array_keys($status_options))) {
+                                        $split = splitStatusToHalves($half1);
+                                        $half1 = $split[0];
+                                        $half2 = $split[1];
                                     }
-                                    
-                                    $displayStatus = $status_options[$rawStatus] ?? ($rawStatus ?: '-Select-');
-                                    
-                                    // Yaha ab shift display hoga jaisa assigned hai
+
+                                    $pillClass1 = getPillClass($half1);
+                                    $pillClass2 = getPillClass($half2);
+
+                                    $selectedCode = getCodeFromHalves($row['day_status_1'] ?? '', $row['day_status_2'] ?? '');
                                     $shiftDisplay = $row['assigned_shift_name'] ?? 'Not Assigned';
-                                    
                                     $rowId = "row-" . $index . "-details";
                                 ?>
                                     <tr class="<?= $highlightClass ?>">
@@ -611,21 +717,33 @@ ob_start();
                                             <?php endif; ?>
                                         </td>
                                         <td>
-                                            <span class="status-badge <?= $badgeClass ?>">
-                                                <?= htmlspecialchars($displayStatus) ?>
-                                            </span> 
+                                            <div class="status-pill-group">
+                                                <span class="status-pill <?= $pillClass1 ?>"><?= htmlspecialchars($half1) ?></span>
+                                                <span class="status-pill <?= $pillClass2 ?>"><?= htmlspecialchars($half2) ?></span>
+                                            </div>
                                         </td>
                                         <td><?= htmlspecialchars($shiftDisplay) ?></td>
-                                        
                                         <td>
-                                            <?php if (empty($row['check_in_time']) && empty($row['check_out_time'])): ?>
-                                                -
-                                            <?php else: ?>
-                                                <?= !empty($row['check_in_time']) ? htmlspecialchars(date('h:i A', strtotime($row['check_in_time']))) : '--:--' ?> - 
-                                                <?= !empty($row['check_out_time']) ? htmlspecialchars(date('h:i A', strtotime($row['check_out_time']))) : '--:--' ?>
-                                            <?php endif; ?>
+                                            <?php
+                                            $checkIn  = (!empty($row['check_in_time']) && $row['check_in_time'] != '0000-00-00 00:00:00')
+                                                        ? date('h:i A', strtotime($row['check_in_time']))
+                                                        : '';
+
+                                            $checkOut = (!empty($row['check_out_time']) && $row['check_out_time'] != '0000-00-00 00:00:00')
+                                                        ? date('h:i A', strtotime($row['check_out_time']))
+                                                        : '';
+
+                                            if ($checkIn && $checkOut) {
+                                                echo htmlspecialchars($checkIn) . ' - ' . htmlspecialchars($checkOut);
+                                            } elseif ($checkIn) {
+                                                echo htmlspecialchars($checkIn);
+                                            } elseif ($checkOut) {
+                                                echo htmlspecialchars($checkOut);
+                                            } else {
+                                                echo '-';
+                                            }
+                                            ?>
                                         </td>
-                                        
                                         <td>
                                             <?php 
                                             $hrs = formatTimeForDisplay($row['hours_worked'] ?? '');
@@ -644,7 +762,7 @@ ob_start();
                                                         <label class="form-label">Day Status</label>
                                                         <select class="form-select upd-day-status">
                                                             <?php foreach($status_options as $val => $label): ?>
-                                                                <option value="<?= htmlspecialchars($val) ?>" <?= (($row['day_status_1'] ?? '') === $val) ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                                                                <option value="<?= htmlspecialchars($val) ?>" <?= ($selectedCode === $val) ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
                                                             <?php endforeach; ?>
                                                         </select>
                                                     </div>
@@ -708,10 +826,10 @@ ob_start();
 
                                                 <div class="flex-end gap-2 mt-5">
                                                     <?php if (!empty($row['record_status']) && $row['record_status'] !== 'System'): ?>
-                                                        <button class="btn btn-outline-danger" onclick="deleteTimeEntry('<?= $row['employee_code'] ?>', '<?= $row['entry_date'] ?>')">Delete</button>
+                                                        <button class="btn btn-outline-danger" onclick="deleteTimeEntry('<?= htmlspecialchars($row['employee_code'], ENT_QUOTES) ?>', '<?= htmlspecialchars($row['entry_date'], ENT_QUOTES) ?>')">Delete</button>
                                                     <?php endif; ?>
                                                     <button class="btn btn-outline-primary" onclick="toggleRow('<?= $rowId ?>', this.closest('.expandable-row').previousElementSibling.querySelector('i'))">Cancel</button>
-                                                    <button class="btn btn-primary" onclick="saveTimeEntry(this, '<?= $row['employee_code'] ?>', '<?= $row['entry_date'] ?>')">Save</button>
+                                                    <button class="btn btn-primary" onclick="saveTimeEntry(this, '<?= htmlspecialchars($row['employee_code'], ENT_QUOTES) ?>', '<?= htmlspecialchars($row['entry_date'], ENT_QUOTES) ?>')">Save</button>
                                                 </div>
                                             </div>
                                         </td>
