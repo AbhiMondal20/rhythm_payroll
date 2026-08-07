@@ -314,9 +314,64 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator { color: #0066F
 /* ── Search & Filter Row ── */
 .search-filter-row { display: flex; align-items: center; gap: 15px; margin-bottom: 25px; max-width: 500px; }
 .search-line-wrapper { position: relative; flex: 1; }
-.search-line-wrapper svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: #9CA3AF; fill: none; stroke-width: 2; }
-.search-line-wrapper input { width: 100%; padding: 8px 10px 8px 36px; border: 1px solid #D1D5DB; border-radius: 4px; font-size: 14px; outline: none; transition: border-color 0.2s; box-sizing: border-box; }
-.search-line-wrapper input:focus { border-color: #0066FF; }
+.search-line-wrapper > svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: #9CA3AF; fill: none; stroke-width: 2; }
+.search-line-wrapper > input { width: 100%; padding: 8px 10px 8px 36px; border: 1px solid #D1D5DB; border-radius: 4px; font-size: 14px; outline: none; transition: border-color 0.2s; box-sizing: border-box; }
+.search-line-wrapper > input:focus { border-color: #0066FF; }
+
+/* ── Custom Employee Search Dropdown ── */
+.autocomplete-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 100%;
+    background: #fff;
+    border: 1px solid #D1D5DB;
+    border-radius: 4px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+}
+.autocomplete-list {
+    max-height: 250px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.autocomplete-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    cursor: pointer;
+    border-bottom: 1px solid #F3F4F6;
+    transition: background-color 0.1s;
+}
+.autocomplete-item:last-child {
+    border-bottom: none;
+}
+.autocomplete-item:hover {
+    background: #F9FAFB;
+}
+.autocomplete-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: #9CA3AF; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    margin-right: 15px; flex-shrink: 0;
+}
+.autocomplete-text {
+    font-size: 14px; color: #4B5563;
+}
+.autocomplete-footer {
+    padding: 12px 15px; border-top: 1px solid #E5E7EB;
+    font-size: 13px; color: #0066FF; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    background: #fff; border-radius: 0 0 4px 4px;
+}
+.autocomplete-footer:hover {
+    background: #F9FAFB;
+    text-decoration: underline;
+}
 
 .btn-filters { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #D1D5DB; color: #4B5563; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; height: 36px; }
 .btn-filters:hover { background: #F9FAFB; border-color: #9CA3AF; }
@@ -374,13 +429,6 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator { color: #0066F
 
 .modal-footer { padding: 16px 24px; border-top: 1px solid #E5E7EB; display: flex; justify-content: flex-end; gap: 10px; background: #F9FAFB; border-radius: 0 0 8px 8px; }
 </style>
-
-<datalist id="employeeList">
-    <?php foreach ($employees as $emp): ?>
-    <option value="<?= htmlspecialchars($emp['employee_name'] . ' (#' . $emp['employee_code'] . ')') ?>">
-    <?php endforeach; ?>
-</datalist>
-
 
 <div class="payroll-header-wrapper">
     <div class="title-wrapper">
@@ -458,7 +506,19 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator { color: #0066F
             <div class="search-filter-row" style="margin: 0;">
                 <div class="search-line-wrapper">
                     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    <input type="text" id="mainEmpSearch" list="employeeList" placeholder="Search by name or #code" autocomplete="off" onchange="addSingleEmployeeFromSearch()">
+                    <input type="text" id="mainEmpSearch" placeholder="Search by name or #code" autocomplete="off">
+                    
+                    <!-- Custom Dropdown Container -->
+                    <div id="customEmpDropdown" class="autocomplete-dropdown">
+                        <ul id="customEmpList" class="autocomplete-list"></ul>
+                        <div class="autocomplete-footer" onclick="openFilterModal()">
+                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            Browse Active & Inactive Employees
+                        </div>
+                    </div>
                 </div>
                 <button type="button" class="btn-filters" onclick="openFilterModal()">
                     <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
@@ -550,10 +610,74 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator { color: #0066F
 
 <script>
 // ==========================================
-// SWEET ALERT ON SUCCESS
+// CUSTOM EMPLOYEE SEARCH DROPDOWN LOGIC
 // ==========================================
+const allEmployeesList = <?= json_encode($employees) ?>;
+
 document.addEventListener("DOMContentLoaded", function() {
-    
+    // Dropdown event listeners
+    const searchInput = document.getElementById('mainEmpSearch');
+    const dropdown = document.getElementById('customEmpDropdown');
+    const list = document.getElementById('customEmpList');
+
+    if(searchInput) {
+        // Handle typing in the search bar
+        searchInput.addEventListener('input', function() {
+            const val = this.value.toLowerCase().trim();
+            list.innerHTML = '';
+            
+            if (!val) {
+                dropdown.style.display = 'none';
+                return;
+            }
+
+            const filtered = allEmployeesList.filter(emp => 
+                emp.employee_name.toLowerCase().includes(val) || 
+                emp.employee_code.toLowerCase().includes(val)
+            );
+
+            if (filtered.length > 0) {
+                filtered.forEach(emp => {
+                    const li = document.createElement('li');
+                    li.className = 'autocomplete-item';
+                    li.innerHTML = `
+                        <div class="autocomplete-avatar">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                        </div>
+                        <div class="autocomplete-text">${emp.employee_name} - #${emp.employee_code}</div>
+                    `;
+                    
+                    // Add employee on click
+                    li.addEventListener('click', function() {
+                        addEmployeeToSelection(emp.employee_code, emp.employee_name);
+                        searchInput.value = '';
+                        dropdown.style.display = 'none';
+                    });
+                    
+                    list.appendChild(li);
+                });
+            } else {
+                list.innerHTML = '<li style="padding:15px; color:#9CA3AF; font-size:13px; text-align:center;">No employees found</li>';
+            }
+            
+            dropdown.style.display = 'flex';
+        });
+
+        // Show dropdown if input has value on focus
+        searchInput.addEventListener('focus', function() {
+            if (this.value.trim() !== '') {
+                dropdown.style.display = 'flex';
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+    }
+
     // Initialize the Pay Periods and Dates on page load
     updatePayPeriods();
 
@@ -704,16 +828,6 @@ function updateDateRange() {
 // EMPLOYEE SELECTION LOGIC
 // ==========================================
 let selectedEmployees = [];
-
-function addSingleEmployeeFromSearch() {
-    const input = document.getElementById('mainEmpSearch');
-    const val = input.value.trim();
-    if (val) {
-        const match = val.match(/(.+) \(#(.+)\)/);
-        if (match) { addEmployeeToSelection(match[2].trim(), match[1].trim()); }
-        input.value = ''; 
-    }
-}
 
 function addEmployeeToSelection(id, name) {
     if (!selectedEmployees.find(e => e.id === id)) {

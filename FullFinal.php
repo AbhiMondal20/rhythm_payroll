@@ -9,6 +9,22 @@ require_once 'includes/db_client.php';
 
 $page_title = 'Payroll - Full Final Settlement';
 
+// Fetch active employees for live autocomplete search
+$employees = [];
+if (isset($conn) && $conn instanceof PDO) {
+    $emp_stmt = $conn->query("SELECT `employee_code`, `employee_name` FROM `employees` WHERE `status` = 'Active' OR `status` = '1'");
+    if ($emp_stmt) {
+        $employees = $emp_stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+} elseif (isset($conn) && $conn instanceof mysqli) {
+    $emp_res = @mysqli_query($conn, "SELECT `employee_code`, `employee_name` FROM `employees` WHERE `status` = 'Active' OR `status` = '1'");
+    if ($emp_res) {
+        while ($row = mysqli_fetch_assoc($emp_res)) {
+            $employees[] = $row;
+        }
+    }
+}
+
 // Simulate an employee search query
 $search_query = isset($_GET['search']) ? trim($_GET['search']) : '';
 $employee_selected = false;
@@ -20,12 +36,7 @@ $has_pf = false;
 $has_pt = false;
 
 if (!empty($search_query)) {
-    /* * DYNAMIC FETCH LOGIC
-     * Assuming $conn is your database connection variable from db_client.php
-     * We use a LEFT JOIN to pull the related ESI/PF/PT flags from ctc_templates
-     */
-    
-    // Example using PDO (Recommended for security):
+    // Example using PDO:
     if (isset($conn) && $conn instanceof PDO) {
         $sql = "SELECT e.*, c.pf_applicable, c.esi_applicable, c.pt_state 
                 FROM employees e 
@@ -40,7 +51,7 @@ if (!empty($search_query)) {
         ]);
         $emp_data = $stmt->fetch(PDO::FETCH_ASSOC);
     } 
-    // Example using MySQLi (Fallback if you use standard MySQLi):
+    // Example using MySQLi:
     elseif (isset($conn) && $conn instanceof mysqli) {
         $sql = "SELECT e.*, c.pf_applicable, c.esi_applicable, c.pt_state 
                 FROM employees e 
@@ -58,11 +69,11 @@ if (!empty($search_query)) {
 
     if ($emp_data) {
         $employee_selected = true;
+        $now = new DateTime();
         
         // Calculate Age from Date of Birth
         if (!empty($emp_data['dob'])) {
             $dob = new DateTime($emp_data['dob']);
-            $now = new DateTime();
             $age = $now->diff($dob)->y;
         }
         
@@ -72,7 +83,7 @@ if (!empty($search_query)) {
             $doj_formatted = $doj->format('d M Y');
         }
         
-        // Determine Checkbox States based on CTC template or employee IDs
+        // Determine Checkbox States
         $has_esi = (!empty($emp_data['esi_applicable']) && $emp_data['esi_applicable'] == 1) || !empty($emp_data['esi_no']);
         $has_pf = (!empty($emp_data['pf_applicable']) && $emp_data['pf_applicable'] == 1) || !empty($emp_data['uan']);
         $has_pt = !empty($emp_data['pt_state']);
@@ -161,36 +172,115 @@ ob_start();
     margin-bottom: 40px;
 }
 
-/* ── Search Bar ── */
+/* ── Search Container & Autocomplete ── */
 .search-container {
     padding: 20px 24px;
     background: #fff;
     border-bottom: 1px solid #E5E7EB;
-    display: flex;
-    gap: 15px;
 }
 
-.search-container input {
-    padding: 8px 12px;
+.search-wrapper {
+    position: relative;
+    width: 320px;
+}
+
+.search-wrapper > svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    stroke: #9CA3AF;
+    fill: none;
+    stroke-width: 2;
+    pointer-events: none;
+}
+
+.search-input {
+    width: 100%;
+    padding: 8px 12px 8px 36px;
     border: 1px solid #D1D5DB;
     border-radius: 4px;
-    width: 300px;
-    outline: none;
     font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
 }
 
-.search-container input:focus {
-    border-color: #2563EB;
+.search-input:focus {
+    border-color: #0066FF;
 }
 
 .btn-search {
     background: #0066FF;
     color: #fff;
     border: none;
-    padding: 8px 16px;
+    padding: 8px 20px;
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
+    font-weight: 500;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.btn-search:hover {
+    background: #0052cc;
+}
+
+/* Dropdown list popup */
+.autocomplete-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 100%;
+    background: #fff;
+    border: 1px solid #D1D5DB;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    display: none;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.autocomplete-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.autocomplete-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid #F3F4F6;
+    transition: background-color 0.1s;
+    color: #374151;
+    font-size: 14px;
+}
+
+.autocomplete-item:last-child {
+    border-bottom: none;
+}
+
+.autocomplete-item:hover {
+    background-color: #F9FAFB;
+}
+
+.autocomplete-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background-color: #9CA3AF;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    flex-shrink: 0;
 }
 
 /* ── Employee Details Header ── */
@@ -248,14 +338,14 @@ ob_start();
     appearance: none;
     width: 18px;
     height: 18px;
-    background-color: #E5E7EB; /* Default gray for unchecked */
+    background-color: #E5E7EB;
     border-radius: 3px;
     position: relative;
     transition: background-color 0.2s;
 }
 
 .checkbox-group input[type="checkbox"]:checked {
-    background-color: #10B981; /* Green when checked */
+    background-color: #10B981;
 }
 
 .checkbox-group input[type="checkbox"]:checked::after {
@@ -428,10 +518,18 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator {
     <div class="card-top-bar">
         <div class="breadcrumb"><strong>Payroll</strong> &nbsp;&gt;&nbsp; Final Settlement</div>
     </div>
+    
     <div class="search-container">
-        <form method="GET" action="" style="display: flex; gap: 10px; margin: 0; width: 100%;">
-            <input type="text" name="search" placeholder="Search by name or #code"
-                value="<?= htmlspecialchars($search_query) ?>">
+        <form method="GET" action="" id="searchForm" style="display: flex; gap: 12px; align-items: center; margin: 0;">
+            <div class="search-wrapper">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" name="search" id="employeeSearchInput" class="search-input" placeholder="Search by name or #code" value="<?= htmlspecialchars($search_query) ?>" autocomplete="off">
+                
+                <!-- Autocomplete Dropdown List -->
+                <div id="autocompleteDropdown" class="autocomplete-dropdown">
+                    <ul id="autocompleteList" class="autocomplete-list"></ul>
+                </div>
+            </div>
             <button type="submit" class="btn-search">Get Details</button>
         </form>
     </div>
@@ -482,6 +580,7 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator {
             <label><input type="checkbox" <?= $has_pt ? 'checked' : '' ?> onclick="return false;"> PT</label>
         </div>
     </div>
+    
     <div class="tabs-header" id="settlement-tabs">
         <button class="tab-link active" data-target="tab-resignation">Resignation</button>
         <button class="tab-link" data-target="tab-pending">Pending Requests</button>
@@ -499,6 +598,7 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator {
             Refresh
         </a>
     </div>
+    
     <div class="tab-content-container">
 
         <div class="tab-content" id="tab-resignation">
@@ -644,7 +744,8 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator {
                         $service_years = 0;
                         if (!empty($emp_data['join_date'])) {
                             $doj_date = new DateTime($emp_data['join_date']);
-                            $service_years = round($now->diff($doj_date)->days / 365.25, 1);
+                            $current_date = new DateTime();
+                            $service_years = round($current_date->diff($doj_date)->days / 365.25, 1);
                         }
                     ?>
                     <input type="text" class="line-input" value="<?= htmlspecialchars($service_years) ?>" readonly>
@@ -697,24 +798,81 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator {
 </div>
 
 <script>
+// Employee List for live search
+const employeesList = <?= json_encode($employees) ?>;
+
 document.addEventListener("DOMContentLoaded", function() {
+    const searchInput = document.getElementById('employeeSearchInput');
+    const dropdown = document.getElementById('autocompleteDropdown');
+    const list = document.getElementById('autocompleteList');
+    const searchForm = document.getElementById('searchForm');
+
+    // Handle typing in the search bar
+    searchInput.addEventListener('input', function() {
+        const query = this.value.toLowerCase().trim();
+        list.innerHTML = '';
+
+        if (!query) {
+            dropdown.style.display = 'none';
+            return;
+        }
+
+        const filtered = employeesList.filter(emp => 
+            emp.employee_name.toLowerCase().includes(query) || 
+            emp.employee_code.toLowerCase().includes(query)
+        );
+
+        if (filtered.length > 0) {
+            filtered.forEach(emp => {
+                const li = document.createElement('li');
+                li.className = 'autocomplete-item';
+                li.innerHTML = `
+                    <div class="autocomplete-avatar">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                        </svg>
+                    </div>
+                    <span>${emp.employee_name} - #${emp.employee_code}</span>
+                `;
+                
+                li.addEventListener('click', function() {
+                    searchInput.value = emp.employee_code;
+                    dropdown.style.display = 'none';
+                    searchForm.submit();
+                });
+
+                list.appendChild(li);
+            });
+            dropdown.style.display = 'block';
+        } else {
+            dropdown.style.display = 'none';
+        }
+    });
+
+    // Show dropdown if input has value on focus
+    searchInput.addEventListener('focus', function() {
+        if (this.value.trim() !== '') {
+            searchInput.dispatchEvent(new Event('input'));
+        }
+    });
+
+    // Close dropdown on outside click
+    document.addEventListener('click', function(e) {
+        if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+
+    // Tab Navigation
     const tabLinks = document.querySelectorAll(".tab-link");
     const tabContents = document.querySelectorAll(".tab-content");
 
     tabLinks.forEach(link => {
         link.addEventListener("click", function(e) {
             e.preventDefault();
-
-            // Remove active class from all tabs
             tabLinks.forEach(t => t.classList.remove("active"));
-
-            // Hide all tab content panels
             tabContents.forEach(c => c.style.display = "none");
-
-            // Add active class to the clicked tab
             this.classList.add("active");
-
-            // Show the corresponding content panel using the data-target attribute
             const targetId = this.getAttribute("data-target");
             document.getElementById(targetId).style.display = "block";
         });

@@ -69,7 +69,7 @@ if (isset($conn)) {
         ];
 
         $nav_system = [
-            ['href'=>'dataauthorisation','label'=>'Data Import',   'badge'=>'','badge_color'=>''],
+            ['href'=>'DataAuthorisation','label'=>'Data Import',   'badge'=>'','badge_color'=>''],
             ['href'=>'users',           'label'=>'Users',         'badge'=>'','badge_color'=>''],
             ['href'=>'AssetManagement', 'label'=>'Asset Management', 'badge'=>'','badge_color'=>''],
             ['href'=>'Training',        'label'=>'Training',      'badge'=>'','badge_color'=>''],
@@ -85,11 +85,12 @@ if (isset($conn)) {
             'payroll'   => '<path d="M5 4h14M5 8h14M5 4c4.5 0 8 2.5 8 6s-3.5 6-8 6l9 7"/>',
             'taxes'     => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
             'reports'   => '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
-            'dataauthorisation' => '<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>',
+            'DataAuthorisation' => '<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>',
             'users'         => '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
             'configuration' => '<circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M5.34 17.66l-1.41 1.41M2 12h2M20 12h2M5.34 6.34L3.93 4.93M18.66 17.66l1.41 1.41M12 20v2M12 2v2"/>',
             'AssetManagement' => '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="7.5 4.21 12 6.81 16.5 4.21"/><polyline points="12 22.08 12 12"/>',
             'Training' => '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 0 4 24V4.5A2.5 2.5 0 0 1 6.5 2z"/>',
+            
         ];
 
         function render_nav(array $items, string $current, array $icons, array $allowed_pages, string $role): void {

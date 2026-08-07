@@ -6,10 +6,6 @@ if (!isset($_SESSION['login'])) {
 }
 require_once 'includes/db_client.php';
 require_once 'includes/config.php';
-
-// ==========================================
-// 1. AJAX HANDLERS (For Advance Search Modal)
-// ==========================================
 if (isset($_POST['ajax_action'])) {
     header('Content-Type: application/json');
     
@@ -23,7 +19,8 @@ if (isset($_POST['ajax_action'])) {
         $group   = mysqli_real_escape_string($conn, $_POST['group'] ?? '');
         $subGroup = mysqli_real_escape_string($conn, $_POST['subGroup'] ?? '');
         
-        $sql = "SELECT `employee_code`, `employee_name` FROM `employees` WHERE (`status` = 'Active' OR `status` = '1')";
+        // Updated to fetch expanded employee data including ctc_template_id
+        $sql = "SELECT `id`, `employee_code`, `employee_name`, `ctc_template_id` FROM `employees` WHERE (`status` = 'Active' OR `status` = '1')";
         
         if (!empty($keyword)) { $sql .= " AND (`employee_name` LIKE '%$keyword%' OR `employee_code` LIKE '%$keyword%')"; }
         if (!empty($loc)) { $sql .= " AND `location` = '$loc'"; }
@@ -35,10 +32,47 @@ if (isset($_POST['ajax_action'])) {
         $emps = [];
         if ($res && mysqli_num_rows($res) > 0) {
             while($row = mysqli_fetch_assoc($res)){
-                $emps[] = ['id' => $row['employee_code'], 'name' => $row['employee_name']];
+                $emps[] = [
+                    'id' => $row['employee_code'], 
+                    'name' => $row['employee_name'],
+                    'ctc_template_id' => $row['ctc_template_id']
+                ];
             }
         }
         echo json_encode($emps);
+        exit;
+    }
+
+    // -- Fetch Components based on ctc_template_id --
+    if ($_POST['ajax_action'] == 'fetch_template_components') {
+        $ctc_template_id = mysqli_real_escape_string($conn, $_POST['ctc_template_id'] ?? '');
+        
+        // Note: This assumes you have a mapping table linking the template to the components.
+        // If not, it fetches all components filtered by salary_type from the main table.
+        $sql = "SELECT `id`, `salary_type`, `component_category`, `code`, `component_name`, `expression`, `status` 
+                FROM `salary_components` 
+                WHERE (`status` = 'Active' OR `status` = '1')";
+                
+        $res = @mysqli_query($conn, $sql);
+        $components = [
+            'Earnings' => [],
+            'Deductions' => [],
+            'Employer Contribution' => []
+        ];
+        
+        if ($res && mysqli_num_rows($res) > 0) {
+            while($row = mysqli_fetch_assoc($res)){
+                $type = $row['salary_type'];
+                if (stripos($type, 'Earning') !== false) $type = 'Earnings';
+                if (stripos($type, 'Deduction') !== false) $type = 'Deductions';
+                if (stripos($type, 'Employer') !== false) $type = 'Employer Contribution';
+                
+                if(isset($components[$type])) {
+                    $components[$type][] = $row;
+                }
+            }
+        }
+        echo json_encode($components);
         exit;
     }
 
@@ -127,11 +161,20 @@ $page_title = 'Payroll - Approve Payslip';
 // ==========================================
 // 3. FETCH DATA FOR UI RENDER
 // ==========================================
+// Fetching complete employee data as requested
 $employees = [];
-$emp_sql = "SELECT `employee_code`, `employee_name` FROM `employees` WHERE `status` = 'Active' OR `status` = 1"; 
+$emp_sql = "SELECT `id`, `employee_code`, `employee_name`, `title`, `first_name`, `middle_name`, `last_name`, `dob`, `gender`, `blood`, `marital`, `nationality`, `phone`, `phone2`, `personal_email`, `official_email`, `address`, `aadhaar`, `pan`, `uan`, `esi_no`, `department`, `designation`, `emp_type`, `manager`, `grade`, `location`, `join_date`, `probation`, `notice`, `confirm_date`, `contract_end`, `shift`, `qualification`, `specialisation`, `reg_no`, `ctc_monthly`, `basic_pct`, `hra_pct`, `acc_name`, `acc_no`, `bank`, `ifsc`, `branch`, `pay_mode`, `nom_name`, `nom_rel`, `emg_name`, `emg_rel`, `emg_phone`, `notes`, `ctc_template_id`, `approval_attendance`, `approval_leave`, `status`, `created_at`, `updated_at`, `face_enrolled`, `profile_photo`, `aadhaar_doc`, `pan_doc`, `photo_doc`, `edu_doc`, `bank_doc`, `appt_doc` FROM `employees` WHERE `status` = 'Active' OR `status` = 1"; 
 $emp_result = @mysqli_query($conn, $emp_sql);
 if ($emp_result && mysqli_num_rows($emp_result) > 0) {
     while ($row = mysqli_fetch_assoc($emp_result)) { $employees[] = $row; }
+}
+
+// Fetching complete components data as requested
+$salary_components = [];
+$comp_sql = "SELECT `id`, `salary_type`, `component_category`, `code`, `component_name`, `expression`, `status`, `created_at`, `updated_at` FROM `salary_components` WHERE `status` = 'Active' OR `status` = 1";
+$comp_result = @mysqli_query($conn, $comp_sql);
+if ($comp_result && mysqli_num_rows($comp_result) > 0) {
+    while ($row = mysqli_fetch_assoc($comp_result)) { $salary_components[] = $row; }
 }
 
 $organizations = [];
@@ -146,12 +189,10 @@ $departments = [];
 $dept_result = @mysqli_query($conn, "SELECT `id`, `dept_name` FROM `org_departments` WHERE `status` = 'Active' OR `status` = 1");
 if ($dept_result) { while ($row = mysqli_fetch_assoc($dept_result)) { $departments[] = $row; } }
 
-// Fetch Designations
 $designations = [];
 $desig_result = @mysqli_query($conn, "SELECT `id`, `desig_name` FROM `org_designations` WHERE `status` = 'Active' OR `status` = 1");
 if ($desig_result) { while ($row = mysqli_fetch_assoc($desig_result)) { $designations[] = $row; } }
 
-// Fetch Categories
 $categories = [];
 $cat_result = @mysqli_query($conn, "SELECT `id`, `cat_name` FROM `org_categories` WHERE `status` = 'Active' OR `status` = 1");
 if ($cat_result) { while ($row = mysqli_fetch_assoc($cat_result)) { $categories[] = $row; } }
@@ -181,110 +222,20 @@ ob_start();
 
 <style>
 /* Common Styles */
-/* Back button */
-.btn-back {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-    color: #6B7280;
-    background: #fff;
-    border: 1px solid #D1D5DB;
-    text-decoration: none;
-    transition: all 0.2s;
-    cursor: pointer;
-}
+.btn-back { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: #6B7280; background: #fff; border: 1px solid #D1D5DB; text-decoration: none; transition: all 0.2s; cursor: pointer; }
+.btn-back:hover { background: #F3F4F6; color: #111827; border-color: #9CA3AF; }
+.payroll-header-wrapper { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 5px; }
+.page-title { font-size: 20px; font-weight: 700; color: #111827; margin: 0; }
+.payroll-top-links { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.payroll-top-links a { font-size: 13px; color: #6B7280; text-decoration: none; transition: color 0.15s; }
+.payroll-top-links a:hover { color: #2563EB; }
+.payroll-top-links .separator { color: #D1D5DB; font-size: 14px; }
+.payroll-divider { border: none; border-top: 1px solid #D1D5DB; margin: 25px 0; }
 
-.btn-back:hover {
-    background: #F3F4F6;
-    color: #111827;
-    border-color: #9CA3AF;
-}
-
-/* ── Page header & Top Links ── */
-.payroll-header-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
-    gap: 5px;
-}
-
-.page-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: #111827;
-    margin: 0;
-}
-
-.payroll-top-links {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.payroll-top-links a {
-    font-size: 13px;
-    color: #6B7280;
-    text-decoration: none;
-    transition: color 0.15s;
-}
-
-.payroll-top-links a:hover {
-    color: #2563EB;
-}
-
-.payroll-top-links .separator {
-    color: #D1D5DB;
-    font-size: 14px;
-}
-
-/* ── Divider Line Style ── */
-.payroll-divider {
-    border: none;
-    border-top: 1px solid #D1D5DB;
-    margin: 25px 0;
-}
-
-.payroll-card {
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    border: 1px solid #E5E7EB;
-    padding: 24px;
-    min-height: 400px;
-}
-.payroll-tab{
-    padding: 5px 2px;
-    font-size: 13.5px;
-    font-weight: 500;
-    color: #6B7280;
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    border-bottom: 2.5px solid transparent;
-    white-space: nowrap;
-    transition: color .15s, border-color .15s;
-    font-family: inherit;
-    text-decoration: none;
-    display: block;
-    margin-bottom: -1px;
-}
-.payroll-tab:hover {
-    color: #111827;
-    border-bottom-color: #111827;
-}
-.payroll-tab.active {
-    color: #2563EB;
-    border-bottom-color: #2563EB;
-    font-weight: 600;
-}
-
-/* End Common Styles */
+.payroll-card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); border: 1px solid #E5E7EB; padding: 24px; min-height: 400px; }
+.payroll-tab{ padding: 5px 2px; font-size: 13.5px; font-weight: 500; color: #6B7280; cursor: pointer; border: none; background: transparent; border-bottom: 2.5px solid transparent; white-space: nowrap; transition: color .15s, border-color .15s; text-decoration: none; display: block; margin-bottom: -1px; }
+.payroll-tab:hover { color: #111827; border-bottom-color: #111827; }
+.payroll-tab.active { color: #2563EB; border-bottom-color: #2563EB; font-weight: 600; }
 
 .card-top-bar { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 30px; }
 .breadcrumb { font-size: 15px; color: #4B5563; margin-bottom: 8px; }
@@ -292,24 +243,16 @@ ob_start();
 .subtitle-text { font-size: 13px; color: #6B7280; }
 
 .section-heading { font-size: 12px; font-weight: 700; color: #111827; margin-bottom: 12px; text-transform: uppercase; margin-top: 25px; }
-
 .search-filter-row { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; max-width: 500px; }
 .search-line-wrapper { position: relative; flex: 1; }
-.search-line-wrapper svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: #9CA3AF; fill: none; stroke-width: 2; }
+.search-line-wrapper > svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: #9CA3AF; fill: none; stroke-width: 2; }
 .search-line-wrapper input { width: 100%; padding: 8px 10px 8px 32px; border: 1px solid #D1D5DB; border-radius: 4px; font-size: 14px; outline: none; transition: border-color 0.2s; box-sizing: border-box; }
 .search-line-wrapper input:focus { border-color: #0066FF; }
 
-.btn-filters {
-    display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #D1D5DB;
-    color: #4B5563; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500;
-    cursor: pointer; transition: all 0.2s; height: 36px;
-}
+.btn-filters { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #D1D5DB; color: #4B5563; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; height: 36px; }
 .btn-filters:hover { background: #F9FAFB; border-color: #9CA3AF; }
 
-.selected-employee-box {
-    border: 1px solid #D1D5DB; border-radius: 4px; padding: 15px; max-width: 800px;
-    min-height: 50px; display: flex; flex-wrap: wrap; gap: 15px;
-}
+.selected-employee-box { border: 1px solid #D1D5DB; border-radius: 4px; padding: 15px; max-width: 800px; min-height: 50px; display: flex; flex-wrap: wrap; gap: 15px; }
 .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #111827; cursor: pointer; }
 .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: #0066FF; margin: 0; }
 
@@ -317,16 +260,9 @@ ob_start();
 .form-group { flex: 1; }
 .form-group label { display: block; font-size: 12px; color: #4B5563; margin-bottom: 8px; }
 
-.line-input {
-    width: 100%; padding: 8px 0; border: none; border-bottom: 1px solid #D1D5DB;
-    font-size: 14px; color: #111827; background: transparent; outline: none; transition: border-color 0.2s;
-}
+.line-input { width: 100%; padding: 8px 0; border: none; border-bottom: 1px solid #D1D5DB; font-size: 14px; color: #111827; background: transparent; outline: none; transition: border-color 0.2s; }
 .line-input:focus { border-bottom-color: #0066FF; }
-select.line-input {
-    cursor: pointer; appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right center; padding-right: 20px;
-}
+select.line-input { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right center; padding-right: 20px; }
 
 .form-actions { display: flex; justify-content: flex-end; margin-top: 20px; gap: 10px; }
 .btn-primary { background: #0066FF; color: #fff; border: none; padding: 8px 24px; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
@@ -336,7 +272,7 @@ select.line-input {
 .btn-danger-outline { background: #fff; color: #EF4444; border: 1px solid #EF4444; padding: 8px 24px; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
 .btn-danger-outline:hover { background: #FEF2F2; }
 
-/* MODAL STYLES (Advance Employee Search) */
+/* MODAL STYLES */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; box-sizing: border-box; }
 .modal-content { background: #fff; width: 100%; max-width: 900px; max-height: 90vh; border-radius: 8px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); }
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid #E5E7EB; }
@@ -365,46 +301,31 @@ select.line-input {
 .recent-list li button:hover { background: #FEE2E2; border-color: #EF4444; }
 .modal-footer { padding: 16px 24px; border-top: 1px solid #E5E7EB; display: flex; justify-content: flex-end; gap: 10px; background: #F9FAFB; border-radius: 0 0 8px 8px; }
 
-/* ── Custom Toast Styles ── */
-#customToast {
-    visibility: hidden;
-    min-width: 250px;
-    background-color: #333;
-    color: #fff;
-    text-align: center;
-    border-radius: 6px;
-    padding: 16px;
-    position: fixed;
-    z-index: 9999;
-    right: 20px;
-    bottom: -50px; /* Start hidden below viewport */
-    font-size: 14px;
-    font-weight: 500;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    opacity: 0;
-    transition: opacity 0.3s ease-in-out, bottom 0.3s ease-in-out, visibility 0.3s ease-in-out;
-}
-#customToast.show {
-    visibility: visible;
-    opacity: 1;
-    bottom: 30px;
-}
-#customToast.success { background-color: #10B981; } /* Tailwind Emerald-500 */
-#customToast.error { background-color: #EF4444; }   /* Tailwind Red-500 */
-#customToast.warning { background-color: #F59E0B; } /* Tailwind Amber-500 */
-</style>
+/* Custom Toast Styles */
+#customToast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 6px; padding: 16px; position: fixed; z-index: 9999; right: 20px; bottom: -50px; font-size: 14px; font-weight: 500; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); opacity: 0; transition: opacity 0.3s ease-in-out, bottom 0.3s ease-in-out, visibility 0.3s ease-in-out; }
+#customToast.show { visibility: visible; opacity: 1; bottom: 30px; }
+#customToast.success { background-color: #10B981; } 
+#customToast.error { background-color: #EF4444; }  
+#customToast.warning { background-color: #F59E0B; } 
 
-<datalist id="employeeList">
-    <?php foreach ($employees as $emp): ?>
-    <option value="<?= htmlspecialchars($emp['employee_name'] . ' (#' . $emp['employee_code'] . ')') ?>">
-    <?php endforeach; ?>
-</datalist>
+/* Custom Employee Search Dropdown Styles */
+.emp-search-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #D1D5DB; border-top: none; border-radius: 0 0 6px 6px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); z-index: 50; display: flex; flex-direction: column; overflow: hidden; }
+#empSearchList { list-style: none; padding: 0; margin: 0; overflow-y: auto; max-height: 250px; }
+#empSearchList li { padding: 10px 15px; display: flex; align-items: center; gap: 15px; cursor: pointer; transition: background 0.2s; }
+#empSearchList li:hover { background: #F9FAFB; }
+.emp-avatar { width: 32px; height: 32px; border-radius: 50%; background: #8da2c3; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
+.emp-avatar svg { width: 22px !important; height: 22px !important; fill: #e5eaf2; margin-top: 6px; }
+.emp-info { font-size: 14px; color: #374151; }
+.emp-search-footer { padding: 12px 15px; font-size: 13px; color: #1a73e8; cursor: pointer; display: flex; align-items: center; gap: 8px; border-top: 1px solid #E5E7EB; background: #fff; font-weight: 500; }
+.emp-search-footer:hover { background: #F9FAFB; text-decoration: underline; }
+.emp-search-footer svg { width: 16px !important; height: 16px !important; stroke: currentColor; fill: none; }
+.emp-search-dropdown svg { position: static !important; transform: none !important; margin: 0; }
+</style>
 
 <div class="payroll-header-wrapper">
     <div class="title-wrapper">
         <a href="javascript:history.back()" class="btn-back" title="Go Back">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"
-                stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12"></line>
                 <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
@@ -434,9 +355,20 @@ select.line-input {
         <div class="section-heading">SELECT EMPLOYEES</div>
         
         <div class="search-filter-row">
-            <div class="search-line-wrapper">
+            <div class="search-line-wrapper" style="position: relative;">
+                <!-- Main Search Magnifying Glass -->
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                <input type="text" id="mainEmpSearch" list="employeeList" placeholder="Search by name or #code" autocomplete="off" onchange="addSingleEmployeeFromSearch()">
+                
+                <input type="text" id="mainEmpSearch" placeholder="Search by name or #code" autocomplete="off">
+                
+                <!-- Custom Dropdown Container -->
+                <div id="empSearchDropdown" class="emp-search-dropdown" style="display: none;">
+                    <ul id="empSearchList"></ul>
+                    <div class="emp-search-footer" onclick="openFilterModal()">
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        Browse Active & Inactive Employees
+                    </div>
+                </div>
             </div>
             <button type="button" class="btn-filters" onclick="openFilterModal()">
                 <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
@@ -483,7 +415,7 @@ select.line-input {
             <button type="button" class="modal-close" onclick="closeFilterModal()">&times;</button>
         </div>
         <div class="modal-body">
-            <div class="search-line-wrapper" style="margin-bottom: 25px;">
+            <div class="search-line-wrapper" style="margin-bottom: 25px; position: relative;">
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 <input type="text" id="modalSearchInput" placeholder="Search by name or #code" style="border-radius: 4px; border: 1px solid #D1D5DB; padding-left: 35px;">
             </div>
@@ -570,7 +502,6 @@ function showToast(message, type) {
     toast.textContent = message;
     toast.className = "show " + type;
     
-    // Hide toast after 3.5 seconds
     setTimeout(function(){ 
         toast.className = toast.className.replace("show " + type, ""); 
     }, 3500);
@@ -584,13 +515,11 @@ function updateMonthsDropdown() {
     
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
-    const currentMonthIndex = new Date().getMonth(); // 0 to 11
+    const currentMonthIndex = new Date().getMonth(); 
     const currentYear = new Date().getFullYear().toString();
 
-    // Clear existing options
     monthSelect.innerHTML = '';
     
-    // Populate new options for the selected year
     months.forEach((month, index) => {
         const option = document.createElement('option');
         const monthValue = `${month}-${selectedYear}`;
@@ -598,11 +527,9 @@ function updateMonthsDropdown() {
         option.value = monthValue;
         option.textContent = monthValue;
         
-        // Auto-select the current month if we are looking at the current year
         if (selectedYear === currentYear && index === currentMonthIndex) {
             option.selected = true;
         } 
-        // If looking at a past/future year, default to January
         else if (selectedYear !== currentYear && index === 0) {
             option.selected = true;
         }
@@ -612,14 +539,12 @@ function updateMonthsDropdown() {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
-    // Generate Months right when page loads
     updateMonthsDropdown();
 
     const urlParams = new URLSearchParams(window.location.search);
     const status = urlParams.get("status");
     const type = urlParams.get("type");
 
-    // Handle Toast Alerts based on URL parameters
     if (status === "success") {
         const textMsg = type === "approve"
             ? "Payslips have been approved successfully."
@@ -627,9 +552,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const toastType = type === "approve" ? "success" : "warning";
         showToast(textMsg, toastType);
-
         window.history.replaceState({}, document.title, window.location.pathname);
-
     } else if (status === "empty") {
         showToast("Please select at least one employee.", "error");
         window.history.replaceState({}, document.title, window.location.pathname);
@@ -738,7 +661,6 @@ async function performModalSearch() {
 }
 
 function saveCurrentSearch() {
-    // If you want to remove SweetAlert entirely, you can replace this with a standard prompt
     const name = prompt("Enter a name to save this search filter:", "My Saved Search");
     if (name) {
         const searchData = captureSearchState();
@@ -793,16 +715,6 @@ function closeFilterModal() {
 // ── SELECTION MANAGER ──
 let selectedEmployees = [];
 
-function addSingleEmployeeFromSearch() {
-    const input = document.getElementById('mainEmpSearch');
-    const val = input.value.trim();
-    if (val) {
-        const match = val.match(/(.+) \(#(.+)\)/);
-        if (match) { addEmployeeToSelection(match[2].trim(), match[1].trim()); }
-        input.value = ''; 
-    }
-}
-
 function toggleAllModalEmp(source) {
     const checkboxes = document.querySelectorAll('.modal-emp-checkbox');
     checkboxes.forEach(cb => { cb.checked = source.checked; });
@@ -840,8 +752,86 @@ function renderSelectedEmployees() {
     }
     box.innerHTML = '';
     selectedEmployees.forEach(emp => {
-        box.innerHTML += `<label class="checkbox-label" style="background: #F3F4F6; padding: 6px 12px; border-radius: 4px; border: 1px solid #E5E7EB;"><input type="checkbox" name="selected_employees[]" value="${emp.id}" checked onclick="removeEmployee('${emp.id}')" style="accent-color: #EF4444;"> ${emp.name} - ${emp.id}</label>`;
+        box.innerHTML += `<label class="checkbox-label" style="background: #F3F4F6; padding: 6px 12px; border-radius: 4px; border: 1px solid #E5E7EB;"><input type="checkbox" name="selected_employees[]" value="${emp.id}" checked onclick="removeEmployee('${emp.id}')" style="accent-color: #0066FF;"> ${emp.name} - ${emp.id}</label>`;
     });
+}
+
+// ── CUSTOM DROPDOWN SEARCH LOGIC ──
+const allEmployeesList = <?= json_encode($employees) ?>;
+const searchInput = document.getElementById('mainEmpSearch');
+const searchDropdown = document.getElementById('empSearchDropdown');
+const searchList = document.getElementById('empSearchList');
+
+searchInput.addEventListener('input', function() {
+    const val = this.value.toLowerCase().trim();
+    
+    if (val.length === 0) {
+        searchDropdown.style.display = 'none';
+        searchInput.style.borderRadius = "4px"; 
+        return;
+    }
+
+    const filtered = allEmployeesList.filter(emp => 
+        emp.employee_name.toLowerCase().includes(val) || 
+        emp.employee_code.toLowerCase().includes(val)
+    ).slice(0, 8); // Limit to top 8 results
+
+    searchList.innerHTML = '';
+    
+    if (filtered.length > 0) {
+        filtered.forEach(emp => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <div class="emp-avatar">
+                    <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                </div>
+                <div class="emp-info">${emp.employee_name} - #${emp.employee_code}</div>
+            `;
+            li.onclick = () => {
+                addEmployeeToSelection(emp.employee_code, emp.employee_name);
+                
+                // Example call to fetch components based on the employee's template ID (if you intend to display them)
+                // fetchComponentsForEmployee(emp.ctc_template_id);
+                
+                searchInput.value = '';
+                searchDropdown.style.display = 'none';
+                searchInput.style.borderRadius = "4px";
+            };
+            searchList.appendChild(li);
+        });
+    } else {
+        searchList.innerHTML = '<li style="color:#9CA3AF; justify-content:center; padding: 15px;">No matching employees found</li>';
+    }
+    
+    searchDropdown.style.display = 'flex';
+    searchInput.style.borderRadius = "4px 4px 0 0";
+});
+
+document.addEventListener('click', function(e) {
+    if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
+        searchDropdown.style.display = 'none';
+        searchInput.style.borderRadius = "4px";
+    }
+});
+
+// Example AJAX fetch to get the components linked to a specific CTC template
+function fetchComponentsForEmployee(ctcTemplateId) {
+    if(!ctcTemplateId) return;
+    
+    const formData = new FormData();
+    formData.append('ajax_action', 'fetch_template_components');
+    formData.append('ctc_template_id', ctcTemplateId);
+
+    fetch(window.location.href, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("Salary Components Loaded via Template ID: ", data);
+        // You can populate UI tables or forms here if you update the view logic
+    })
+    .catch(error => console.error('Error fetching component data:', error));
 }
 </script>
 <script src="includes/assets/scripts.js"></script>

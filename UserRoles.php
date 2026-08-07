@@ -9,6 +9,8 @@ require_once 'includes/config.php';
 $page_title = 'User Roles';
 ob_start();
 ?>
+<!-- Added SweetAlert2 CDN for the delete function to work -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <link rel="stylesheet" href="includes/assets/style.css">
 <style>
     /* ============================================================
@@ -99,7 +101,6 @@ ob_start();
         <?php endforeach; ?>
     </div>
 
-
     <div class="ur-view" id="viewList">
         <div class="ur-list-header">
             <span class="ur-list-title">Roles</span>
@@ -127,6 +128,7 @@ ob_start();
             <div class="ur-page-nav" id="urPageNav"></div>
         </div>
     </div>
+    
     <div class="ur-view" id="viewDetail" style="display:none;">
         <div class="ur-detail-header">
             <span id="dRoleNameHeading"></span>
@@ -182,6 +184,7 @@ ob_start();
         </div>
     </div>
 </div>
+
 <script>
 const UR = (() => {
     'use strict';
@@ -196,16 +199,37 @@ const UR = (() => {
         loadPages();
     });
 
+    // Added Cache-busting (?_t=Date.now) and forced headers to prevent browsers from hiding new data
     function loadRoles() {
-        fetch(`${API}?action=list`).then(r=>r.json()).then(res => {
-            if(res.success) { allRoles = res.data; renderTable(); }
-        });
+        fetch(`${API}?action=list&_t=${Date.now()}`, { cache: "no-store" })
+            .then(async r => {
+                const text = await r.text();
+                try { return JSON.parse(text); } 
+                catch(e) { console.error("Invalid JSON from API:", text); return { success: false, data: [] }; }
+            })
+            .then(res => {
+                if(res.success) { 
+                    allRoles = Array.isArray(res.data) ? res.data : []; 
+                    renderTable(); 
+                } else {
+                    $('urTbody').innerHTML = `<tr><td colspan="5" class="ur-loading-row">No roles found or error loading data.</td></tr>`;
+                }
+            });
     }
 
     function loadPages() {
-        fetch(`${API}?action=pages_list`).then(r=>r.json()).then(res => {
-            if(res.success) { allPages = res.data; initAccessData(); }
-        });
+        fetch(`${API}?action=pages_list&_t=${Date.now()}`, { cache: "no-store" })
+            .then(async r => {
+                const text = await r.text();
+                try { return JSON.parse(text); } 
+                catch(e) { console.error("Invalid JSON from API:", text); return { success: false, data: [] }; }
+            })
+            .then(res => {
+                if(res.success) { 
+                    allPages = Array.isArray(res.data) ? res.data : []; 
+                    initAccessData(); 
+                }
+            });
     }
 
     function initAccessData() {
@@ -217,7 +241,12 @@ const UR = (() => {
 
     function renderTable() {
         const tbody = $('urTbody');
-        if(!allRoles.length) { tbody.innerHTML = `<tr><td colspan="5" class="ur-loading-row">No roles found.</td></tr>`; return; }
+        if(!allRoles || !allRoles.length) { 
+            tbody.innerHTML = `<tr><td colspan="5" class="ur-loading-row">No roles found.</td></tr>`; 
+            $('urPageInfo').textContent = 'Showing 0 entries';
+            $('urPageNav').innerHTML = '';
+            return; 
+        }
         
         const start = (currentPage - 1) * perPage;
         const slice = allRoles.slice(start, start + perPage);
@@ -254,7 +283,7 @@ const UR = (() => {
 
     function openDetail(id) {
         viewingId = id;
-        fetch(`${API}?action=get&id=${id}`).then(r=>r.json()).then(res => {
+        fetch(`${API}?action=get&id=${id}&_t=${Date.now()}`).then(r=>r.json()).then(res => {
             if(!res.success) return showToast(res.message, 'error');
             const d = res.data;
             $('dRoleNameHeading').textContent = d.role_name;
@@ -262,7 +291,7 @@ const UR = (() => {
             $('dRoleName').textContent = d.role_name;
             $('dRemarks').textContent = d.remarks || '—';
             
-            $('dMatrixBody').innerHTML = d.access.map(a => `
+            $('dMatrixBody').innerHTML = (d.access || []).map(a => `
                 <tr>
                     <td>${esc(a.page_name)}</td>
                     <td>${a.can_view == 1 ? '✓' : '-'}</td>
@@ -274,6 +303,7 @@ const UR = (() => {
             showView('viewDetail');
         });
     }
+
     function openNewForm() {
         editingId = null;
         $('fFormHeading').textContent = 'New Role';
@@ -285,7 +315,7 @@ const UR = (() => {
 
     function openEditForm() {
         if(!viewingId) return;
-        fetch(`${API}?action=get&id=${viewingId}`).then(r=>r.json()).then(res => {
+        fetch(`${API}?action=get&id=${viewingId}&_t=${Date.now()}`).then(r=>r.json()).then(res => {
             const d = res.data;
             editingId = d.id;
             $('fFormHeading').textContent = 'Edit: ' + d.role_name;
@@ -294,7 +324,7 @@ const UR = (() => {
             $('fRemarks').value = d.remarks || '';
             
             initAccessData();
-            d.access.forEach(a => {
+            (d.access || []).forEach(a => {
                 if(accessData[a.page_name]) {
                     accessData[a.page_name].can_view = parseInt(a.can_view);
                     accessData[a.page_name].can_add = parseInt(a.can_add);
@@ -323,7 +353,6 @@ const UR = (() => {
             tbody.appendChild(tr);
         });
 
-        // Attach listeners to individual checkboxes
         tbody.querySelectorAll('input[type="checkbox"]').forEach(chk => {
             chk.addEventListener('change', (e) => {
                 const page = e.target.dataset.page;
@@ -338,7 +367,7 @@ const UR = (() => {
         renderFormMatrix();
     }
 
-function submitForm() {
+    function submitForm() {
         const code = $('fRoleCode').value.trim();
         const name = $('fRoleName').value.trim();
         
@@ -346,12 +375,10 @@ function submitForm() {
             return showToast('Role Code and Name are required.', 'error');
         }
 
-        // 1. Disable the button so the user can't click it twice
         const btn = $('fBtnSubmit');
         btn.disabled = true;
         btn.textContent = 'Submitting...';
 
-        // 2. Prepare the payload
         const payload = {
             action: editingId ? 'update' : 'add',
             role_code: code,
@@ -360,25 +387,18 @@ function submitForm() {
             access: Object.entries(accessData).map(([page, perms]) => ({ page_name: page, ...perms }))
         };
 
-        if (editingId) {
-            payload.id = editingId;
-        }
+        if (editingId) payload.id = editingId;
 
-        // 3. Format as FormData
         const fd = new FormData();
         Object.entries(payload).forEach(([k, v]) => {
             fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
         });
 
-        console.log("Submitting Data:", payload); // Debugging log
-
-        // 4. Send the Request
         fetch(API, { method: 'POST', body: fd })
             .then(async (r) => {
-                const rawText = await r.text(); // Get raw response first
-                try {
-                    return JSON.parse(rawText); // Try to parse it as JSON
-                } catch (e) {
+                const rawText = await r.text();
+                try { return JSON.parse(rawText); } 
+                catch (e) {
                     console.error("Server returned Invalid JSON:", rawText);
                     throw new Error("Server error: Check the console for PHP output.");
                 }
@@ -398,58 +418,46 @@ function submitForm() {
                 showToast("An error occurred. Please check the console.", 'error');
             })
             .finally(() => {
-                // Always re-enable the button when done
                 btn.disabled = false;
                 btn.textContent = 'Submit';
             });
     }
 
-   function deleteRole(id, name) {
-    Swal.fire({
-        title: 'Are you sure?',
-        text: `Delete role "${name}"?`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Yes, delete it!',
-        cancelButtonText: 'Cancel'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            const fd = new FormData();
-            fd.append('action', 'delete');
-            fd.append('id', id);
-
-            fetch(API, { method: 'POST', body: fd })
-                .then(r => r.json())
-                .then(res => {
-                    if (res.success) {
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Deleted!',
-                            text: 'Role has been deleted successfully.',
-                            timer: 1500,
-                            showConfirmButton: false
-                        });
-                        loadRoles();
-                    } else {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Error',
-                            text: res.message
-                        });
-                    }
-                })
-                .catch(() => {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: 'Something went wrong.'
-                    });
-                });
+    function deleteRole(id, name) {
+        if(typeof Swal === 'undefined') {
+            alert('SweetAlert2 is not loaded!');
+            return;
         }
-    });
-}
+        Swal.fire({
+            title: 'Are you sure?',
+            text: `Delete role "${name}"?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, delete it!',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const fd = new FormData();
+                fd.append('action', 'delete');
+                fd.append('id', id);
+
+                fetch(API, { method: 'POST', body: fd })
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res.success) {
+                            Swal.fire({ icon: 'success', title: 'Deleted!', text: 'Role has been deleted successfully.', timer: 1500, showConfirmButton: false });
+                            loadRoles();
+                        } else {
+                            Swal.fire({ icon: 'error', title: 'Error', text: res.message });
+                        }
+                    })
+                    .catch(() => Swal.fire({ icon: 'error', title: 'Error', text: 'Something went wrong.' }));
+            }
+        });
+    }
+    
     function cancelForm() { showView(viewingId && editingId ? 'viewDetail' : 'viewList'); }
     function setPerPage(val) { perPage = parseInt(val); currentPage = 1; renderTable(); }
     function showView(id) { ['viewList','viewDetail','viewForm'].forEach(v => $(v).style.display = v===id?'block':'none'); }

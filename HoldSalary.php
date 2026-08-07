@@ -135,12 +135,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
         @mysqli_query($conn, $update);
         $_SESSION['toast'] = ['type' => 'success', 'msg' => 'Salary released successfully.'];
     }
-    // header("Location: " . $_SERVER['PHP_SELF']);
     ?>
 <script>
-    window.location.href = window.location.href; // Refresh the page to reflect changes";
+    window.location.href = window.location.href; // Refresh the page to reflect changes
 </script>
-
 <?php
     exit();
 }
@@ -227,7 +225,10 @@ ob_start();
 .section-heading { font-size: 12px; font-weight: 700; color: #111827; margin-bottom: 12px; text-transform: uppercase; margin-top: 25px; }
 .search-filter-row { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; max-width: 500px; }
 .search-line-wrapper { position: relative; flex: 1; }
-.search-line-wrapper svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: #9CA3AF; fill: none; stroke-width: 2; }
+
+/* FIX: Ensure only the main search icon gets absolutely positioned */
+.search-line-wrapper > svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: #9CA3AF; fill: none; stroke-width: 2; }
+
 .search-line-wrapper input { width: 100%; padding: 8px 10px 8px 32px; border: 1px solid #D1D5DB; border-radius: 4px; font-size: 14px; outline: none; transition: border-color 0.2s; box-sizing: border-box; }
 .search-line-wrapper input:focus { border-color: #2563EB; }
 .btn-filters { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #D1D5DB; color: #4B5563; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; height: 36px; }
@@ -282,21 +283,30 @@ select.line-input { cursor: pointer; appearance: none; background-image: url("da
 .toast.error { border-left-color: #EF4444; }
 .toast-close-btn { background: none; border: none; font-size: 18px; cursor: pointer; color: #9CA3AF; display: flex; align-items: center; }
 .toast-close-btn:hover { color: #4B5563; }
+
+/* Custom Employee Search Dropdown Styles */
+.emp-search-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #D1D5DB; border-top: none; border-radius: 0 0 6px 6px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); z-index: 50; display: flex; flex-direction: column; overflow: hidden; }
+#empSearchList { list-style: none; padding: 0; margin: 0; overflow-y: auto; max-height: 250px; }
+#empSearchList li { padding: 10px 15px; display: flex; align-items: center; gap: 15px; cursor: pointer; transition: background 0.2s; }
+#empSearchList li:hover { background: #F9FAFB; }
+.emp-avatar { width: 32px; height: 32px; border-radius: 50%; background: #8da2c3; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
+
+/* FIX: Force SVGs inside the dropdown to stay inline and correct size */
+.emp-search-dropdown svg { position: static !important; transform: none !important; margin: 0; }
+.emp-avatar svg { width: 22px !important; height: 22px !important; fill: #e5eaf2; margin-top: 6px; }
+
+.emp-info { font-size: 14px; color: #374151; }
+.emp-search-footer { padding: 12px 15px; font-size: 13px; color: #1a73e8; cursor: pointer; display: flex; align-items: center; gap: 8px; border-top: 1px solid #E5E7EB; background: #fff; font-weight: 500; }
+.emp-search-footer:hover { background: #F9FAFB; text-decoration: underline; }
+.emp-search-footer svg { width: 16px !important; height: 16px !important; stroke: currentColor; fill: none; }
 </style>
 
 <div class="toast-container" id="toastContainer"></div>
 
-<datalist id="employeeList">
-    <?php foreach ($employees as $emp): ?>
-        <option value="<?= htmlspecialchars($emp['employee_name'] . ' (#' . $emp['employee_code'] . ')') ?>">
-    <?php endforeach; ?>
-</datalist>
-
 <div class="payroll-header-wrapper">
     <div class="title-wrapper">
         <a href="javascript:history.back()" class="btn-back" title="Go Back">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"
-                stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12"></line>
                 <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
@@ -330,9 +340,20 @@ select.line-input { cursor: pointer; appearance: none; background-image: url("da
         <form action="" method="POST" id="holdSalaryForm">
             <div class="section-heading">Select Employees to Hold Salary</div>
             <div class="search-filter-row">
-                <div class="search-line-wrapper">
+                <div class="search-line-wrapper" style="position: relative;">
+                    <!-- Main Search Magnifying Glass -->
                     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    <input type="text" id="mainEmpSearch" list="employeeList" placeholder="Search by name or #code" autocomplete="off" onchange="addSingleEmployeeFromSearch()">
+                    
+                    <input type="text" id="mainEmpSearch" placeholder="Search by name or #code" autocomplete="off">
+                    
+                    <!-- Custom Dropdown Container -->
+                    <div id="empSearchDropdown" class="emp-search-dropdown" style="display: none;">
+                        <ul id="empSearchList"></ul>
+                        <div class="emp-search-footer" onclick="openFilterModal()">
+                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            Browse Active & Inactive Employees
+                        </div>
+                    </div>
                 </div>
                 <button type="button" class="btn-filters" onclick="openFilterModal()">
                     <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
@@ -412,7 +433,8 @@ select.line-input { cursor: pointer; appearance: none; background-image: url("da
             <button type="button" class="modal-close" onclick="closeFilterModal()">&times;</button>
         </div>
         <div class="modal-body">
-            <div class="search-line-wrapper" style="margin-bottom: 25px;">
+            <!-- Ensure modal search icon doesn't break either -->
+            <div class="search-line-wrapper" style="margin-bottom: 25px; position: relative;">
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 <input type="text" id="modalSearchInput" placeholder="Search by name or #code" style="border-radius: 4px; border: 1px solid #D1D5DB; padding-left: 35px;">
             </div>
@@ -703,16 +725,6 @@ function closeFilterModal() {
 // ── SELECTION MANAGER ──
 let selectedEmployees = [];
 
-function addSingleEmployeeFromSearch() {
-    const input = document.getElementById('mainEmpSearch');
-    const val = input.value.trim();
-    if (val) {
-        const match = val.match(/(.+) \(#(.+)\)/);
-        if (match) { addEmployeeToSelection(match[2].trim(), match[1].trim()); }
-        input.value = ''; 
-    }
-}
-
 function toggleAllModalEmp(source) {
     const checkboxes = document.querySelectorAll('.modal-emp-checkbox');
     checkboxes.forEach(cb => { cb.checked = source.checked; });
@@ -753,5 +765,59 @@ function renderSelectedEmployees() {
         box.innerHTML += `<label class="checkbox-label" style="background: #F3F4F6; padding: 6px 12px; border-radius: 4px; border: 1px solid #E5E7EB;"><input type="checkbox" name="selected_employees[]" value="${emp.id}" checked onclick="removeEmployee('${emp.id}')" style="accent-color: #EF4444;"> ${emp.name} - ${emp.id}</label>`;
     });
 }
+
+// ── CUSTOM DROPDOWN SEARCH LOGIC ──
+const allEmployeesList = <?= json_encode($employees) ?>;
+const searchInput = document.getElementById('mainEmpSearch');
+const searchDropdown = document.getElementById('empSearchDropdown');
+const searchList = document.getElementById('empSearchList');
+
+searchInput.addEventListener('input', function() {
+    const val = this.value.toLowerCase().trim();
+    
+    if (val.length === 0) {
+        searchDropdown.style.display = 'none';
+        searchInput.style.borderRadius = "4px"; 
+        return;
+    }
+
+    const filtered = allEmployeesList.filter(emp => 
+        emp.employee_name.toLowerCase().includes(val) || 
+        emp.employee_code.toLowerCase().includes(val)
+    ).slice(0, 8); // Limit to top 8 results
+
+    searchList.innerHTML = '';
+    
+    if (filtered.length > 0) {
+        filtered.forEach(emp => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <div class="emp-avatar">
+                    <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                </div>
+                <div class="emp-info">${emp.employee_name} - #${emp.employee_code}</div>
+            `;
+            li.onclick = () => {
+                addEmployeeToSelection(emp.employee_code, emp.employee_name);
+                searchInput.value = '';
+                searchDropdown.style.display = 'none';
+                searchInput.style.borderRadius = "4px";
+            };
+            searchList.appendChild(li);
+        });
+    } else {
+        searchList.innerHTML = '<li style="color:#9CA3AF; justify-content:center; padding: 15px;">No matching employees found</li>';
+    }
+    
+    searchDropdown.style.display = 'flex';
+    searchInput.style.borderRadius = "4px 4px 0 0";
+});
+
+document.addEventListener('click', function(e) {
+    if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
+        searchDropdown.style.display = 'none';
+        searchInput.style.borderRadius = "4px";
+    }
+});
 </script>
 <script src="includes/assets/scripts.js"></script>

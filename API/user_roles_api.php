@@ -26,9 +26,9 @@ function allPages(): array {
         ['module_key' => 'payroll', 'page_name' => 'Reports'],
         ['module_key' => 'payroll', 'page_name' => 'Taxes'],
         // SYSTEM
-        ['module_key' => 'payroll', 'page_name' => 'Data Import'],
+        ['module_key' => 'payroll', 'page_name' => 'DataAuthorisation'],
         ['module_key' => 'payroll', 'page_name' => 'Users'],
-        ['module_key' => 'payroll', 'page_name' => 'Asset Management'],
+        ['module_key' => 'payroll', 'page_name' => 'AssetManagement'],
         ['module_key' => 'payroll', 'page_name' => 'Training'],
         ['module_key' => 'payroll', 'page_name' => 'Configuration'],
         ['module_key' => 'payroll', 'page_name' => 'Settings'],     
