@@ -137,6 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $flash = 'Invalid data. Device Name, Serial Number and Code are required.';
             $flash_type = 'error';
         } else {
+            // FIX: Added status='online' to reset status if device is edited
             $stmt = $conn->prepare("
                 UPDATE att_devices
                 SET device_name=?,
@@ -148,6 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     location=?,
                     connection_type=?,
                     ip_address=?,
+                    status='online', 
                     last_ping=NOW(),
                     updated_at=NOW()
                 WHERE id=?
@@ -206,6 +208,16 @@ if (!empty($_GET['deleted'])) {
 }
 
 /* FETCH */
+
+// FIX: This is the core fix. It runs right before grabbing the list.
+// If a device hasn't updated its 'last_ping' in 10 minutes, mark it offline.
+$conn->query("
+    UPDATE att_devices 
+    SET status = 'offline' 
+    WHERE status = 'online' 
+    AND (last_ping IS NULL OR last_ping < DATE_SUB(NOW(), INTERVAL 10 MINUTE))
+");
+
 $devices = [];
 $res = $conn->query("
     SELECT *

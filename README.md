@@ -82,7 +82,11 @@ Apply Leave - Pending (urgent)
 Leave - Done
 Payroll - Pending (urgent)
 Taxes - Pending (urgent)
+<!-- 08-08-2026 -->
 Reports - Pending (not urgent)
+
+
+
 
 CRM add tag filter in list view
 CRM add Extra Imformation
@@ -105,6 +109,16 @@ Process Payslip - Working
 Leave Policy  - Pending
 Work on AttDiscrepancies - Working
 
+
+GMB Updates
+Successfully published 2 GMB posts for each location: 
+Siliguri, Coochbehar, and Raiganj.
+
+Payroll Module Progress
+   Discrepancies - Done
+   Process Time Card - Working
+
+   
 
 GMB Updates
 Successfully published 2 GMB posts for each location: 
