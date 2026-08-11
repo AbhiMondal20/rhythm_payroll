@@ -601,9 +601,13 @@ if (btnSync) {
         });
 
         // Trigger the sync file
-        fetch('http://192.168.2.161/rhythm_payroll/includes/sync/sync_all.php')
-            .then(response => {
-                if (!response.ok) throw new Error("Network error");
+        fetch('http://localhost/rhythm_payroll/includes/sync/sync_all.php')
+            .then(async response => {
+                if (!response.ok) {
+                    // If the PHP script throws a 503 or 500 error, catch the text
+                    const errText = await response.text();
+                    throw new Error(errText || "Network error");
+                }
                 return response.text(); 
             })
             .then(data => {
@@ -634,7 +638,7 @@ if (btnSync) {
                 Swal.fire({
                     icon: 'error',
                     title: 'Sync Failed',
-                    text: 'Could not connect to the sync script. Ensure the IP is correct and the server is running.',
+                    text: error.message || 'Could not connect to the device. Ensure the IP is correct and the device is powered on.',
                     confirmButtonColor: '#dc3545'
                 });
             });

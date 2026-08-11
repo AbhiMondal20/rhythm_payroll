@@ -355,7 +355,8 @@ if ($is_searched && isset($conn)) {
             
             if (isset($db_entries[$date_str])) {
                 $entry = $db_entries[$date_str];
-                $entry['assigned_shift_name'] = $assigned_shift_name;
+                // FETCH FROM time_entries: Prefer database shift_name, fallback to assigned
+                $entry['assigned_shift_name'] = !empty($entry['shift_name']) ? $entry['shift_name'] : $assigned_shift_name;
                 $time_entries[] = $entry;
             } else {
                 $is_sunday = ($day_num == 7);
@@ -706,7 +707,10 @@ ob_start();
                                     $pillClass2 = getPillClass($half2);
 
                                     $selectedCode = getCodeFromHalves($row['day_status_1'] ?? '', $row['day_status_2'] ?? '');
-                                    $shiftDisplay = $row['assigned_shift_name'] ?? 'Not Assigned';
+                                    
+                                    // Priority 1: `shift_name` from DB. Priority 2: Calculated shift. Priority 3: Not Assigned
+                                    $shiftDisplay = !empty($row['shift_name']) ? $row['shift_name'] : ($row['assigned_shift_name'] ?? 'Not Assigned');
+                                    
                                     $rowId = "row-" . $index . "-details";
                                 ?>
                                     <tr class="<?= $highlightClass ?>">

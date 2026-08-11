@@ -2,8 +2,8 @@
 session_start();
 
 if (!isset($_SESSION['login'])) {
-    // header('Location: login');
-    // exit();
+    header('Location: login');
+    exit();
 }
 
 require_once 'includes/db_client.php';

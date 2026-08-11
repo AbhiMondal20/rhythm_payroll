@@ -8,31 +8,31 @@ if (!isset($_SESSION['login'])) {
 require_once 'includes/db_client.php';
 require_once 'includes/config.php';
 
+// --- AJAX ENDPOINT FOR EMPLOYEE SEARCH ---
+if (isset($_GET['ajax_emp_search'])) {
+    header('Content-Type: application/json');
+    $q = trim($_GET['ajax_emp_search']);
+    $res = [];
+    if ($q !== '') {
+        $q = '%' . $q . '%';
+        $stmt = mysqli_prepare($conn, "SELECT id, employee_code, employee_name FROM employees WHERE employee_name LIKE ? OR employee_code LIKE ? LIMIT 15");
+        mysqli_stmt_bind_param($stmt, "ss", $q, $q);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        while ($row = mysqli_fetch_assoc($result)) {
+            $res[] = [
+                'id' => (int)$row['id'],
+                'code' => $row['employee_code'],
+                'name' => $row['employee_name']
+            ];
+        }
+    }
+    echo json_encode($res);
+    exit;
+}
+// -----------------------------------------
+
 $page_title = 'Leave Accumulation';
-
-/*
-RUN ONCE:
-
-CREATE TABLE `leave_accumulations` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `emp_id` int(11) NOT NULL DEFAULT 0,
-  `emp_name` varchar(150) NOT NULL,
-  `leave_type_id` int(11) NOT NULL DEFAULT 0,
-  `leave_name` varchar(150) NOT NULL,
-  `accumulated` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `balance` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `accumulation_date` date NOT NULL,
-  `accum_from` date DEFAULT NULL,
-  `accum_to` date DEFAULT NULL,
-  `avail_from` date DEFAULT NULL,
-  `avail_to` date DEFAULT NULL,
-  `is_opening_balance` tinyint(1) NOT NULL DEFAULT 0,
-  `note` text DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-*/
 
 function h($v) {
     return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
@@ -45,7 +45,7 @@ function dbDate($date) {
 }
 
 function showDate($date) {
-    if (!$date || $date === '0000-00-00') return '';
+    if (!$date || $date === '0000-00-00' || $date === '1970-01-01') return '';
     return date('d M Y', strtotime($date));
 }
 
@@ -66,13 +66,17 @@ $mode       = $_GET['mode'] ?? 'list';
 $detail_id  = (int)($_GET['id'] ?? 0);
 $page       = max(1, (int)($_GET['p'] ?? 1));
 $per_page   = max(5, (int)($_GET['pp'] ?? 10));
-$date_range = $_GET['date_range'] ?? (date('01 Jan Y') . ' TO ' . date('31 Dec Y'));
+// Updated default to format expected by daterangepicker
+$date_range = $_GET['date_range'] ?? (date('01 M Y') . ' TO ' . date('t M Y'));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'add_accumulation') {
+        $emp_id     = (int)($_POST['emp_id'] ?? 0);
+        $emp_code   = trim($_POST['emp_code'] ?? '');
         $emp_name   = trim($_POST['emp_name'] ?? '');
+        
         $leave_name = trim($_POST['leave_type_id'] ?? '');
         $accum_date = dbDate($_POST['accum_date'] ?? '');
         $leaves     = (float)($_POST['no_of_leaves'] ?? 0);
@@ -83,28 +87,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $opening    = isset($_POST['is_opening_balance']) ? 1 : 0;
         $note       = trim($_POST['note'] ?? '');
 
-        if ($emp_name === '' || $leave_name === '' || !$accum_date) {
-            $_SESSION['la_flash'] = 'Employee Name, Leave Name and Accumulation Date are required.';
+        if ($emp_id === 0 || $emp_name === '' || $leave_name === '' || !$accum_date) {
+            $_SESSION['la_flash'] = 'Valid Employee, Leave Name and Accumulation Date are required.';
             $_SESSION['la_flash_type'] = 'error';
             header("Location: ?mode=add");
             exit;
         }
 
+        $leave_type_id = 0; 
+        
+        // Accumulated and Balance both get the value of the inputted leaves
+        $balance = $leaves;
+
         $stmt = mysqli_prepare($conn, "
             INSERT INTO leave_accumulations
-            (emp_id, emp_name, leave_type_id, leave_name, accumulated, balance, accumulation_date,
+            (emp_id, emp_code, emp_name, leave_type_id, leave_name, accumulated, balance, accumulation_date,
              accum_from, accum_to, avail_from, avail_to, is_opening_balance, note)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
-
-        $emp_id = 0;
-        $leave_type_id = 0;
-        $balance = $leaves;
 
         mysqli_stmt_bind_param(
             $stmt,
-            "isisddsssssiss",
+            "issisddsssssis",
             $emp_id,
+            $emp_code,
             $emp_name,
             $leave_type_id,
             $leave_name,
@@ -139,6 +145,8 @@ $_SESSION['la_flash'] = '';
 $_SESSION['la_flash_type'] = 'success';
 ob_start();
 ?>
+<!-- Include Daterangepicker CSS -->
+<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
 <link rel="stylesheet" href="includes/assets/style.css">
 
 <style>
@@ -235,6 +243,45 @@ table.la-table tbody td{padding:13px 16px;font-size:13.5px;color:#374151}
 .btn-la-save{padding:9px 24px;background:#2563eb;border:none;border-radius:6px;font-size:13.5px;color:#fff;cursor:pointer;font-weight:600;transition:background .14s}
 .btn-la-save:hover{background:#1d4ed8}
 
+/* Autocomplete Custom Styles */
+.autocomplete-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-top: none;
+    z-index: 50;
+    max-height: 200px;
+    overflow-y: auto;
+    border-radius: 0 0 6px 6px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    display: none;
+}
+.autocomplete-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 13.5px;
+    color: #1e2d3d;
+    border-bottom: 1px solid #f1f5f9;
+}
+.autocomplete-item:last-child {
+    border-bottom: none;
+}
+.autocomplete-item:hover {
+    background: #f8fafc;
+    color: #2563eb;
+}
+.emp-code-badge {
+    font-size: 11px;
+    background: #e2e8f0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-right: 8px;
+    color: #475569;
+}
+
 /* toast */
 .toast-container{position:fixed;top:20px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none}
 .toast{display:flex;align-items:center;gap:10px;background:#fff;border-radius:8px;padding:13px 18px;box-shadow:0 4px 18px rgba(0,0,0,.14);font-size:13.5px;font-weight:500;min-width:260px;pointer-events:all;animation:toastIn .25s ease;border-left:4px solid #2563eb;color:#1e2d3d}
@@ -246,6 +293,19 @@ table.la-table tbody td{padding:13px 16px;font-size:13.5px;color:#374151}
 .toast-close{margin-left:auto;cursor:pointer;color:#9ca3af;font-size:14px;background:none;border:none;padding:0;line-height:1}
 @keyframes toastIn{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}
 @keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateX(40px)}}
+
+/* Daterangepicker overrides */
+#dateRangePicker {
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 10px center;
+}
+.daterangepicker .ranges li.active {
+    background-color: #2563eb;
+    color: #fff;
+}
+.daterangepicker .btn-primary {
+    background-color: #2563eb;
+    border-color: #2563eb;
+}
 </style>
 
 <?php
@@ -298,13 +358,6 @@ $leave_types = [
     'Paternity Leave'
 ];
 
-$date_ranges = [
-    date('01 Jan Y') . ' TO ' . date('31 Dec Y'),
-    date('01 Jan Y', strtotime('-1 year')) . ' TO ' . date('31 Dec Y', strtotime('-1 year')),
-    '01 Apr ' . date('Y') . ' TO 31 Mar ' . date('Y', strtotime('+1 year')),
-    '01 Jan ' . date('Y') . ' TO 31 Mar ' . date('Y'),
-];
-
 $today = date('Y-m-d');
 ?>
 
@@ -348,7 +401,7 @@ $today = date('Y-m-d');
         <div class="la-field-grid" style="margin-bottom:22px">
           <div class="la-field">
             <label>Employee Name</label>
-            <div class="la-field-value"><?= h($active_row['emp_name']) ?></div>
+            <div class="la-field-value"><?= h($active_row['emp_name']) ?> <?= $active_row['emp_code'] ? '<span class="emp-code-badge" style="float:right">'.h($active_row['emp_code']).'</span>' : '' ?></div>
           </div>
           <div class="la-field">
             <label>Leave Name</label>
@@ -422,16 +475,20 @@ $today = date('Y-m-d');
       <?php elseif ($mode === 'add'): ?>
 
       <div class="la-detail-card">
-        <form method="POST">
+        <form method="POST" id="accumulationForm">
           <input type="hidden" name="action" value="add_accumulation">
+          <input type="hidden" name="emp_id" id="hidden_emp_id" value="">
+          <input type="hidden" name="emp_code" id="hidden_emp_code" value="">
+          <input type="hidden" name="emp_name" id="hidden_emp_name" value="">
 
           <div class="la-field-grid" style="margin-bottom:22px">
             <div class="la-field">
               <label><span class="req">*</span> Employee Name</label>
               <div style="position:relative">
                 <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:2px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:12px"></i>
-                <input type="text" name="emp_name" class="la-input" style="padding-left:20px"
-                       placeholder="Search by name or #code" required>
+                <input type="text" id="employeeSearchInput" class="la-input" style="padding-left:20px"
+                       placeholder="Search by name or #code" autocomplete="off" required>
+                <div id="autocompleteResults" class="autocomplete-results"></div>
               </div>
             </div>
 
@@ -533,20 +590,17 @@ $today = date('Y-m-d');
       <div class="la-filter-bar">
         <div class="la-search-wrap">
           <i class="fa-solid fa-magnifying-glass"></i>
-          <input type="text" id="empSearchInput" class="la-search-input"
+          <input type="text" id="empSearchInputList" class="la-search-input"
                  placeholder="Search by name or #code"
                  oninput="filterTable(this.value)">
         </div>
 
         <div class="la-date-range-wrap">
           <i class="fa-regular fa-calendar cal-icon"></i>
-          <select class="la-date-range-select" id="dateRangeSelect">
-            <?php foreach ($date_ranges as $dr): ?>
-            <option value="<?= h($dr) ?>" <?= ($dr === $date_range) ? 'selected' : '' ?>>
-              <?= h($dr) ?>
-            </option>
-            <?php endforeach; ?>
-          </select>
+          <!-- Replaced the <select> element with <input> for Date Range Picker -->
+          <input type="text" id="dateRangePicker" class="la-date-range-select" 
+                 value="<?= h($date_range) ?>" readonly 
+                 style="cursor: pointer; min-width: 230px; caret-color: transparent;">
         </div>
 
         <button class="btn-get-details" onclick="applyDateRange()">
@@ -585,7 +639,11 @@ $today = date('Y-m-d');
                 <td><?= h($row['accumulated']) ?></td>
                 <td><?= h($row['balance']) ?></td>
                 <td><?= h(showDate($row['accumulation_date'])) ?></td>
-                <td><?= h(showDate($row['avail_from'])) ?> To <?= h(showDate($row['avail_to'])) ?></td>
+                <td>
+                  <?php if($row['avail_from'] && $row['avail_to'] && $row['avail_from'] !== '0000-00-00'): ?>
+                    <?= h(showDate($row['avail_from'])) ?> To <?= h(showDate($row['avail_to'])) ?>
+                  <?php endif; ?>
+                </td>
                 <td>
                   <button class="la-link-icon" title="View Details"
                           onclick="window.location.href='?mode=detail&id=<?= (int)$row['id'] ?>'">
@@ -650,15 +708,34 @@ $today = date('Y-m-d');
   </div>
 </div>
 
-<?php if ($flash): ?>
-<script>
-window.addEventListener('DOMContentLoaded', function () {
-  showToast(<?= json_encode($flash) ?>, <?= json_encode($flash_type) ?>);
-});
-</script>
-<?php endif; ?>
+<!-- jQuery, Moment, Daterangepicker JS -->
+<script type="text/javascript" src="https://cdn.jsdelivr.net/jquery/latest/jquery.min.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
 
 <script>
+// --- Initialize Daterangepicker ---
+$(document).ready(function() {
+    $('#dateRangePicker').daterangepicker({
+        opens: 'left',
+        showDropdowns: true,
+        locale: {
+            format: 'DD MMM YYYY',
+            separator: ' TO ',
+            applyLabel: 'Apply',
+            cancelLabel: 'Cancel',
+            customRangeLabel: 'Custom Date Range'
+        },
+        ranges: {
+           'Today': [moment(), moment()],
+           'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+           'Last 7 Days': [moment().subtract(6, 'days'), moment()],
+           'This Month': [moment().startOf('month'), moment().endOf('month')],
+           'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+        }
+    });
+});
+
 function goPage(p){
   const u = new URL(window.location.href);
   u.searchParams.set('p', p);
@@ -672,8 +749,9 @@ function changePerPage(pp){
   window.location.href = u.toString();
 }
 
+// Updated applyDateRange logic to retrieve from the new input picker
 function applyDateRange(){
-  const val = document.getElementById('dateRangeSelect').value;
+  const val = document.getElementById('dateRangePicker').value;
   const u = new URL(window.location.href);
   u.searchParams.set('date_range', val);
   u.searchParams.set('p', 1);
@@ -687,6 +765,78 @@ function filterTable(q){
     row.style.display = (!q || row.textContent.toLowerCase().includes(q)) ? '' : 'none';
   });
 }
+
+// Employee Autocomplete Fetch Logic
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('employeeSearchInput');
+    const resultsContainer = document.getElementById('autocompleteResults');
+    const hiddenId = document.getElementById('hidden_emp_id');
+    const hiddenCode = document.getElementById('hidden_emp_code');
+    const hiddenName = document.getElementById('hidden_emp_name');
+    let timeoutId;
+
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            clearTimeout(timeoutId);
+            const query = this.value.trim();
+            
+            // Reset hiddens if input changes
+            hiddenId.value = '';
+            hiddenCode.value = '';
+            hiddenName.value = '';
+
+            if (query.length < 2) {
+                resultsContainer.style.display = 'none';
+                return;
+            }
+
+            timeoutId = setTimeout(() => {
+                fetch(`?ajax_emp_search=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        resultsContainer.innerHTML = '';
+                        if (data.length > 0) {
+                            data.forEach(emp => {
+                                const div = document.createElement('div');
+                                div.className = 'autocomplete-item';
+                                div.innerHTML = `<span class="emp-code-badge">${emp.code}</span> ${emp.name}`;
+                                div.onclick = function() {
+                                    searchInput.value = emp.name;
+                                    hiddenId.value = emp.id;
+                                    hiddenCode.value = emp.code;
+                                    hiddenName.value = emp.name;
+                                    resultsContainer.style.display = 'none';
+                                };
+                                resultsContainer.appendChild(div);
+                            });
+                            resultsContainer.style.display = 'block';
+                        } else {
+                            resultsContainer.style.display = 'none';
+                        }
+                    })
+                    .catch(error => console.error('Error fetching employees:', error));
+            }, 300); // 300ms debounce
+        });
+
+        // Hide results when clicking outside
+        document.addEventListener('click', function(e) {
+            if (e.target !== searchInput && e.target !== resultsContainer) {
+                resultsContainer.style.display = 'none';
+            }
+        });
+    }
+    
+    const form = document.getElementById('accumulationForm');
+    if(form) {
+        form.addEventListener('submit', function(e) {
+            if (!hiddenId.value) {
+                e.preventDefault();
+                showToast('Please select a valid employee from the dropdown.', 'warning');
+            }
+        });
+    }
+});
+
 
 const _ti = {
   success:'fa-circle-check',
@@ -713,6 +863,14 @@ function rmToast(el){
   setTimeout(() => el.remove(), 260);
 }
 </script>
+
+<?php if ($flash): ?>
+<script>
+window.addEventListener('DOMContentLoaded', function () {
+  showToast(<?= json_encode($flash) ?>, <?= json_encode($flash_type) ?>);
+});
+</script>
+<?php endif; ?>
 
 <?php
 $page_content = ob_get_clean();
