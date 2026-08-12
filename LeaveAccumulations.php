@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $emp_code   = trim($_POST['emp_code'] ?? '');
         $emp_name   = trim($_POST['emp_name'] ?? '');
         
-        $leave_name = trim($_POST['leave_type_id'] ?? '');
+        $leave_name = trim($_POST['leave_name'] ?? '');
         $accum_date = dbDate($_POST['accum_date'] ?? '');
         $leaves     = (float)($_POST['no_of_leaves'] ?? 0);
         $accum_from = dbDate($_POST['accum_from'] ?? '');
@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        $leave_type_id = 0; 
+        $leave_type_id = (int)($_POST['leave_type_id'] ?? 0);
         
         // Logical Balance Calculation
         $balance = $leaves;
@@ -143,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $emp_code   = trim($_POST['emp_code'] ?? '');
         $emp_name   = trim($_POST['emp_name'] ?? '');
         
-        $leave_name = trim($_POST['leave_type_id'] ?? '');
+        $leave_name = trim($_POST['leave_name'] ?? '');
         $accum_date = dbDate($_POST['accum_date'] ?? '');
         $new_leaves = (float)($_POST['no_of_leaves'] ?? 0);
         $accum_from = dbDate($_POST['accum_from'] ?? '');
@@ -161,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Fetch old record
-        $stmt_old = mysqli_prepare($conn, "SELECT accumulated, balance, is_opening_balance FROM leave_accumulations WHERE id = ?");
+        $stmt_old = mysqli_prepare($conn, "SELECT balance, is_opening_balance FROM leave_accumulations WHERE id = ?");
         mysqli_stmt_bind_param($stmt_old, "i", $id);
         mysqli_stmt_execute($stmt_old);
         $old_res = mysqli_stmt_get_result($stmt_old);
@@ -174,7 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        $leave_type_id = 0; 
+        $leave_type_id = (int)($_POST['leave_type_id'] ?? 0);
         
         // Logical Balance Calculation for Edit
         if ($opening === 1) {
@@ -427,13 +427,15 @@ if (($mode === 'detail' || $mode === 'edit') && $detail_id > 0) {
     $active_row = mysqli_fetch_assoc($detailRes);
 }
 
-$leave_types = [
-    'Compensatory Leave',
-    'Casual Leave/Sick Leave',
-    'Loss of Pay',
-    'Maternity Leave',
-    'Paternity Leave'
-];
+$leave_types = [];
+$ls_query = "SELECT id, structure_name FROM leave_structures";
+$ls_result = mysqli_query($conn, $ls_query);
+
+if ($ls_result) {
+    while ($ls_row = mysqli_fetch_assoc($ls_result)) {
+        $leave_types[(int)$ls_row['id']] = $ls_row['structure_name'];
+    }
+}
 
 $today = date('Y-m-d');
 ?>
@@ -586,7 +588,7 @@ $today = date('Y-m-d');
 
             <div class="la-field">
               <label>Leave Name</label>
-              <select name="leave_type_id" class="la-select" required>
+              <select name="leave_name" class="la-select" required>
                 <option value=""></option>
                 <?php foreach ($leave_types as $lt): ?>
                 <option value="<?= h($lt) ?>" <?= ($is_edit && $active_row['leave_name'] === $lt) ? 'selected' : '' ?>><?= h($lt) ?></option>

@@ -80,6 +80,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cance
     if (is_array($ids) && count($ids) > 0) {
         // Sanitize IDs
         $ids = array_map('intval', $ids);
+        
+        // Loop through to refund balances before rejecting
+        foreach($ids as $cancel_id) {
+            $check_q = $conn->query("SELECT emp_id, leave_type_id, from_date, to_date, day_type, status FROM leave_requests WHERE id = $cancel_id");
+            if ($check_q && $row = $check_q->fetch_assoc()) {
+                // Only refund if it isn't already rejected
+                if ($row['status'] !== 'rejected') {
+                    $dt1 = new DateTime($row['from_date']);
+                    $dt2 = new DateTime($row['to_date']);
+                    $days_to_refund = (int)$dt1->diff($dt2)->format('%a') + 1;
+                    if ($row['day_type'] === 'Half Day') {
+                        $days_to_refund = 0.5;
+                    }
+                    $refund_stmt = $conn->prepare("
+                        UPDATE leave_accumulations 
+                        SET balance = balance + ? 
+                        WHERE emp_id = ? AND leave_type_id = ? 
+                        ORDER BY id DESC LIMIT 1
+                    ");
+                    if ($refund_stmt) {
+                        $refund_stmt->bind_param("dii", $days_to_refund, $row['emp_id'], $row['leave_type_id']);
+                        $refund_stmt->execute();
+                        $refund_stmt->close();
+                    }
+                }
+            }
+        }
+
+        // Now reject the leaves in leave_requests table
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $types = str_repeat('i', count($ids));
         
@@ -128,7 +157,7 @@ if ($logged_in_emp_id > 0) {
 }
 
 // ========================================================================
-// ENSURE LEAVE REQUESTS TABLE EXISTS
+// ENSURE LEAVE REQUESTS TABLE EXISTS & DYNAMICALLY PATCH MISSING COLUMNS
 // ========================================================================
 $conn->query("
 CREATE TABLE IF NOT EXISTS leave_requests (
@@ -178,9 +207,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'apply
     $leave_name = $lt_data['leave_name'] ?? '';
 
     $ins = $conn->prepare("INSERT INTO leave_requests (emp_id, emp_code, leave_type_id, from_date, to_date, day_type, reason, status) VALUES (?, ?, ?, ?, ?, ?, ?,'pending')");
+    
     if ($ins) {
         $ins->bind_param("isissss", $e_id, $emp_code, $lt_id, $from, $to, $day_type, $reason);
-        $ins->execute();
+        
+        if (!$ins->execute()) {
+            // IF execution fails, show actual DB error
+            $_SESSION['lv_flash'] = "❌ Error inserting leave request: " . $ins->error;
+            $ins->close();
+            header("Location: ?tab=calendar");
+            exit();
+        }
         $ins->close();
 
         $src = $conn->prepare("INSERT INTO `approval_requests`(`emp_code`, `emp_name`, `type`, `stage`, `request_date`, `requested_on`, `shift_date`, `leave_type`, `reasons`, `status`, `created_at`) VALUES (?, ?, 'leave', 'Stage_1', ?, ?, ?, ?, ?, 'pending', ?)");
@@ -190,7 +227,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'apply
             $src->close();
         }
 
+        // Deduct Balance Immediately from leave_accumulations
+        $datetime1 = new DateTime($from);
+        $datetime2 = new DateTime($to);
+        $interval = $datetime1->diff($datetime2);
+        $leave_days = (int)$interval->format('%a') + 1; // Includes both start and end days
+        
+        if (isset($_POST['is_half_day'])) {
+            $leave_days = 0.5;
+        }
+
+        $deduct_stmt = $conn->prepare("
+            UPDATE leave_accumulations 
+            SET balance = balance - ? 
+            WHERE emp_id = ? AND leave_type_id = ? 
+            ORDER BY id DESC LIMIT 1
+        ");
+        if ($deduct_stmt) {
+            $deduct_stmt->bind_param("dii", $leave_days, $e_id, $lt_id);
+            if(!$deduct_stmt->execute()) {
+                error_log("Failed to deduct balance: " . $deduct_stmt->error);
+            }
+            $deduct_stmt->close();
+        }
+
         $_SESSION['lv_flash'] = "Leave applied successfully on behalf of employee!";
+        header("Location: ?tab=calendar");
+        exit();
+    } else {
+        // Query prepare failed (usually syntax or table schema issue)
+        $_SESSION['lv_flash'] = "❌ SQL Prepare Error: " . $conn->error;
         header("Location: ?tab=calendar");
         exit();
     }
@@ -1286,7 +1352,6 @@ function cancelSelectedLeaves() {
 
     const ids = Array.from(checkboxes).map(cb => cb.value);
 
-    // Backend AJAX to process cancelling the request IDs
     fetch(window.location.href, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1369,8 +1434,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-
-    // Dynamic Donut Chart based on Database Values
     const doCtx = document.getElementById('overviewDonut');
     if (doCtx) {
         new Chart(doCtx, {
