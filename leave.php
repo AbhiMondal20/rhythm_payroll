@@ -38,6 +38,40 @@ if (isset($_GET['ajax_search'])) {
 }
 
 // ========================================================================
+// AJAX ENDPOINT TO FETCH EMPLOYEE LEAVE BALANCES
+// ========================================================================
+if (isset($_GET['ajax_leave_balances'])) {
+    header('Content-Type: application/json');
+    $emp_id = (int)$_GET['ajax_leave_balances'];
+    $balances = [];
+    
+    // Fetch the latest balance record for each leave type for this employee
+    $stmt = $conn->prepare("
+        SELECT leave_name, balance 
+        FROM leave_accumulations 
+        WHERE emp_id = ? 
+        AND id IN (
+            SELECT MAX(id) 
+            FROM leave_accumulations 
+            WHERE emp_id = ? 
+            GROUP BY leave_name
+        )
+    ");
+    
+    if ($stmt) {
+        $stmt->bind_param("ii", $emp_id, $emp_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while($row = $res->fetch_assoc()) {
+            $balances[$row['leave_name']] = (float)$row['balance'];
+        }
+        $stmt->close();
+    }
+    echo json_encode($balances);
+    exit();
+}
+
+// ========================================================================
 // AJAX ENDPOINT TO CANCEL/REJECT SELECTED LEAVES
 // ========================================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cancel_leaves') {
@@ -118,14 +152,21 @@ CREATE TABLE IF NOT EXISTS leave_requests (
 // HANDLE POST ACTIONS (Apply Leave)
 // ========================================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'apply_leave') {
-    $e_id = (int)$_POST['emp_id'];
-    $lt_id = (int)$_POST['leave_type_id'];
+    $e_id = (int)($_POST['emp_id'] ?? 0);
+    $lt_id = (int)($_POST['leave_type_id'] ?? 0);
+    
+    // Strict Validation to prevent 0 from inserting
+    if ($e_id <= 0 || $lt_id <= 0) {
+        $_SESSION['lv_flash'] = "❌ Error: Invalid Employee or Leave Type selected.";
+        header("Location: ?tab=calendar");
+        exit();
+    }
+
     $from = $_POST['from_date'];
     $to = $_POST['to_date'];
     $day_type = isset($_POST['is_half_day']) ? 'Half Day' : 'Full Day';
     $reason = $_POST['reason'];
 
-    // FIX: Avoid fatal errors by safely fetching associative arrays
     $emp_res = $conn->query("SELECT employee_code, employee_name FROM employees WHERE id = $e_id");
     $emp_data = $emp_res ? $emp_res->fetch_assoc() : [];
     $emp_code = $emp_data['employee_code'] ?? '';
@@ -136,14 +177,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'apply
     $leave_code = $lt_data['leave_code'] ?? '';
     $leave_name = $lt_data['leave_name'] ?? '';
 
-    // Proceed with Insert now that $emp_code is defined safely
     $ins = $conn->prepare("INSERT INTO leave_requests (emp_id, emp_code, leave_type_id, from_date, to_date, day_type, reason, status) VALUES (?, ?, ?, ?, ?, ?, ?,'pending')");
     if ($ins) {
         $ins->bind_param("isissss", $e_id, $emp_code, $lt_id, $from, $to, $day_type, $reason);
         $ins->execute();
         $ins->close();
 
-        // Safely insert into approval_requests
         $src = $conn->prepare("INSERT INTO `approval_requests`(`emp_code`, `emp_name`, `type`, `stage`, `request_date`, `requested_on`, `shift_date`, `leave_type`, `reasons`, `status`, `created_at`) VALUES (?, ?, 'leave', 'Stage_1', ?, ?, ?, ?, ?, 'pending', ?)");
         if ($src) {
             $src->bind_param("ssssssss", $emp_code, $emp_name, $from, $now, $from, $leave_name, $reason, $now);
@@ -219,7 +258,6 @@ if ($insight_filter === 'last_month') {
     $end_date_filter = date('Y-12-31');
 }
 
-// FIX: Exclude rejected leaves from stats and use overlap logic (from_date <= End AND to_date >= Start)
 $total_leaves_month = 0;
 $stats_sql = "SELECT leave_type_id, COUNT(*) as cnt FROM leave_requests WHERE from_date <= ? AND to_date >= ? AND status != 'rejected' GROUP BY leave_type_id";
 $s_stmt = $conn->prepare($stats_sql);
@@ -274,7 +312,6 @@ $cal_leaves_js_db = [];
 $start_date = sprintf('%04d-%02d-01', $cal_year, $cal_month);
 $end_date = sprintf('%04d-%02d-%02d', $cal_year, $cal_month, $days_in_month);
 
-// FIX: Added lr.id to be able to cancel requests via checkboxes
 $c_sql = "
     SELECT lr.id, lr.from_date, lr.to_date, lr.status, e.employee_name, lt.leave_code 
     FROM leave_requests lr
@@ -309,7 +346,7 @@ if ($c_stmt) {
                 
                 if(!isset($cal_leaves_js_db[$dt_key])) { $cal_leaves_js_db[$dt_key] = []; }
                 $cal_leaves_js_db[$dt_key][] = [
-                    'id' => $r['id'], // passed to script
+                    'id' => $r['id'],
                     'name' => $r['employee_name'],
                     'type' => $r['leave_code'],
                     'status' => $r['status']
@@ -391,9 +428,11 @@ tailwind.config = {
     }
 };
 
-// Expose dynamic calendar data to JS
+// Expose dynamic calendar data and leave types to JS
 const calendarLeaveDetails = <?= json_encode($cal_leaves_js_db) ?>;
 const toastMessage = <?= json_encode($flash_message) ?>;
+// Use JSON_INVALID_UTF8_IGNORE to prevent encoding failures returning null
+const availableLeaveTypes = <?= json_encode(array_values($leave_types_db), JSON_INVALID_UTF8_IGNORE) ?: '[]' ?>;
 </script>
 
 <style>
@@ -697,7 +736,6 @@ const toastMessage = <?= json_encode($flash_message) ?>;
                                     echo '<button type="button" class="lv-cal-pill block w-full mb-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white hover:opacity-90 truncate" data-date="' . esc($date_key) . '" data-status="approved" data-count="' . (int)$leaves['approved'] . '">' . (int)$leaves['approved'] . ' Approved</button>';
                                 }
 
-                                // FIX: Added code to show Rejected Leaves button pill on the Calendar
                                 if ($leaves['rejected'] > 0) {
                                     echo '<button type="button" class="lv-cal-pill block w-full mb-1 rounded-md bg-red-500 px-2 py-1 text-[11px] font-bold text-white hover:opacity-90 truncate" data-date="' . esc($date_key) . '" data-status="rejected" data-count="' . (int)$leaves['rejected'] . '">' . (int)$leaves['rejected'] . ' Rejected</button>';
                                 }
@@ -732,7 +770,7 @@ const toastMessage = <?= json_encode($flash_message) ?>;
             <form id="applyBehalfForm" method="POST" action="?tab=calendar" class="space-y-4">
                 <input type="hidden" name="action" value="apply_leave">               
                 
-                <!-- NEW CUSTOM SEARCH BAR -->
+                <!-- CUSTOM SEARCH BAR -->
                 <div>
                     <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">Select Employee <span class="text-red-600">*</span></label>
                     <div class="relative w-full">
@@ -751,22 +789,13 @@ const toastMessage = <?= json_encode($flash_message) ?>;
                         <div id="autocompleteDropdown" class="absolute z-50 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg hidden max-h-48 overflow-y-auto"></div>
                     </div>
                 </div>
-                <!-- Leave Type Select -->
+                
+                <!-- Dynamic Leave Type Select -->
                 <div>
                     <label class="block mb-1.5 text-xs font-bold text-slate-500 uppercase">Leave Type <span class="text-red-600">*</span></label>
                     <select name="leave_type_id" id="typeSelect" required
                         class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm outline-none focus:border-blue-500">
-                        <option value="">Select</option>
-                        <?php foreach($leave_types_db as $lt): 
-                            $balance = '0.00';
-                            if (stripos($lt['leave_name'], 'Compensatory') !== false) {
-                                $balance = '17.00';
-                            } elseif (stripos($lt['leave_name'], 'Casual') !== false || stripos($lt['leave_name'], 'Sick') !== false) {
-                                $balance = '14.00';
-                            }
-                        ?>
-                            <option value="<?= esc($lt['id']) ?>"><?= esc($lt['leave_name']) ?> (<?= $balance ?>)</option>
-                        <?php endforeach; ?>
+                        <option value="">Select Employee First...</option>
                     </select>
                 </div>
 
@@ -943,17 +972,65 @@ const toastMessage = <?= json_encode($flash_message) ?>;
 <script>
     // FORM VALIDATION SCRIPT 
     document.getElementById('applyBehalfForm')?.addEventListener('submit', function(e) {
-        if (!document.getElementById('hiddenEmpId').value) {
+        const empId = document.getElementById('hiddenEmpId').value;
+        const typeSelect = document.getElementById('typeSelect').value;
+        
+        if (!empId) {
             e.preventDefault();
             lvToast('⚠️', 'Please select a valid employee from the search dropdown.');
             document.getElementById('employeeSearchInput').focus();
+            return;
+        }
+        
+        if (!typeSelect) {
+            e.preventDefault();
+            lvToast('⚠️', 'Please select a valid Leave Type.');
+            document.getElementById('typeSelect').focus();
+            return;
         }
     });
 
-    // NEW CUSTOM AUTOCOMPLETE SEARCH SCRIPT
+    // NEW CUSTOM AUTOCOMPLETE SEARCH SCRIPT WITH DYNAMIC BALANCES
     const searchInput = document.getElementById('employeeSearchInput');
     const hiddenEmpId = document.getElementById('hiddenEmpId');
     const dropdown = document.getElementById('autocompleteDropdown');
+    const typeSelect = document.getElementById('typeSelect');
+
+    function populateLeaveDropdown(balances) {
+        typeSelect.innerHTML = '<option value="">Select Leave Type</option>';
+        
+        if (Array.isArray(availableLeaveTypes)) {
+            availableLeaveTypes.forEach(lt => {
+                const balanceVal = balances[lt.leave_name];
+                const balance = balanceVal !== undefined ? parseFloat(balanceVal).toFixed(2) : '0.00';
+                
+                const option = document.createElement('option');
+                option.value = lt.id; // Correct database ID injected
+                option.textContent = `${lt.leave_name} (${balance})`;
+                typeSelect.appendChild(option);
+            });
+        }
+    }
+
+    function fetchLeaveBalances(empId) {
+        // Reset the dropdown temporarily while loading
+        typeSelect.innerHTML = '<option value="">Loading balances...</option>';
+        
+        fetch(`?ajax_leave_balances=${empId}`)
+            .then(res => {
+                if (!res.ok) throw new Error("Network response failed");
+                return res.json();
+            })
+            .then(balances => {
+                populateLeaveDropdown(balances);
+            })
+            .catch(error => {
+                console.error('Error fetching balances:', error);
+                // FAILSAFE: Even if balances fail to fetch, STILL populate the dropdown 
+                // so the user can actually submit a valid leave_type_id
+                populateLeaveDropdown({}); 
+            });
+    }
 
     if (searchInput && dropdown) {
         let debounceTimer;
@@ -961,8 +1038,9 @@ const toastMessage = <?= json_encode($flash_message) ?>;
         searchInput.addEventListener('input', function() {
             clearTimeout(debounceTimer);
             
-            // Clear hidden ID if user changes the text manually without selecting
+            // Clear hidden ID and reset dropdown if user changes the text manually
             hiddenEmpId.value = ''; 
+            typeSelect.innerHTML = '<option value="">Select Employee First...</option>';
             
             const query = this.value.trim();
             if (query.length < 2) {
@@ -982,8 +1060,11 @@ const toastMessage = <?= json_encode($flash_message) ?>;
                                 item.innerHTML = `<span class="text-sm font-semibold text-slate-700 dark:text-slate-200">${emp.employee_name}</span><span class="text-xs text-slate-400">#${emp.employee_code}</span>`;
                                 item.addEventListener('click', () => {
                                     searchInput.value = emp.employee_name; 
-                                    hiddenEmpId.value = emp.id; // Assign ID to hidden input for main form submission
+                                    hiddenEmpId.value = emp.id;
                                     dropdown.style.display = 'none';
+                                    
+                                    // Fetch live balances for this employee ID
+                                    fetchLeaveBalances(emp.id);
                                 });
                                 dropdown.appendChild(item);
                             });
@@ -1069,7 +1150,7 @@ const toastMessage = <?= json_encode($flash_message) ?>;
 // Trigger Toast if message was set in PHP session
 if (toastMessage) {
     document.addEventListener('DOMContentLoaded', () => {
-        lvToast('✅', toastMessage);
+        lvToast(toastMessage.includes('❌') ? '❌' : '✅', toastMessage.replace('❌', ''));
     });
 }
 
@@ -1125,7 +1206,6 @@ function openLeaveDayModal(date, status, count) {
         year: 'numeric'
     });
 
-    // FIX: Update title logic to include Rejected status
     if (status === 'approved') {
         title.textContent = 'Approved Leave requests';
     } else if (status === 'rejected') {

@@ -24,13 +24,19 @@ if (!function_exists('initials')) {
 }
 
 function fmtDate($date) {
-    if (empty($date) || $date === '0000-00-00') return '—';
+    if (empty($date) || $date === '0000-00-00' || $date === '0000-00-00 00:00:00') return '—';
     return date('d M Y', strtotime($date));
 }
 
 function fmtDateTime($date) {
     if (empty($date) || $date === '0000-00-00 00:00:00') return '—';
     return date('d M Y h:i A', strtotime($date));
+}
+
+// Format exactly as shown in image_23237b.png (e.g. 05 Aug 2026, Wed)
+function fmtLeaveDate($date) {
+    if (empty($date) || $date === '0000-00-00' || $date === '0000-00-00 00:00:00') return '';
+    return date('d M Y, D', strtotime($date)); 
 }
 
 $active_tab  = $_GET['tab'] ?? 'insights';
@@ -50,8 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (($action === 'approve' || $action === 'reject') && $req_id > 0) {
         $action_by = (int)($_SESSION['user_id'] ?? $_SESSION['userid'] ?? 0);
 
-        // 1. Fetch current request details to determine type and current stage
-        $stmt_req = $conn->prepare("SELECT type, stage FROM approval_requests WHERE id = ?");
+        // 1. Fetch current request details
+        $stmt_req = $conn->prepare("SELECT type, stage, leave_type FROM approval_requests WHERE id = ?");
         if ($stmt_req) {
             $stmt_req->bind_param("i", $req_id);
             $stmt_req->execute();
@@ -63,10 +69,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($req_data)) {
             $req_type = $req_data['type']; 
             
-            // Fix: Keep current_stage as a strict integer for database math
             $current_stage = (int)$req_data['stage'];
             if ($current_stage <= 0) {
-                $current_stage = 1; // Default to integer 1
+                $current_stage = 1; 
             }
 
             $new_status = 'pending';
@@ -77,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $new_status = 'rejected';
                 $is_final   = true;
             } else {
-                // 2. Fetch the required approval levels from approval_rules based on the module/type
+                // 2. Fetch required approval levels
                 $stmt_rule = $conn->prepare("
                     SELECT levels 
                     FROM approval_rules 
@@ -85,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     LIMIT 1
                 ");
                 
-                $max_levels = 1; // Fallback to 1 level if no rule is found
+                $max_levels = 1; 
                 
                 if ($stmt_rule) {
                     $stmt_rule->bind_param("s", $req_type);
@@ -97,7 +102,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt_rule->close();
                 }
 
-                // 3. Determine if we move to the next stage or grant final approval
                 if ($current_stage < $max_levels) {
                     $new_stage = $current_stage + 1;
                     $new_status = 'pending';
@@ -107,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // 4. Update the approval request (storing integer for stage)
+            // 3. Update approval request
             $stmt = $conn->prepare("
                 UPDATE approval_requests
                 SET status = ?, stage = ?, action_by = ?, action_at = NOW()
@@ -120,8 +124,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($stmt->execute()) {
                     $stmt->close();
 
-                    // 5. Update secondary tables (e.g., leave_requests) ONLY if this is the final decision
+                    // 4. Update secondary tables ONLY if final decision
                     if ($is_final) {
+                        
+                        $applied_days = 0;
+                        $leave_type_id = 0;
+
+                        if ($req_type === 'Leave') {
+                            $stmt_get_days = $conn->prepare("SELECT `from_date`, `to_date`, `day_type`, `leave_type_id` FROM `leave_requests` WHERE `emp_code`=? AND `id`=?");
+                            if ($stmt_get_days) {
+                                $stmt_get_days->bind_param("si", $emp_code, $req_id);
+                                $stmt_get_days->execute();
+                                $res_days = $stmt_get_days->get_result();
+                                if ($row_days = $res_days->fetch_assoc()) {
+                                    $leave_type_id = (int)($row_days['leave_type_id'] ?? 0);
+                                    
+                                    // Calculate applied days dynamically
+                                    $f = strtotime($row_days['from_date']);
+                                    $t = strtotime($row_days['to_date']);
+                                    if ($f && $t) {
+                                        $applied_days = round(($t - $f) / 86400) + 1;
+                                        if (stripos($row_days['day_type'], 'half') !== false && $applied_days == 1) {
+                                            $applied_days = 0.5;
+                                        }
+                                    }
+                                }
+                                $stmt_get_days->close();
+                            }
+                        }
+
+                        // Update leave_requests table
                         $stmt2 = $conn->prepare("UPDATE `leave_requests` SET `status`=?, `updated_at`=? WHERE `emp_code`=? AND `id`=?");
                         if ($stmt2) {
                             $stmt2->bind_param("sssi", $new_status, $now, $emp_code, $req_id);
@@ -130,9 +162,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } else {
                             error_log("Failed to update leave_requests: " . $conn->error);
                         }
+
+                        // Adjust leave_accumulations balance based on Approve or Reject
+                        if ($req_type === 'Leave' && $applied_days > 0) {
+                            $sql_accum = "";
+                            
+                            if ($new_status === 'approved') {
+                                // Deduct balance if approved
+                                $sql_accum = "UPDATE `leave_accumulations` 
+                                              SET `balance` = `balance` - ?, `updated_at` = ? 
+                                              WHERE `emp_code` = ? AND `leave_type_id` = ?";
+                            } elseif ($new_status === 'rejected') {
+                                // Add back balance if rejected
+                                $sql_accum = "UPDATE `leave_accumulations` 
+                                              SET `balance` = `balance` + ?, `updated_at` = ? 
+                                              WHERE `emp_code` = ? AND `leave_type_id` = ?";
+                            }
+
+                            if ($sql_accum !== "") {
+                                $stmt_accum = $conn->prepare($sql_accum);
+                                if ($stmt_accum) {
+                                    $stmt_accum->bind_param("dssi", $applied_days, $now, $emp_code, $leave_type_id);
+                                    if (!$stmt_accum->execute()) {
+                                        error_log("Failed to execute leave_accumulations update: " . $stmt_accum->error);
+                                    }
+                                    $stmt_accum->close();
+                                } else {
+                                    error_log("Failed to prepare leave_accumulations update: " . $conn->error);
+                                }
+                            }
+                        }
                     }
 
-                    // 6. Set appropriate UI notifications
                     if ($new_status === 'approved') {
                         $_SESSION['toast_icon'] = '✅';
                         $_SESSION['toast_msg']  = 'Request fully approved!';
@@ -141,7 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION['toast_msg']  = 'Request advanced to Stage ' . $new_stage;
                     } else {
                         $_SESSION['toast_icon'] = '✕';
-                        $_SESSION['toast_msg']  = 'Request rejected.';
+                        $_SESSION['toast_msg']  = 'Request rejected and balance refunded.';
                     }
                 } else {
                     $_SESSION['toast_icon'] = '❌';
@@ -167,21 +228,21 @@ $params = [];
 $types = '';
 
 if ($active_tab === 'pending' || $active_tab === 'insights' || $active_tab === 'all_requests') {
-    $where[] = "status = 'pending'";
+    $where[] = "a.status = 'pending'";
 }
 
 if ($active_tab === 'completed') {
-    $where[] = "status IN ('approved','rejected')";
+    $where[] = "a.status IN ('approved','rejected')";
 }
 
 if ($filter_type !== 'All' && in_array($filter_type, ['Leave', 'Attendance'], true)) {
-    $where[] = "type = ?";
+    $where[] = "a.type = ?";
     $params[] = $filter_type;
     $types .= 's';
 }
 
 if ($search_q !== '') {
-    $where[] = "(emp_name LIKE ? OR emp_code LIKE ?)";
+    $where[] = "(a.emp_name LIKE ? OR a.emp_code LIKE ?)";
     $like = '%' . $search_q . '%';
     $params[] = $like;
     $params[] = $like;
@@ -191,10 +252,10 @@ if ($search_q !== '') {
 $where_sql = $where ? "WHERE " . implode(" AND ", $where) : "";
 
 $sql = "
-    SELECT *
-    FROM approval_requests
+    SELECT a.*
+    FROM approval_requests a
     $where_sql
-    ORDER BY requested_on DESC, id DESC
+    ORDER BY a.requested_on DESC, a.id DESC
 ";
 
 $stmt = $conn->prepare($sql);
@@ -209,26 +270,74 @@ while ($row = $res->fetch_assoc()) {
     $stage_num = (int)$row['stage'];
     if ($stage_num <= 0) $stage_num = 1;
 
+    $lr_from = '';
+    $lr_to = '';
+    $lr_day_type = '';
+    $lr_days = $row['days'] ?? 1;
+
+    // Fetch exact leave request details for detailed UI view
+    if ($row['type'] === 'Leave') {
+        $stmt_l = $conn->prepare("SELECT `from_date`, `to_date`, `day_type`, `reason` FROM `leave_requests` WHERE `id` = ?");
+        if ($stmt_l) { 
+            $stmt_l->bind_param("i", $row['id']);
+            $stmt_l->execute();
+            $res_l = $stmt_l->get_result();
+            if ($lrow = $res_l->fetch_assoc()) {
+                $lr_from = $lrow['from_date'];
+                $lr_to = $lrow['to_date'];
+                $lr_day_type = $lrow['day_type'];
+                $row['reasons'] = $lrow['reason'] ?: $row['reasons'];
+                
+                // Calculate days for UI display
+                $f = strtotime($lr_from);
+                $t = strtotime($lr_to);
+                if ($f && $t) {
+                    $lr_days = round(($t - $f) / 86400) + 1;
+                    if (stripos($lr_day_type, 'half') !== false && $lr_days == 1) {
+                        $lr_days = 0.5;
+                    }
+                }
+            }
+            $stmt_l->close();
+        }
+    }
+
+    $start_day_info = '';
+    $end_day_info = '';
+    
+    if (!empty($lr_day_type) && stripos($lr_day_type, 'half') !== false) {
+        $start_day_info = ', ' . $lr_day_type;
+        $end_day_info = ', ' . $lr_day_type; 
+    }
+
+    $f_from = fmtLeaveDate($lr_from);
+    $f_to = fmtLeaveDate($lr_to);
+
     $pending_requests[] = [
-        'id'         => $row['id'],
-        'emp_code'   => $row['emp_code'],
-        'emp_name'   => $row['emp_name'],
-        'avatar'     => $row['avatar'] ?? null,
-        'type'       => $row['type'],
-        'stage_num'  => $stage_num,
-        'stage'      => 'Stage ' . $stage_num, // Formatted for UI display
-        'date'       => fmtDate($row['request_date']),
-        'requested'  => fmtDateTime($row['requested_on']),
-        'shift_date' => fmtDate($row['shift_date']),
-        'in_old'     => $row['in_old'],
-        'in_new'     => $row['in_new'],
-        'out_old'    => $row['out_old'],
-        'out_new'    => $row['out_new'],
-        'reasons'    => $row['reasons'],
-        'leave_type' => $row['leave_type'] ?? '',
-        'remarks'    => $row['remarks'],
-        'status'     => $row['status'],
-        'action_at'  => fmtDateTime($row['action_at']),
+        'id'               => $row['id'],
+        'emp_code'         => $row['emp_code'],
+        'emp_name'         => $row['emp_name'],
+        'avatar'           => $row['avatar'] ?? null,
+        'type'             => $row['type'],
+        'stage_num'        => $stage_num,
+        'stage'            => 'Stage ' . $stage_num, 
+        'date'             => fmtDate($row['request_date']),
+        'requested'        => fmtDate($row['requested_on']),
+        'shift_date'       => fmtDate($row['shift_date']),
+        'in_old'           => $row['in_old'],
+        'in_new'           => $row['in_new'],
+        'out_old'          => $row['out_old'],
+        'out_new'          => $row['out_new'],
+        'reasons'          => $row['reasons'],
+        'leave_type'       => $row['leave_type'] ?? '',
+        'remarks'          => $row['remarks'],
+        'status'           => $row['status'],
+        'action_at'        => fmtDateTime($row['action_at']),
+        
+        'days'             => $lr_days, 
+        'leave_start_date' => $f_from ? ($f_from . $start_day_info) : '—',
+        'leave_end_date'   => $f_to ? ($f_to . $end_day_info) : '—',
+        'attachment'       => $row['attachment'] ?? '',
     ];
 }
 $stmt->close();
@@ -277,6 +386,9 @@ function renderRightPanel($selected_req) {
         return '<div class="ar-empty"><p>No request selected</p></div>';
     }
 
+    $isLeave = (($selected_req['type'] ?? '') === 'Leave');
+    $subtitle = $isLeave ? 'Leave Request – ' . esc($selected_req['days']) . ' day(s)' : esc($selected_req['type']) . ' Request • ' . esc($selected_req['stage']);
+
     ob_start();
     ?>
 
@@ -290,7 +402,7 @@ function renderRightPanel($selected_req) {
         </div>
         <div>
             <div class="ar-right-name"><?= esc($selected_req['emp_name'] ?? '') ?></div>
-            <div class="ar-right-type"><?= esc($selected_req['type'] ?? '') ?> Request • <?= esc($selected_req['stage'] ?? '') ?></div>
+            <div class="ar-right-type"><?= $subtitle ?></div>
         </div>
     </div>
 
@@ -299,7 +411,37 @@ function renderRightPanel($selected_req) {
         <span class="ar-detail-val"><?= esc($selected_req['requested'] ?? '—') ?></span>
     </div>
 
-    <?php if (($selected_req['type'] ?? '') === 'Attendance'): ?>
+    <?php if ($isLeave): ?>
+        <div class="ar-detail-row">
+            <span class="ar-detail-label">Requested Type :</span>
+            <span class="ar-detail-val"><?= esc($selected_req['leave_type'] ?? '—') ?></span>
+        </div>
+        <div class="ar-detail-row">
+            <span class="ar-detail-label">Leave Start Date :</span>
+            <span class="ar-detail-val"><?= esc($selected_req['leave_start_date']) ?></span>
+        </div>
+        <div class="ar-detail-row">
+            <span class="ar-detail-label">Leave End Date :</span>
+            <span class="ar-detail-val"><?= esc($selected_req['leave_end_date']) ?></span>
+        </div>
+        <div class="ar-detail-row">
+            <span class="ar-detail-label">Attachments :</span>
+            <span class="ar-detail-val"><?= !empty($selected_req['attachment']) ? '<a href="'.esc($selected_req['attachment']).'" target="_blank">View File</a>' : '' ?></span>
+        </div>
+        <div class="ar-detail-row">
+            <span class="ar-detail-label">Reason :</span>
+            <span class="ar-detail-val"><?= esc($selected_req['reasons'] ?? '') ?: '—' ?></span>
+        </div>
+        <div class="ar-detail-row">
+            <span class="ar-detail-label">Team Members On Leave :</span>
+            <span class="ar-detail-val"></span>
+        </div>
+        
+        <div style="text-align:center; margin:20px 0 10px;">
+            <a href="#" style="color:#2563EB; font-size:13px; text-decoration:none;">Check Leave Calendar</a>
+        </div>
+        
+    <?php else: ?>
         <div class="ar-detail-row">
             <span class="ar-detail-label">Shift Date :</span>
             <span class="ar-detail-val"><?= esc($selected_req['shift_date'] ?? '—') ?></span>
@@ -322,22 +464,15 @@ function renderRightPanel($selected_req) {
                 </span>
             </div>
         <?php endif; ?>
-    <?php else: ?>
         <div class="ar-detail-row">
-            <span class="ar-detail-label">Leave Type :</span>
-            <span class="ar-detail-val"><?= esc($selected_req['leave_type'] ?? '—') ?></span>
+            <span class="ar-detail-label">Reasons :</span>
+            <span class="ar-detail-val"><?= esc($selected_req['reasons'] ?? '') ?: '—' ?></span>
+        </div>
+        <div class="ar-detail-row">
+            <span class="ar-detail-label">Remarks :</span>
+            <span class="ar-detail-val"><?= esc($selected_req['remarks'] ?? '') ?: '—' ?></span>
         </div>
     <?php endif; ?>
-
-    <div class="ar-detail-row">
-        <span class="ar-detail-label">Reasons :</span>
-        <span class="ar-detail-val"><?= esc($selected_req['reasons'] ?? '') ?: '—' ?></span>
-    </div>
-
-    <div class="ar-detail-row">
-        <span class="ar-detail-label">Remarks :</span>
-        <span class="ar-detail-val"><?= esc($selected_req['remarks'] ?? '') ?: '—' ?></span>
-    </div>
 
     <?php if (($selected_req['status'] ?? '') === 'pending'): ?>
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
@@ -356,7 +491,7 @@ function renderRightPanel($selected_req) {
         </form>
     </div>
     <?php else: ?>
-    <div class="ar-detail-row">
+    <div class="ar-detail-row" style="margin-top:10px;">
         <span class="ar-detail-label">Status :</span>
         <span class="ar-detail-val"><?= esc(ucfirst($selected_req['status'] ?? '')) ?></span>
     </div>
@@ -444,7 +579,7 @@ ob_start();
 .ar-empty-mini p { font-size: 12.5px; color: #9CA3AF; text-align: center; }
 
 .ar-split {
-    display: grid; grid-template-columns: 360px 1fr 320px; gap: 0;
+    display: grid; grid-template-columns: 360px 1fr 340px; gap: 0;
     background: #fff; border: 1px solid #E5E7EB; border-radius: 10px;
     overflow: hidden; min-height: 360px;
 }
@@ -547,16 +682,15 @@ ob_start();
     font-weight: 700; color: #374151; flex-shrink: 0; overflow: hidden;
 }
 .ar-right-av img { width: 100%; height: 100%; object-fit: cover; }
-.ar-right-name { font-size: 14px; font-weight: 700; color: #111827; }
-.ar-right-type { font-size: 12px; color: #9CA3AF; margin-top: 2px; }
+.ar-right-name { font-size: 14px; font-weight: 400; color: #111827; }
+.ar-right-type { font-size: 12px; color: #6B7280; margin-top: 2px; }
 
 .ar-detail-row {
     display: flex; justify-content: space-between; align-items: flex-start;
-    padding: 9px 0; border-bottom: 1px solid #F9FAFB; gap: 8px;
+    padding: 10px 0; gap: 12px;
 }
-.ar-detail-row:last-child { border-bottom: none; }
-.ar-detail-label { font-size: 12.5px; color: #6B7280; font-weight: 400; white-space: nowrap; flex-shrink: 0; min-width: 110px; }
-.ar-detail-val   { font-size: 13px; color: #111827; font-weight: 500; text-align: right; }
+.ar-detail-label { font-size: 13px; color: #6B7280; font-weight: 400; white-space: nowrap; flex-shrink: 0; min-width: 145px; }
+.ar-detail-val   { font-size: 13px; color: #111827; font-weight: 400; text-align: left; word-break: break-word; flex-grow: 1; }
 .ar-detail-strike { text-decoration: line-through; color: #9CA3AF; margin-right: 6px; font-size: 12px; }
 
 .ar-comp-wrap { background:#fff; border:1px solid #E5E7EB; border-radius:10px; overflow:hidden; }
@@ -1080,12 +1214,15 @@ function selectReq(id) {
         ? `<img src="${escHtml(req.avatar)}" alt="${escHtml(req.emp_name)}">` 
         : makeInitials(req.emp_name);
 
+    var isLeave = (req.type === 'Leave');
+    var subtitle = isLeave ? `Leave Request &ndash; ${escHtml(req.days)} day(s)` : `${escHtml(req.type)} Request &bull; ${escHtml(req.stage)}`;
+
     var html = `
         <div class="ar-right-head">
             <div class="ar-right-av">${avatarHtml}</div>
             <div>
                 <div class="ar-right-name">${escHtml(req.emp_name || '')}</div>
-                <div class="ar-right-type">${escHtml(req.type || '')} Request • ${escHtml(req.stage || '')}</div>
+                <div class="ar-right-type">${subtitle}</div>
             </div>
         </div>
 
@@ -1095,7 +1232,39 @@ function selectReq(id) {
         </div>
     `;
 
-    if (req.type === 'Attendance') {
+    if (isLeave) {
+        var attachHtml = req.attachment ? `<a href="${escHtml(req.attachment)}" target="_blank">View File</a>` : ``;
+
+        html += `
+            <div class="ar-detail-row">
+                <span class="ar-detail-label">Requested Type :</span>
+                <span class="ar-detail-val">${escHtml(req.leave_type || '—')}</span>
+            </div>
+            <div class="ar-detail-row">
+                <span class="ar-detail-label">Leave Start Date :</span>
+                <span class="ar-detail-val">${escHtml(req.leave_start_date)}</span>
+            </div>
+            <div class="ar-detail-row">
+                <span class="ar-detail-label">Leave End Date :</span>
+                <span class="ar-detail-val">${escHtml(req.leave_end_date)}</span>
+            </div>
+            <div class="ar-detail-row">
+                <span class="ar-detail-label">Attachments :</span>
+                <span class="ar-detail-val">${attachHtml}</span>
+            </div>
+            <div class="ar-detail-row">
+                <span class="ar-detail-label">Reason :</span>
+                <span class="ar-detail-val">${escHtml(req.reasons || '—')}</span>
+            </div>
+            <div class="ar-detail-row">
+                <span class="ar-detail-label">Team Members On Leave :</span>
+                <span class="ar-detail-val"></span>
+            </div>
+            <div style="text-align:center; margin:20px 0 10px;">
+                <a href="#" style="color:#2563EB; font-size:13px; text-decoration:none;">Check Leave Calendar</a>
+            </div>
+        `;
+    } else {
         html += `
             <div class="ar-detail-row">
                 <span class="ar-detail-label">Shift Date :</span>
@@ -1122,42 +1291,46 @@ function selectReq(id) {
                 </div>
             `;
         }
-    } else {
+
         html += `
             <div class="ar-detail-row">
-                <span class="ar-detail-label">Leave Type :</span>
-                <span class="ar-detail-val">${escHtml(req.leave_type || '—')}</span>
+                <span class="ar-detail-label">Reasons :</span>
+                <span class="ar-detail-val">${escHtml(req.reasons || '—')}</span>
+            </div>
+
+            <div class="ar-detail-row">
+                <span class="ar-detail-label">Remarks :</span>
+                <span class="ar-detail-val">${escHtml(req.remarks || '—')}</span>
             </div>
         `;
     }
 
-    html += `
-        <div class="ar-detail-row">
-            <span class="ar-detail-label">Reasons :</span>
-            <span class="ar-detail-val">${escHtml(req.reasons || '—')}</span>
-        </div>
+    if (req.status === 'pending') {
+        html += `
+            <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+                <form method="POST" style="flex:1">
+                    <input type="hidden" name="action" value="reject">
+                    <input type="hidden" name="req_id" value="${escHtml(req.id || '')}">
+                    <input type="hidden" name="emp_code" value="${escHtml(req.emp_code || '')}">
+                    <button type="submit" class="ar-btn-reject" style="width:100%;padding:8px">Reject</button>
+                </form>
 
-        <div class="ar-detail-row">
-            <span class="ar-detail-label">Remarks :</span>
-            <span class="ar-detail-val">${escHtml(req.remarks || '—')}</span>
-        </div>
-
-        <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
-            <form method="POST" style="flex:1">
-                <input type="hidden" name="action" value="reject">
-                <input type="hidden" name="req_id" value="${escHtml(req.id || '')}">
-                <input type="hidden" name="emp_code" value="${escHtml(req.emp_code || '')}">
-                <button type="submit" class="ar-btn-reject" style="width:100%;padding:8px">Reject</button>
-            </form>
-
-            <form method="POST" style="flex:1">
-                <input type="hidden" name="action" value="approve">
-                <input type="hidden" name="req_id" value="${escHtml(req.id || '')}">
-                <input type="hidden" name="emp_code" value="${escHtml(req.emp_code || '')}">
-                <button type="submit" class="ar-btn-approve" style="width:100%;padding:8px">Approve</button>
-            </form>
-        </div>
-    `;
+                <form method="POST" style="flex:1">
+                    <input type="hidden" name="action" value="approve">
+                    <input type="hidden" name="req_id" value="${escHtml(req.id || '')}">
+                    <input type="hidden" name="emp_code" value="${escHtml(req.emp_code || '')}">
+                    <button type="submit" class="ar-btn-approve" style="width:100%;padding:8px">Approve</button>
+                </form>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="ar-detail-row" style="margin-top:10px;">
+                <span class="ar-detail-label">Status :</span>
+                <span class="ar-detail-val">${escHtml(req.status || '')}</span>
+            </div>
+        `;
+    }
 
     right.innerHTML = html;
 

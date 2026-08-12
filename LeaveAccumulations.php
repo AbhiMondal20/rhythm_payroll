@@ -66,12 +66,12 @@ $mode       = $_GET['mode'] ?? 'list';
 $detail_id  = (int)($_GET['id'] ?? 0);
 $page       = max(1, (int)($_GET['p'] ?? 1));
 $per_page   = max(5, (int)($_GET['pp'] ?? 10));
-// Updated default to format expected by daterangepicker
 $date_range = $_GET['date_range'] ?? (date('01 M Y') . ' TO ' . date('t M Y'));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
+    // --- ADD ACCUMULATION ---
     if ($action === 'add_accumulation') {
         $emp_id     = (int)($_POST['emp_id'] ?? 0);
         $emp_code   = trim($_POST['emp_code'] ?? '');
@@ -96,8 +96,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $leave_type_id = 0; 
         
-        // Accumulated and Balance both get the value of the inputted leaves
+        // Logical Balance Calculation
         $balance = $leaves;
+        if ($opening === 0) {
+            // Find previous balance to add to it if it's not an opening balance
+            $stmt_prev = mysqli_prepare($conn, "SELECT balance FROM leave_accumulations WHERE emp_id = ? AND leave_name = ? ORDER BY id DESC LIMIT 1");
+            mysqli_stmt_bind_param($stmt_prev, "is", $emp_id, $leave_name);
+            mysqli_stmt_execute($stmt_prev);
+            $res_prev = mysqli_stmt_get_result($stmt_prev);
+            if ($row_prev = mysqli_fetch_assoc($res_prev)) {
+                $balance = (float)$row_prev['balance'] + $leaves;
+            }
+        }
 
         $stmt = mysqli_prepare($conn, "
             INSERT INTO leave_accumulations
@@ -109,20 +119,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         mysqli_stmt_bind_param(
             $stmt,
             "issisddsssssis",
-            $emp_id,
-            $emp_code,
-            $emp_name,
-            $leave_type_id,
-            $leave_name,
-            $leaves,
-            $balance,
-            $accum_date,
-            $accum_from,
-            $accum_to,
-            $avail_from,
-            $avail_to,
-            $opening,
-            $note
+            $emp_id, $emp_code, $emp_name, $leave_type_id, $leave_name, $leaves, $balance, $accum_date,
+            $accum_from, $accum_to, $avail_from, $avail_to, $opening, $note
         );
 
         if (mysqli_stmt_execute($stmt)) {
@@ -137,6 +135,96 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
     }
+
+    // --- EDIT ACCUMULATION ---
+    elseif ($action === 'edit_accumulation') {
+        $id         = (int)($_POST['id'] ?? 0);
+        $emp_id     = (int)($_POST['emp_id'] ?? 0);
+        $emp_code   = trim($_POST['emp_code'] ?? '');
+        $emp_name   = trim($_POST['emp_name'] ?? '');
+        
+        $leave_name = trim($_POST['leave_type_id'] ?? '');
+        $accum_date = dbDate($_POST['accum_date'] ?? '');
+        $new_leaves = (float)($_POST['no_of_leaves'] ?? 0);
+        $accum_from = dbDate($_POST['accum_from'] ?? '');
+        $accum_to   = dbDate($_POST['accum_to'] ?? '');
+        $avail_from = dbDate($_POST['avail_from'] ?? '');
+        $avail_to   = dbDate($_POST['avail_to'] ?? '');
+        $opening    = isset($_POST['is_opening_balance']) ? 1 : 0;
+        $note       = trim($_POST['note'] ?? '');
+
+        if ($id === 0 || $emp_id === 0 || $emp_name === '' || $leave_name === '' || !$accum_date) {
+            $_SESSION['la_flash'] = 'Valid ID, Employee, Leave Name and Accumulation Date are required.';
+            $_SESSION['la_flash_type'] = 'error';
+            header("Location: ?mode=edit&id=$id");
+            exit;
+        }
+
+        // Fetch old record
+        $stmt_old = mysqli_prepare($conn, "SELECT accumulated, balance, is_opening_balance FROM leave_accumulations WHERE id = ?");
+        mysqli_stmt_bind_param($stmt_old, "i", $id);
+        mysqli_stmt_execute($stmt_old);
+        $old_res = mysqli_stmt_get_result($stmt_old);
+        $old_row = mysqli_fetch_assoc($old_res);
+
+        if (!$old_row) {
+            $_SESSION['la_flash'] = 'Record not found.';
+            $_SESSION['la_flash_type'] = 'error';
+            header("Location: ?mode=list");
+            exit;
+        }
+
+        $leave_type_id = 0; 
+        
+        // Logical Balance Calculation for Edit
+        if ($opening === 1) {
+            // Marked as opening balance: new balance is just the new inputted leaves
+            $new_balance = $new_leaves;
+        } else {
+            if ((int)$old_row['is_opening_balance'] === 1) {
+                // Changing from Opening Balance to Normal Accumulation
+                $stmt_prev = mysqli_prepare($conn, "SELECT balance FROM leave_accumulations WHERE emp_id = ? AND leave_name = ? AND id < ? ORDER BY id DESC LIMIT 1");
+                mysqli_stmt_bind_param($stmt_prev, "isi", $emp_id, $leave_name, $id);
+                mysqli_stmt_execute($stmt_prev);
+                $res_prev = mysqli_stmt_get_result($stmt_prev);
+                $prev_bal = 0;
+                if ($row_prev = mysqli_fetch_assoc($res_prev)) {
+                    $prev_bal = (float)$row_prev['balance'];
+                }
+                $new_balance = $prev_bal + $new_leaves;
+            } else {
+                // Normal Edit: adjusting diff
+                $diff = $new_leaves - (float)$old_row['accumulated'];
+                $new_balance = (float)$old_row['balance'] + $diff;
+            }
+        }
+
+        $stmt = mysqli_prepare($conn, "
+            UPDATE leave_accumulations SET
+            emp_id=?, emp_code=?, emp_name=?, leave_type_id=?, leave_name=?, accumulated=?, balance=?, accumulation_date=?,
+            accum_from=?, accum_to=?, avail_from=?, avail_to=?, is_opening_balance=?, note=?
+            WHERE id=?
+        ");
+
+        mysqli_stmt_bind_param(
+            $stmt,
+            "issisddsssssisi",
+            $emp_id, $emp_code, $emp_name, $leave_type_id, $leave_name, $new_leaves, $new_balance, $accum_date,
+            $accum_from, $accum_to, $avail_from, $avail_to, $opening, $note, $id
+        );
+
+        if (mysqli_stmt_execute($stmt)) {
+            $_SESSION['la_flash'] = 'Accumulation updated successfully.';
+            $_SESSION['la_flash_type'] = 'success';
+            header("Location: ?mode=list");
+            exit;
+        } else {
+            $_SESSION['la_flash'] = 'Database error: ' . mysqli_error($conn);
+            $_SESSION['la_flash_type'] = 'error';
+            header("Location: ?mode=edit&id=$id");
+            exit;
+        }
+    }
 }
 
 $flash = $_SESSION['la_flash'] ?? '';
@@ -145,8 +233,8 @@ $_SESSION['la_flash'] = '';
 $_SESSION['la_flash_type'] = 'success';
 ob_start();
 ?>
-<!-- Include Daterangepicker CSS -->
-<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+<!-- Include Flatpickr CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="includes/assets/style.css">
 
 <style>
@@ -177,10 +265,11 @@ ob_start();
 .la-search-input{width:100%;padding:8px 10px 8px 32px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;color:#1e2d3d;outline:none;box-sizing:border-box;background:#f9fafb;transition:border-color .15s}
 .la-search-input:focus{border-color:#2563eb;background:#fff}
 
-.la-date-range-wrap{position:relative}
-.la-date-range-wrap i.cal-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px;pointer-events:none}
-.la-date-range-select{padding:8px 22px 8px 32px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;color:#374151;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 6px center;outline:none;appearance:none;cursor:pointer;transition:border-color .15s}
-.la-date-range-select:focus{border-color:#2563eb}
+/* Date Dropdown Flatpickr styling */
+.date-dropdown { position: relative; display: flex; align-items: center; }
+.date-dropdown i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 13px; pointer-events: none; }
+.date-dropdown input { padding: 8px 22px 8px 32px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; color: #374151; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 6px center; outline: none; appearance: none; cursor: pointer; transition: border-color .15s; min-width: 240px; }
+.date-dropdown input:focus { border-color: #2563eb; }
 
 .btn-get-details{padding:8px 20px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s}
 .btn-get-details:hover{background:#1d4ed8}
@@ -198,7 +287,7 @@ table.la-table tbody tr{border-bottom:1px solid #f1f4f8;transition:background .1
 table.la-table tbody tr:last-child{border-bottom:none}
 table.la-table tbody tr:hover{background:#f9fafb}
 table.la-table tbody td{padding:13px 16px;font-size:13.5px;color:#374151}
-.la-link-icon{background:none;border:none;cursor:pointer;color:#6b7280;font-size:14px;padding:2px 6px;border-radius:4px;transition:color .14s}
+.la-link-icon{background:none;border:none;cursor:pointer;color:#6b7280;font-size:14px;padding:2px 6px;border-radius:4px;transition:color .14s;display:inline-flex;align-items:center;justify-content:center}
 .la-link-icon:hover{color:#2563eb}
 
 /* ── Pagination ── */
@@ -240,7 +329,7 @@ table.la-table tbody td{padding:13px 16px;font-size:13.5px;color:#374151}
 .la-form-actions{display:flex;justify-content:flex-end;gap:12px;padding-top:22px;border-top:1px solid #e8ecf0;margin-top:14px}
 .btn-la-back,.btn-la-cancel{padding:9px 24px;border:1.5px solid #d1d5db;background:#fff;border-radius:6px;font-size:13.5px;color:#374151;cursor:pointer;font-weight:600;transition:background .14s;text-decoration:none;display:inline-flex;align-items:center}
 .btn-la-back:hover,.btn-la-cancel:hover{background:#f1f5f9}
-.btn-la-save{padding:9px 24px;background:#2563eb;border:none;border-radius:6px;font-size:13.5px;color:#fff;cursor:pointer;font-weight:600;transition:background .14s}
+.btn-la-save{padding:9px 24px;background:#2563eb;border:none;border-radius:6px;font-size:13.5px;color:#fff;cursor:pointer;font-weight:600;transition:background .14s;text-decoration:none;display:inline-flex;align-items:center;}
 .btn-la-save:hover{background:#1d4ed8}
 
 /* Autocomplete Custom Styles */
@@ -293,19 +382,6 @@ table.la-table tbody td{padding:13px 16px;font-size:13.5px;color:#374151}
 .toast-close{margin-left:auto;cursor:pointer;color:#9ca3af;font-size:14px;background:none;border:none;padding:0;line-height:1}
 @keyframes toastIn{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}
 @keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateX(40px)}}
-
-/* Daterangepicker overrides */
-#dateRangePicker {
-    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 10px center;
-}
-.daterangepicker .ranges li.active {
-    background-color: #2563eb;
-    color: #fff;
-}
-.daterangepicker .btn-primary {
-    background-color: #2563eb;
-    border-color: #2563eb;
-}
 </style>
 
 <?php
@@ -341,8 +417,9 @@ while ($r = mysqli_fetch_assoc($resRows)) {
     $rows[] = $r;
 }
 
+// Fetch active row for both Detail and Edit mode
 $active_row = null;
-if ($mode === 'detail' && $detail_id > 0) {
+if (($mode === 'detail' || $mode === 'edit') && $detail_id > 0) {
     $stmtDetail = mysqli_prepare($conn, "SELECT * FROM leave_accumulations WHERE id = ? LIMIT 1");
     mysqli_stmt_bind_param($stmtDetail, "i", $detail_id);
     mysqli_stmt_execute($stmtDetail);
@@ -381,10 +458,16 @@ $today = date('Y-m-d');
         <nav class="la-breadcrumb">
           <a href="leave_config.php">Leave</a>
           <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
-          <?php if ($mode !== 'list'): ?>
-          <a href="?mode=list">Leave Accumulation</a>
-          <?php else: ?>
+          <?php if ($mode === 'list'): ?>
           <span>Leave Accumulation</span>
+          <?php elseif ($mode === 'edit'): ?>
+          <a href="?mode=list">Leave Accumulation</a>
+          <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
+          <span>Edit Accumulation</span>
+          <?php else: ?>
+          <a href="?mode=list">Leave Accumulation</a>
+          <span class="sep"><i class="fa-solid fa-chevron-right"></i></span>
+          <span><?= $mode === 'detail' ? 'View Details' : 'Add Accumulation' ?></span>
           <?php endif; ?>
         </nav>
 
@@ -395,6 +478,7 @@ $today = date('Y-m-d');
         <?php endif; ?>
       </div>
 
+      <!-- ================= DETAIL VIEW ================= -->
       <?php if ($mode === 'detail' && $active_row): ?>
 
       <div class="la-detail-card">
@@ -469,17 +553,24 @@ $today = date('Y-m-d');
 
         <div class="la-form-actions">
           <a href="?mode=list" class="btn-la-back">Back</a>
+          <a href="?mode=edit&id=<?= (int)$active_row['id'] ?>" class="btn-la-save">Edit</a>
         </div>
       </div>
 
-      <?php elseif ($mode === 'add'): ?>
+      <!-- ================= ADD / EDIT FORM ================= -->
+      <?php elseif ($mode === 'add' || $mode === 'edit'): 
+          $is_edit = ($mode === 'edit' && $active_row);
+      ?>
 
       <div class="la-detail-card">
         <form method="POST" id="accumulationForm">
-          <input type="hidden" name="action" value="add_accumulation">
-          <input type="hidden" name="emp_id" id="hidden_emp_id" value="">
-          <input type="hidden" name="emp_code" id="hidden_emp_code" value="">
-          <input type="hidden" name="emp_name" id="hidden_emp_name" value="">
+          <input type="hidden" name="action" value="<?= $is_edit ? 'edit_accumulation' : 'add_accumulation' ?>">
+          <?php if ($is_edit): ?>
+          <input type="hidden" name="id" value="<?= (int)$active_row['id'] ?>">
+          <?php endif; ?>
+          <input type="hidden" name="emp_id" id="hidden_emp_id" value="<?= $is_edit ? h($active_row['emp_id']) : '' ?>">
+          <input type="hidden" name="emp_code" id="hidden_emp_code" value="<?= $is_edit ? h($active_row['emp_code']) : '' ?>">
+          <input type="hidden" name="emp_name" id="hidden_emp_name" value="<?= $is_edit ? h($active_row['emp_name']) : '' ?>">
 
           <div class="la-field-grid" style="margin-bottom:22px">
             <div class="la-field">
@@ -487,7 +578,8 @@ $today = date('Y-m-d');
               <div style="position:relative">
                 <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:2px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:12px"></i>
                 <input type="text" id="employeeSearchInput" class="la-input" style="padding-left:20px"
-                       placeholder="Search by name or #code" autocomplete="off" required>
+                       placeholder="Search by name or #code" autocomplete="off" required 
+                       value="<?= $is_edit ? h($active_row['emp_name']) : '' ?>">
                 <div id="autocompleteResults" class="autocomplete-results"></div>
               </div>
             </div>
@@ -497,7 +589,7 @@ $today = date('Y-m-d');
               <select name="leave_type_id" class="la-select" required>
                 <option value=""></option>
                 <?php foreach ($leave_types as $lt): ?>
-                <option value="<?= h($lt) ?>"><?= h($lt) ?></option>
+                <option value="<?= h($lt) ?>" <?= ($is_edit && $active_row['leave_name'] === $lt) ? 'selected' : '' ?>><?= h($lt) ?></option>
                 <?php endforeach; ?>
               </select>
             </div>
@@ -507,18 +599,20 @@ $today = date('Y-m-d');
             <div class="la-field">
               <label>Accumulation Date <i class="fa-solid fa-circle-info info-icon"></i></label>
               <div class="la-date-wrap">
-                <input type="date" name="accum_date" value="<?= h($today) ?>" required>
-                <i class="fa-regular fa-calendar"></i>
+                <input type="date" name="accum_date" required 
+                       value="<?= $is_edit ? h($active_row['accumulation_date']) : h($today) ?>">
               </div>
             </div>
 
             <div style="display:flex;gap:24px;align-items:flex-end">
               <div class="la-field" style="flex:1">
                 <label>No. Of Leaves</label>
-                <input type="number" name="no_of_leaves" class="la-input" step="0.5" min="0" required>
+                <input type="number" name="no_of_leaves" class="la-input" step="0.5" min="0" required 
+                       value="<?= $is_edit ? h($active_row['accumulated']) : '' ?>">
               </div>
               <label class="la-checkbox-wrap" style="white-space:nowrap">
-                <input type="checkbox" name="is_opening_balance" value="1">
+                <input type="checkbox" name="is_opening_balance" value="1" 
+                       <?= ($is_edit && (int)$active_row['is_opening_balance'] === 1) ? 'checked' : '' ?>>
                 Mark as Opening Balance.
                 <i class="fa-solid fa-circle-info info-icon"></i>
               </label>
@@ -534,15 +628,13 @@ $today = date('Y-m-d');
             <div class="la-field">
               <label>From</label>
               <div class="la-date-wrap">
-                <input type="date" name="accum_from" value="<?= h(date('Y-m-01')) ?>">
-                <i class="fa-regular fa-calendar"></i>
+                <input type="date" name="accum_from" value="<?= $is_edit ? h($active_row['accum_from']) : h(date('Y-m-01')) ?>">
               </div>
             </div>
             <div class="la-field">
               <label>To</label>
               <div class="la-date-wrap">
-                <input type="date" name="accum_to" value="<?= h($today) ?>">
-                <i class="fa-regular fa-calendar"></i>
+                <input type="date" name="accum_to" value="<?= $is_edit ? h($active_row['accum_to']) : h($today) ?>">
               </div>
             </div>
             <div class="la-field"></div>
@@ -558,15 +650,13 @@ $today = date('Y-m-d');
             <div class="la-field">
               <label>From</label>
               <div class="la-date-wrap">
-                <input type="date" name="avail_from" value="<?= h(date('Y-m-01')) ?>">
-                <i class="fa-regular fa-calendar"></i>
+                <input type="date" name="avail_from" value="<?= $is_edit ? h($active_row['avail_from']) : h(date('Y-m-01')) ?>">
               </div>
             </div>
             <div class="la-field">
               <label>To</label>
               <div class="la-date-wrap">
-                <input type="date" name="avail_to" value="<?= h($today) ?>">
-                <i class="fa-regular fa-calendar"></i>
+                <input type="date" name="avail_to" value="<?= $is_edit ? h($active_row['avail_to']) : h($today) ?>">
               </div>
             </div>
             <div class="la-field"></div>
@@ -575,16 +665,17 @@ $today = date('Y-m-d');
 
           <div class="la-field" style="margin-bottom:10px">
             <label>Note</label>
-            <input type="text" name="note" class="la-input">
+            <input type="text" name="note" class="la-input" value="<?= $is_edit ? h($active_row['note']) : '' ?>">
           </div>
 
           <div class="la-form-actions">
             <button type="button" class="btn-la-cancel" onclick="window.location.href='?mode=list'">Cancel</button>
-            <button type="submit" class="btn-la-save">Save</button>
+            <button type="submit" class="btn-la-save"><?= $is_edit ? 'Update' : 'Save' ?></button>
           </div>
         </form>
       </div>
 
+      <!-- ================= LIST VIEW ================= -->
       <?php else: ?>
 
       <div class="la-filter-bar">
@@ -595,12 +686,9 @@ $today = date('Y-m-d');
                  oninput="filterTable(this.value)">
         </div>
 
-        <div class="la-date-range-wrap">
-          <i class="fa-regular fa-calendar cal-icon"></i>
-          <!-- Replaced the <select> element with <input> for Date Range Picker -->
-          <input type="text" id="dateRangePicker" class="la-date-range-select" 
-                 value="<?= h($date_range) ?>" readonly 
-                 style="cursor: pointer; min-width: 230px; caret-color: transparent;">
+        <div class="date-dropdown">
+            <i class="bi bi-calendar"></i>
+            <input type="text" name="date_range" id="dateRange" placeholder="Select Date Range" value="<?= htmlspecialchars($date_range) ?>">
         </div>
 
         <button class="btn-get-details" onclick="applyDateRange()">
@@ -626,7 +714,7 @@ $today = date('Y-m-d');
               <th>Balance</th>
               <th>Accumulation Date</th>
               <th>Availability Period</th>
-              <th style="width:40px"></th>
+              <th style="width:70px; text-align:center;">Actions</th>
             </tr>
           </thead>
           <tbody id="laTableBody">
@@ -644,10 +732,14 @@ $today = date('Y-m-d');
                     <?= h(showDate($row['avail_from'])) ?> To <?= h(showDate($row['avail_to'])) ?>
                   <?php endif; ?>
                 </td>
-                <td>
+                <td style="text-align:center;">
                   <button class="la-link-icon" title="View Details"
                           onclick="window.location.href='?mode=detail&id=<?= (int)$row['id'] ?>'">
                     <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                  </button>
+                  <button class="la-link-icon" title="Edit" style="margin-left:5px;"
+                          onclick="window.location.href='?mode=edit&id=<?= (int)$row['id'] ?>'">
+                    <i class="fa-solid fa-pen"></i>
                   </button>
                 </td>
               </tr>
@@ -708,32 +800,23 @@ $today = date('Y-m-d');
   </div>
 </div>
 
-<!-- jQuery, Moment, Daterangepicker JS -->
-<script type="text/javascript" src="https://cdn.jsdelivr.net/jquery/latest/jquery.min.js"></script>
-<script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
-<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+<!-- Flatpickr JS -->
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
 <script>
-// --- Initialize Daterangepicker ---
-$(document).ready(function() {
-    $('#dateRangePicker').daterangepicker({
-        opens: 'left',
-        showDropdowns: true,
-        locale: {
-            format: 'DD MMM YYYY',
-            separator: ' TO ',
-            applyLabel: 'Apply',
-            cancelLabel: 'Cancel',
-            customRangeLabel: 'Custom Date Range'
-        },
-        ranges: {
-           'Today': [moment(), moment()],
-           'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
-           'Last 7 Days': [moment().subtract(6, 'days'), moment()],
-           'This Month': [moment().startOf('month'), moment().endOf('month')],
-           'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
-        }
-    });
+// --- Initialize Flatpickr ---
+document.addEventListener("DOMContentLoaded", function() {
+    const dateInput = document.getElementById('dateRange');
+    if (dateInput) {
+        flatpickr(dateInput, {
+            mode: "range",
+            dateFormat: "d M Y", // Formats output to match your PHP logic (e.g., 01 Aug 2026)
+            showMonths: 2,       // Shows 2 months inline
+            locale: {
+                rangeSeparator: " TO " // Configured to match backend expectations implicitly
+            }
+        });
+    }
 });
 
 function goPage(p){
@@ -749,9 +832,8 @@ function changePerPage(pp){
   window.location.href = u.toString();
 }
 
-// Updated applyDateRange logic to retrieve from the new input picker
 function applyDateRange(){
-  const val = document.getElementById('dateRangePicker').value;
+  const val = document.getElementById('dateRange').value;
   const u = new URL(window.location.href);
   u.searchParams.set('date_range', val);
   u.searchParams.set('p', 1);
@@ -780,7 +862,7 @@ document.addEventListener('DOMContentLoaded', function() {
             clearTimeout(timeoutId);
             const query = this.value.trim();
             
-            // Reset hiddens if input changes
+            // Reset hiddens if input changes manually
             hiddenId.value = '';
             hiddenCode.value = '';
             hiddenName.value = '';
@@ -836,7 +918,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-
 
 const _ti = {
   success:'fa-circle-check',
