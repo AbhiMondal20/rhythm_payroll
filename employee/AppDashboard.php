@@ -39,14 +39,14 @@ if ($emp_stmt) {
 // 2. Fetch Today's Attendance (Check-out time)
 $checkout_time = "--:-- --";
 $checkout_status = "Not checked out yet";
-$att_stmt = $conn->prepare("SELECT check_out_time FROM time_entries WHERE employee_id = ? AND entry_date = ? LIMIT 1");
+$att_stmt = $conn->prepare("SELECT check_in_time FROM time_entries WHERE employee_id = ? AND entry_date = ? LIMIT 1");
 if ($att_stmt) {
     $att_stmt->bind_param("is", $emp_id, $today);
     $att_stmt->execute();
     $res = $att_stmt->get_result();
     if ($row = $res->fetch_assoc()) {
-        if (!empty($row['check_out_time']) && $row['check_out_time'] != '00:00:00') {
-            $checkout_time = date('h:i A', strtotime($row['check_out_time']));
+        if (!empty($row['check_in_time']) && $row['check_in_time'] != '00:00:00') {
+            $checkout_time = date('h:i A', strtotime($row['check_in_time']));
             $checkout_status = "You've successfully checked out today";
         }
     }
@@ -336,19 +336,19 @@ if ($hol_stmt) {
                             <div class="w-[50px] h-[50px] bg-[#f4f5f9] rounded-full flex items-center justify-center mb-2 text-[#5c6e8a] text-lg"><i class="fa-solid fa-umbrella-beach"></i></div>
                             <span class="text-[11px] text-gray-800 font-medium text-center">Apply Leave</span>
                         </a>
-                        <a href="#" class="flex flex-col items-center hover:opacity-80 transition">
+                        <a href="Payslips" class="flex flex-col items-center hover:opacity-80 transition">
                             <div class="w-[50px] h-[50px] bg-[#f4f5f9] rounded-full flex items-center justify-center mb-2 text-[#5c6e8a] text-lg"><i class="fa-solid fa-envelope-open-text"></i></div>
                             <span class="text-[11px] text-gray-800 font-medium text-center">Payslips</span>
                         </a>
-                        <a href="#" class="flex flex-col items-center hover:opacity-80 transition">
+                        <a href="MyApprovals" class="flex flex-col items-center hover:opacity-80 transition">
                             <div class="w-[50px] h-[50px] bg-[#f4f5f9] rounded-full flex items-center justify-center mb-2 text-[#5c6e8a] text-lg"><i class="fa-solid fa-file-signature"></i></div>
                             <span class="text-[11px] text-gray-800 font-medium text-center">My Approvals</span>
                         </a>
-                        <a href="#" class="flex flex-col items-center hover:opacity-80 transition">
+                        <a href="MyRequest" class="flex flex-col items-center hover:opacity-80 transition">
                             <div class="w-[50px] h-[50px] bg-[#f4f5f9] rounded-full flex items-center justify-center mb-2 text-[#5c6e8a] text-lg"><i class="fa-solid fa-file-circle-question"></i></div>
                             <span class="text-[11px] text-gray-800 font-medium text-center">My Requests</span>
                         </a>
-                        <a href="#" class="flex flex-col items-center hover:opacity-80 transition">
+                        <a href="Reimbursements" class="flex flex-col items-center hover:opacity-80 transition">
                             <div class="w-[50px] h-[50px] bg-[#f4f5f9] rounded-full flex items-center justify-center mb-2 text-[#5c6e8a] text-lg"><i class="fa-solid fa-hand-holding-dollar"></i></div>
                             <span class="text-[11px] text-gray-800 font-medium text-center">Reimbursements</span>
                         </a>
@@ -356,19 +356,19 @@ if ($hol_stmt) {
                             <div class="w-[50px] h-[50px] bg-[#f4f5f9] rounded-full flex items-center justify-center mb-2 text-[#5c6e8a] text-lg"><i class="fa-solid fa-clipboard-list"></i></div>
                             <span class="text-[11px] text-gray-800 font-medium text-center">Attendance<br>Overview</span>
                         </a>
-                        <a href="#" class="flex flex-col items-center hover:opacity-80 transition">
+                        <a href="Tax" class="flex flex-col items-center hover:opacity-80 transition">
                             <div class="w-[50px] h-[50px] bg-[#f4f5f9] rounded-full flex items-center justify-center mb-2 text-[#5c6e8a] text-lg"><i class="fa-solid fa-file-invoice-dollar"></i></div>
                             <span class="text-[11px] text-gray-800 font-medium text-center">Tax</span>
                         </a>
-                        <a href="#" class="flex flex-col items-center hover:opacity-80 transition">
+                        <a href="time_entry" class="flex flex-col items-center hover:opacity-80 transition">
                             <div class="w-[50px] h-[50px] bg-[#f4f5f9] rounded-full flex items-center justify-center mb-2 text-[#5c6e8a] text-lg"><i class="fa-solid fa-file-circle-plus"></i></div>
                             <span class="text-[11px] text-gray-800 font-medium text-center">Create Requests</span>
                         </a>
-                        <a href="#" class="flex flex-col items-center hover:opacity-80 transition">
+                        <a href="EmployeeVisit" class="flex flex-col items-center hover:opacity-80 transition">
                             <div class="w-[50px] h-[50px] bg-[#f4f5f9] rounded-full flex items-center justify-center mb-2 text-[#5c6e8a] text-lg"><i class="fa-solid fa-address-card"></i></div>
                             <span class="text-[11px] text-gray-800 font-medium text-center">Employee Visit</span>
                         </a>
-                        <a href="#" class="flex flex-col items-center hover:opacity-80 transition">
+                        <a href="VisitLogs" class="flex flex-col items-center hover:opacity-80 transition">
                             <div class="w-[50px] h-[50px] bg-[#f4f5f9] rounded-full flex items-center justify-center mb-2 text-[#5c6e8a] text-lg"><i class="fa-solid fa-list-check"></i></div>
                             <span class="text-[11px] text-gray-800 font-medium text-center">Visit Logs</span>
                         </a>

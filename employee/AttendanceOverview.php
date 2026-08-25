@@ -119,6 +119,39 @@ if (!empty($emp_code) && isset($conn)) {
             $db_entries[$row['entry_date']] = $row;
         }
     }
+
+    // =================================================================
+    // FETCH PENDING LEAVES AND TIME ADJUSTMENTS FOR THE MESSAGES
+    // =================================================================
+    
+    // 1. Fetch pending leaves (spans across from_date to to_date)
+    $pending_leaves = [];
+    $leave_sql = "SELECT from_date, to_date FROM leave_requests 
+                  WHERE emp_code = '$safe_emp_code' AND status = 'pending' 
+                  AND (from_date <= '$end_date' AND to_date >= '$start_date')";
+    $leave_res = mysqli_query($conn, $leave_sql);
+    if ($leave_res) {
+        while ($l_row = mysqli_fetch_assoc($leave_res)) {
+            $l_start = strtotime($l_row['from_date']);
+            $l_end = strtotime($l_row['to_date']);
+            // Mark every day in the date range as having a pending leave
+            for ($i = $l_start; $i <= $l_end; $i += 86400) {
+                $pending_leaves[date('Y-m-d', $i)] = true;
+            }
+        }
+    }
+
+    // 2. Fetch pending time adjustments
+    $pending_adjs = [];
+    $adj_sql = "SELECT shift_date FROM approval_requests 
+                WHERE emp_code = '$safe_emp_code' AND type = 'attendance' AND status = 'pending' 
+                AND shift_date BETWEEN '$start_date' AND '$end_date'";
+    $adj_res = mysqli_query($conn, $adj_sql);
+    if ($adj_res) {
+        while ($a_row = mysqli_fetch_assoc($adj_res)) {
+            $pending_adjs[$a_row['shift_date']] = true;
+        }
+    }
     
     try {
         $begin = new DateTime($start_date);
@@ -176,6 +209,8 @@ if (!empty($emp_code) && isset($conn)) {
                 $entry['assigned_shift_name'] = !empty($entry['shift_name']) ? $entry['shift_name'] : $assigned_shift_name;
                 $entry['assigned_shift_start'] = $assigned_shift_start;
                 $entry['assigned_shift_end'] = $assigned_shift_end;
+                $entry['pending_leave'] = isset($pending_leaves[$date_str]);
+                $entry['pending_adj'] = isset($pending_adjs[$date_str]);
                 $time_entries[] = $entry;
             } else {
                 $is_sunday = ($day_num == 7);
@@ -201,7 +236,9 @@ if (!empty($emp_code) && isset($conn)) {
                     'record_status' => 'System',
                     'assigned_shift_name' => $assigned_shift_name,
                     'assigned_shift_start' => $assigned_shift_start,
-                    'assigned_shift_end' => $assigned_shift_end
+                    'assigned_shift_end' => $assigned_shift_end,
+                    'pending_leave' => isset($pending_leaves[$date_str]),
+                    'pending_adj' => isset($pending_adjs[$date_str])
                 ];
             }
         }
@@ -302,7 +339,9 @@ $str_short_hrs  = secondsToTime($total_short_sec);
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    
+    <link rel="icon" type="image/png" sizes="32x32" href="/rhythm_payroll/includes/assets/img/favicon.svg">
+    <link rel="icon" type="image/png" sizes="16x16" href="/rhythm_payroll/includes/assets/img/favicon.svg">
+    <link rel="apple-touch-icon" href="/rhythm_payroll/includes/assets/img/apple-touch-icon.png">
     <style>
         /* Custom scrollbar hiding */
         .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -333,7 +372,7 @@ $str_short_hrs  = secondsToTime($total_short_sec);
                 <i class="fa-solid fa-chevron-left mr-2 text-sm"></i> Back
             </a>
             <div class="flex-1 flex justify-center mr-[80px]">
-                <h1 class="font-semibold text-[17px]">Attendance</h1>
+                <h1 class="font-semibold text-[17px]">Attendance Overview</h1>
             </div>
         </header>
 
@@ -433,23 +472,38 @@ $str_short_hrs  = secondsToTime($total_short_sec);
                         if($status_val === 'P' || $status_val === 'PP') $status_val = 'Present';
                         if($status_val === 'A' || $status_val === 'AA') $status_val = 'Absent';
 
+                        // Check if day_status_1 and day_status_2 differ for display (e.g. Absent/Present)
+                        $status_val_2 = $entry['day_status_2'] ?? '';
+                        if($status_val_2 === 'P' || $status_val_2 === 'PP') $status_val_2 = 'Present';
+                        if($status_val_2 === 'A' || $status_val_2 === 'AA') $status_val_2 = 'Absent';
+                        
+                        $display_status = $status_val;
+                        if ($status_val !== $status_val_2 && !empty($status_val_2) && $status_val_2 !== '-') {
+                            $display_status = $status_val . '/' . $status_val_2;
+                        }
+
                         // Mobile App Theme Colors
                         $theme_bg = 'bg-[#f4f5f9]';
                         $theme_text = 'text-gray-500';
                         $status_color = 'text-gray-500';
 
-                        if ($status_val === 'Present') {
+                        if (strpos($display_status, 'Present') !== false && strpos($display_status, 'Absent') === false) {
                             $theme_bg = 'bg-[#eef9f2]';
                             $theme_text = 'text-[#16a34a]'; // Green
                             $status_color = 'text-[#16a34a]';
-                        } elseif ($status_val === 'Absent') {
+                        } elseif (strpos($display_status, 'Absent') !== false && strpos($display_status, 'Present') === false) {
                             $theme_bg = 'bg-[#fee2e2]';
                             $theme_text = 'text-[#dc2626]'; // Red
                             $status_color = 'text-[#dc2626]';
+                        } elseif (strpos($display_status, 'Present') !== false && strpos($display_status, 'Absent') !== false) {
+                            // Mixed Half Day
+                            $theme_bg = 'bg-[#f4f5f9]';
+                            $theme_text = 'text-gray-500'; 
+                            $status_color = 'text-gray-500';
                         } elseif ($status_val === 'WO' || $status_val === 'Week Off') {
                             $theme_bg = 'bg-[#f4f5f9]';
                             $theme_text = 'text-gray-500';
-                            $status_val = 'Week Off';
+                            $display_status = 'Week Off';
                             $status_color = 'text-gray-500';
                         } elseif (in_array($status_val, ['CL', 'SL', 'PL', 'HO'])) {
                             $theme_bg = 'bg-[#fcead8]';
@@ -458,7 +512,7 @@ $str_short_hrs  = secondsToTime($total_short_sec);
                         }
 
                         // Format Hours to strictly HH:MM
-                        $formatted_hours = '00:00';
+                        $formatted_hours = '-';
                         if (!empty($entry['hours_worked'])) {
                             if (strpos($entry['hours_worked'], ':') !== false) {
                                 $parts = explode(':', $entry['hours_worked']);
@@ -473,30 +527,30 @@ $str_short_hrs  = secondsToTime($total_short_sec);
                         }
                     ?>
                 <!-- Attendance Card (Added data-status attribute for JS filtering) -->
-                <a href="time_entry?date=<?= $entry['entry_date'] ?>" data-status="<?= $status_val ?>" class="attendance-card block bg-white rounded-xl shadow-sm border border-gray-100 p-3 flex items-center gap-4 hover:shadow-md transition duration-200">
+                <a href="time_entry?date=<?= $entry['entry_date'] ?>" data-status="<?= $status_val ?>" class="attendance-card block bg-white rounded-xl shadow-sm border border-gray-100 p-3 flex items-start gap-4 hover:shadow-md transition duration-200">
                     
                     <!-- Left Date Box -->
-                    <div class="<?= $theme_bg ?> rounded-lg w-14 h-14 flex flex-col items-center justify-center shrink-0 border border-white/50">
+                    <div class="<?= $theme_bg ?> rounded-lg w-14 h-14 flex flex-col items-center justify-center shrink-0 border border-white/50 mt-1">
                         <span class="<?= $theme_text ?> text-[18px] font-bold leading-none mb-0.5"><?= $day_num ?></span>
                         <span class="<?= $theme_text ?> text-[10px] font-semibold uppercase tracking-wider"><?= $day_str ?></span>
                     </div>
 
                     <!-- Right Info -->
                     <div class="flex-1 pr-1">
-                        <div class="font-bold text-[13px] mb-2 <?= $status_color ?>"><?= $status_val ?></div>
+                        <div class="font-bold text-[13px] mb-2 <?= $status_color ?>"><?= $display_status ?></div>
 
                         <div class="flex justify-between items-end">
                             <!-- Check In -->
                             <div>
                                 <div class="font-bold text-gray-800 text-[13px] leading-none mb-1">
-                                    <?= !empty($entry['check_in_time']) ? date('h:i A', strtotime($entry['check_in_time'])) : '--:--' ?>
+                                    <?= !empty($entry['check_in_time']) ? date('h:i A', strtotime($entry['check_in_time'])) : '-' ?>
                                 </div>
                                 <div class="text-[10px] text-gray-400 font-medium tracking-wide">Check In</div>
                             </div>
                             <!-- Check Out -->
                             <div>
                                 <div class="font-bold text-gray-800 text-[13px] leading-none mb-1">
-                                    <?= !empty($entry['check_out_time']) ? date('h:i A', strtotime($entry['check_out_time'])) : '--:--' ?>
+                                    <?= !empty($entry['check_out_time']) ? date('h:i A', strtotime($entry['check_out_time'])) : '-' ?>
                                 </div>
                                 <div class="text-[10px] text-gray-400 font-medium tracking-wide">Check Out</div>
                             </div>
@@ -505,9 +559,23 @@ $str_short_hrs  = secondsToTime($total_short_sec);
                                 <div class="font-bold text-gray-800 text-[13px] leading-none mb-1">
                                     <?= $formatted_hours ?>
                                 </div>
-                                <div class="text-[10px] text-gray-400 font-medium tracking-wide">Hrs</div>
+                                <div class="text-[10px] text-gray-400 font-medium tracking-wide">Total Hours</div>
                             </div>
                         </div>
+
+                        <!-- NEW: Approval Pending Messages -->
+                        <?php if (!empty($entry['pending_adj'])): ?>
+                            <div class="mt-2.5 pt-2 border-t border-gray-100 flex items-center gap-1">
+                                <span class="text-[11px] text-gray-400 font-medium">Time Entry Raised</span>
+                                <span class="text-[11px] text-[#f59e0b] font-medium">(Approval Pending)</span>
+                            </div>
+                        <?php elseif (!empty($entry['pending_leave'])): ?>
+                            <div class="mt-2.5 pt-2 border-t border-gray-100 flex items-center gap-1">
+                                <span class="text-[11px] text-gray-400 font-medium">Leave Applied</span>
+                                <span class="text-[11px] text-[#f59e0b] font-medium">(Approval Pending)</span>
+                            </div>
+                        <?php endif; ?>
+
                     </div>
                 </a>
                 <?php endforeach; ?>
@@ -556,7 +624,7 @@ $str_short_hrs  = secondsToTime($total_short_sec);
                     
                     cards.forEach(card => {
                         if (filterValue === 'All' || card.getAttribute('data-status') === filterValue) {
-                            card.style.display = 'flex'; // Use flex because the card has 'flex items-center gap-4'
+                            card.style.display = 'flex'; 
                         } else {
                             card.style.display = 'none';
                         }
