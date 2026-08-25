@@ -725,14 +725,15 @@ function generateReport() {
     const fromVal = document.getElementById('customDateFrom').value || '2026-07-01';
     const toVal = document.getElementById('customDateTo').value || '2026-07-31';
     
-    let url = `reportsng?start=${fromVal}&end=${toVal}`;
+    let url = `daystatusrp?start=${fromVal}&end=${toVal}`;
     
     if (selectedEmployees.length > 0) {
         const empCodes = selectedEmployees.map(e => e.employee_code).join(',');
         url += `&emps=${empCodes}`;
     }
     
-    window.location.href = url;
+    // Opens the constructed URL in a new tab
+    window.open(url, '_blank');
 }
 
 </script>

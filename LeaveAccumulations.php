@@ -153,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $opening    = isset($_POST['is_opening_balance']) ? 1 : 0;
         $note       = trim($_POST['note'] ?? '');
 
-        if ($id === 0 || $emp_id === 0 || $emp_name === '' || $leave_name === '' || !$accum_date) {
+        if ($emp_id === 0 || $emp_name === '' || $leave_type_id === 0 || $leave_name === '' || !$accum_date) {
             $_SESSION['la_flash'] = 'Valid ID, Employee, Leave Name and Accumulation Date are required.';
             $_SESSION['la_flash_type'] = 'error';
             header("Location: ?mode=edit&id=$id");
@@ -588,13 +588,21 @@ $today = date('Y-m-d');
 
             <div class="la-field">
               <label>Leave Name</label>
-              <select name="leave_name" class="la-select" required>
+              <!-- Dropdown now uses leave_type_id and updates the hidden input on change -->
+              <select name="leave_type_id" class="la-select" required 
+                      onchange="document.getElementById('hidden_leave_name').value = this.options[this.selectedIndex].text;">
                 <option value=""></option>
-                <?php foreach ($leave_types as $lt): ?>
-                <option value="<?= h($lt) ?>" <?= ($is_edit && $active_row['leave_name'] === $lt) ? 'selected' : '' ?>><?= h($lt) ?></option>
+                <?php foreach ($leave_types as $id => $lt): ?>
+                <option value="<?= h($id) ?>" <?= ($is_edit && isset($active_row['leave_type_id']) && $active_row['leave_type_id'] == $id) ? 'selected' : '' ?>>
+                  <?= h($lt) ?>
+                </option>
                 <?php endforeach; ?>
               </select>
+              <!-- Hidden input to send leave_name text to the backend -->
+              <input type="hidden" name="leave_name" id="hidden_leave_name" value="<?= $is_edit ? h($active_row['leave_name']) : '' ?>">
             </div>
+
+
           </div>
 
           <div class="la-field-grid" style="margin-bottom:22px">

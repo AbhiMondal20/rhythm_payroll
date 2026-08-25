@@ -1,0 +1,37 @@
+﻿<table id="reportTable" class="table table-bordered table-striped table-hover">
+                                    <thead class="bg-dark text-white">
+                                        <tr>
+                                            <th>Sl No.</th>
+                                            <th>Affiliate Info</th>
+                                            <th>Validity</th>
+                                            <th>Agent Comm.</th>
+                                            <th>Dev Comm.</th>
+                                            <th>Paid Amt</th>
+                                            <th>Status</th>
+                                            
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                                                                        <tr>
+                                                    <td>1</td>
+                                                    <td>
+                                                        <b>Abhi</b><br>
+                                                        <small>8101202074</small>
+                                                    </td>
+                                                    <td>
+                                                        <small><b>From:</b> 20-08-2026</small><br>
+                                                        <small><b>To:</b> 27-08-2026</small>
+                                                    </td>
+                                                    <td>20%</td>
+                                                    <td>30.00</td>
+                                                    <td>
+                                                        <b>₹400.00</b><br>
+                                                        <small class="text-muted">Txn: 24asdf14asdfdasf</small>
+                                                    </td>
+                                                    <td>
+                                                                                                                    <span class="badge badge-success">Active</span>
+                                                                                                            </td>
+                                                    
+                                                </tr>
+                                                                                </tbody>
+                                </table>

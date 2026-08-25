@@ -66,9 +66,12 @@ if ($result->num_rows > 0) {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <link rel="icon" type="image/png" sizes="32x32" href="includes/assets/img/favicon.svg">
-    <link rel="icon" type="image/png" sizes="16x16" href="includes/assets/img/favicon.svg">
-    <link rel="apple-touch-icon" href="includes/assets/img/apple-touch-icon.png">
+    
+
+    <link rel="icon" type="image/png" sizes="32x32" href="/rhythm_payroll/includes/assets/img/favicon.svg">
+    <link rel="icon" type="image/png" sizes="16x16" href="/rhythm_payroll/includes/assets/img/favicon.svg">
+    <link rel="apple-touch-icon" href="/rhythm_payroll/includes/assets/img/apple-touch-icon.png">
+    
     <?php if (!empty($extra_head)) echo $extra_head; ?>
 </head>
 
@@ -87,9 +90,7 @@ if ($result->num_rows > 0) {
                             <line x1="3" y1="18" x2="21" y2="18" />
                         </svg>
                     </button>
-                    <span style="font-weight:600;font-size:15px;color:#1a1a2e"><img
-                            src="<?= $company_logo ?? 'company/uploads/default.png' ?>" style="height: 50px;"
-                            alt="Company Logo">
+                    <span style="font-weight:600;font-size:15px;color:#1a1a2e"><img src="/rhythm_payroll/<?= $company_logo ?? 'uploads/default.png' ?>" style="height: 50px;" alt="Company Logo">
                         <!-- <?= $company_name ?? APP_NAME ?> -->
                     </span>
                 </div>

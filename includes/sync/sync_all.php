@@ -15,7 +15,7 @@ use Rats\Zkteco\Lib\ZKTeco;
 date_default_timezone_set('Asia/Kolkata');
 
 // =======================================================================
-// HELPER FUNCTION 1: OS-Level Ping to prevent the ZKTeco library from freezing
+// HELPER FUNCTION 1: OS-Level Ping
 // =======================================================================
 function isDevicePingable($ip) {
     $ip = escapeshellarg($ip);
@@ -34,40 +34,74 @@ function isDevicePingable($ip) {
 // HELPER FUNCTION 2: Determine Shift Based on Auto Shift Rules
 // =======================================================================
 function determineAutoShift($punch_time, $rules) {
-    // Extract just the time (e.g., "10:30:00") from the full timestamp
     $time_only = date('H:i:s', strtotime($punch_time));
-    
     foreach ($rules as $r) {
         $start = $r['in_start'];
         $end = $r['in_end'];
-        
-        // Standard shift (e.g., 09:00:00 to 11:00:00)
         if ($start <= $end) {
-            if ($time_only >= $start && $time_only <= $end) {
-                return $r['shift_name'];
-            }
-        } 
-        // Night shift crossing midnight (e.g., 22:00:00 to 02:00:00)
-        else { 
-            if ($time_only >= $start || $time_only <= $end) {
-                return $r['shift_name'];
-            }
+            if ($time_only >= $start && $time_only <= $end) return $r['shift_name'];
+        } else { 
+            if ($time_only >= $start || $time_only <= $end) return $r['shift_name'];
         }
     }
-    return 'General'; // Fallback shift if the punch falls entirely outside all configured windows
+    return 'General';
 }
 
 // =======================================================================
-// PRE-LOAD: Fetch all Auto Shift Rules once to optimize performance
+// HELPER FUNCTION 3: Check if a given date is a Holiday 
+// =======================================================================
+function isHoliday($punch_date, $holidays) {
+    $p_date = date('Y-m-d', strtotime($punch_date));
+    foreach ($holidays as $h) {
+        if ($p_date >= $h['start_date'] && $p_date <= $h['end_date']) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// =======================================================================
+// PRE-LOAD 1: Fetch Auto Shift Rules
 // =======================================================================
 $shift_rules = [];
-// Assuming direction 'IN' dictates the start of a shift
 $rules_query = mysqli_query($conn, "SELECT shift_name, in_start, in_end FROM auto_shift_rules WHERE direction='IN' ORDER BY sort_order ASC");
 if ($rules_query) {
     while ($rule = mysqli_fetch_assoc($rules_query)) {
         $shift_rules[] = $rule;
     }
 }
+
+// =======================================================================
+// PRE-LOAD 2: Fetch Active Holidays (Broadened Status Check)
+// =======================================================================
+$holidays = [];
+// Added multiple status checks in case it's saved differently
+$holidays_query = mysqli_query($conn, "SELECT holiday_name, start_date, end_date FROM att_holidays WHERE status='1' OR status=1 OR status='Active' OR status='active'");
+
+if ($holidays_query) {
+    while ($h = mysqli_fetch_assoc($holidays_query)) {
+        $holidays[] = [
+            'name'       => $h['holiday_name'],
+            'start_date' => date('Y-m-d', strtotime($h['start_date'])),
+            'end_date'   => date('Y-m-d', strtotime($h['end_date']))
+        ];
+    }
+}
+
+// ================== DEBUG HOLIDAYS OUTPUT ==============================
+echo "<div style='padding:15px;background:#e2e3e5;border:1px solid #d6d8db;margin:10px 0;border-radius:4px;'>";
+echo "<h4 style='margin-top:0;'>Holiday Debugger:</h4>";
+if (empty($holidays)) {
+    echo "<span style='color:red;'><b>Error:</b> No active holidays found in database! (Check 'status' column in att_holidays)</span>";
+} else {
+    echo "<ul>";
+    foreach ($holidays as $h) {
+        echo "<li><b>{$h['name']}</b> : {$h['start_date']} TO {$h['end_date']}</li>";
+    }
+    echo "</ul>";
+}
+echo "</div>";
+// =======================================================================
 
 $devices = mysqli_query($conn, "SELECT * FROM att_devices WHERE status='online'");
 
@@ -84,24 +118,19 @@ while ($device = mysqli_fetch_assoc($devices)) {
         $ip = $device['ip_address'];
         
         if (!isDevicePingable($ip)) {
-            throw new Exception("Device at $ip is completely offline (Ping timeout). Skipped to prevent system freeze.");
+            throw new Exception("Device at $ip is completely offline. Skipped.");
         }
 
         $zk = new ZKTeco($ip, (int)$device['port_no']);
         
         if (!$zk->connect()) {
-            throw new Exception("Ping succeeded, but could not connect to port {$device['port_no']} on $ip.");
+            throw new Exception("Ping succeeded, but could not connect to port {$device['port_no']}.");
         }
 
-        mysqli_query($conn, "
-            UPDATE att_devices
-            SET last_ping = '$now'
-            WHERE id='{$device['id']}'
-        ");
+        mysqli_query($conn, "UPDATE att_devices SET last_ping = '$now' WHERE id='{$device['id']}'");
 
         $users = [];
         $deviceUsers = $zk->getUser();
-        
         $new_employees = 0;
 
         if (is_array($deviceUsers)) {
@@ -116,21 +145,13 @@ while ($device = mysqli_fetch_assoc($devices)) {
 
                 if ($userid != '') {
                     $users[$userid] = $name;
-
                     $emp_code_db = mysqli_real_escape_string($conn, $userid);
                     $emp_name_db = mysqli_real_escape_string($conn, $name);
 
                     $emp_check = mysqli_query($conn, "SELECT id FROM employees WHERE employee_code='$emp_code_db' LIMIT 1");
 
                     if (mysqli_num_rows($emp_check) == 0) {
-                        $insert_emp = "
-                            INSERT INTO employees (
-                                employee_code,  employee_name, ctc_template_id, status, created_at, updated_at
-                            ) VALUES (
-                                '$emp_code_db', '$emp_name_db', '1', '1', '$now', '$now'
-                            )
-                        ";
-
+                        $insert_emp = "INSERT INTO employees (employee_code, employee_name, ctc_template_id, status, created_at, updated_at) VALUES ('$emp_code_db', '$emp_name_db', '1', '1', '$now', '$now')";
                         if (!mysqli_query($conn, $insert_emp)) {
                             echo "<div style='color:red'>Employee Insert Error: ".mysqli_error($conn)."</div>";
                         } else {
@@ -143,7 +164,7 @@ while ($device = mysqli_fetch_assoc($devices)) {
 
         /*
         |--------------------------------------------------------------------------
-        | Attendance & Time Entries
+        | Attendance Sync
         |--------------------------------------------------------------------------
         */
 
@@ -158,10 +179,9 @@ while ($device = mysqli_fetch_assoc($devices)) {
         $attendance = $zk->getAttendance();
         $inserted = 0;
         $duplicate = 0;
+        $holiday_punches_detected = 0; // Tracking for debug
 
-        if (!is_array($attendance)) {
-            $attendance = [];
-        }
+        if (!is_array($attendance)) $attendance = [];
 
         foreach ($attendance as $row) {
             if (!is_array($row)) continue;
@@ -184,27 +204,25 @@ while ($device = mysqli_fetch_assoc($devices)) {
             $employee_name = trim(preg_replace('/[[:cntrl:]]/', '', is_array($users[$employee_code] ?? '') ? implode(' ', $users[$employee_code] ?? '') : ($users[$employee_code] ?? '')));
             $punch_type = $row['type'] ?? 0;
             $verify_type = $row['state'] ?? 0;
-            $day_status_1 = "P";
-            $day_status_2 = "P";
+            
+            // Check if punch falls on holiday
+            if (isHoliday($punch_date, $holidays)) {
+                $day_status_1 = "HO";
+                $day_status_2 = "HO";
+                $holiday_punches_detected++;
+            } else {
+                $day_status_1 = "P";
+                $day_status_2 = "P";
+            }
 
             $raw = mysqli_real_escape_string($conn, json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $employee_code_db = mysqli_real_escape_string($conn, $employee_code);
             $employee_name_db = mysqli_real_escape_string($conn, $employee_name);
-
-            // Determine shift name dynamically based on rules
             $mapped_shift = determineAutoShift($punch_time, $shift_rules);
             $shift_name_db = mysqli_real_escape_string($conn, $mapped_shift);
 
-            $sql = "
-            INSERT INTO att_machine_punches (
-                device_id, device_code, serial_number, employee_code,
-                employee_name, punch_time, punch_date, punch_type,
-                verify_type, raw_data, synced_at, created_at
-            ) VALUES (
-                '{$device['id']}', '{$device['code']}', '{$device['serial_number']}', '$employee_code_db',
-                '$employee_name_db', '$punch_time', '$punch_date', '$punch_type',
-                '$verify_type', '$raw', '$now', '$now'
-            )";
+            $sql = "INSERT INTO att_machine_punches (device_id, device_code, serial_number, employee_code, employee_name, punch_time, punch_date, punch_type, verify_type, raw_data, synced_at, created_at) 
+                    VALUES ('{$device['id']}', '{$device['code']}', '{$device['serial_number']}', '$employee_code_db', '$employee_name_db', '$punch_time', '$punch_date', '$punch_type', '$verify_type', '$raw', '$now', '$now')";
 
             if (!mysqli_query($conn, $sql)) {
                 echo "<div style='color:red'>Attendance Insert Error: ".mysqli_error($conn)."</div>";
@@ -216,63 +234,43 @@ while ($device = mysqli_fetch_assoc($devices)) {
                 $emp_id_row = mysqli_fetch_assoc($emp_id_query);
                 $employee_id_db = $emp_id_row ? mysqli_real_escape_string($conn, $emp_id_row['id']) : '0';
 
-                $te_check = mysqli_query($conn, "
-                    SELECT id, check_in_time 
-                    FROM time_entries 
-                    WHERE employee_code='$employee_code_db' 
-                    AND entry_date='$punch_date' 
-                    LIMIT 1
-                ");
+                $te_check = mysqli_query($conn, "SELECT id, check_in_time FROM time_entries WHERE employee_code='$employee_code_db' AND entry_date='$punch_date' LIMIT 1");
 
                 if (mysqli_num_rows($te_check) == 0) {
-                    // FIXED: Aligned $shift_name_db, $punch_date, and $punch_time to their correct columns
-                    $te_insert = "
-                        INSERT INTO time_entries (
-                            employee_id, employee_code, employee_name, shift_name, entry_date, day_status_1,
-                            check_in_time, record_status, created_at, updated_at
-                        ) VALUES (
-                            '$employee_id_db', '$employee_code_db', '$employee_name_db', '$shift_name_db',
-                            '$punch_date', '$day_status_1', '$punch_time', 'System', '$now', '$now'
-                        )
-                    ";
-                    mysqli_query($conn, $te_insert);
+                    $te_insert = "INSERT INTO time_entries (employee_id, employee_code, employee_name, shift_name, entry_date, day_status_1, day_status_2, check_in_time, record_status, created_at, updated_at) 
+                                  VALUES ('$employee_id_db', '$employee_code_db', '$employee_name_db', '$shift_name_db', '$punch_date', '$day_status_1', '$day_status_2', '$punch_time', 'System', '$now', '$now')";
+                    if (!mysqli_query($conn, $te_insert)) {
+                        echo "<div style='color:red'>Time Entries Insert Error: ".mysqli_error($conn)."</div>";
+                    }
                 } else {
                     $te_row = mysqli_fetch_assoc($te_check);
                     $te_id = $te_row['id'];
                     
                     if ($te_row['check_in_time'] != $punch_time) {
-                        $te_update = "
-                            UPDATE time_entries 
-                            SET check_out_time = '$punch_time', day_status_2 = '$day_status_2',
-                                hours_worked = TIMEDIFF('$punch_time', check_in_time),
-                                updated_at = '$now' 
-                            WHERE id = '$te_id'
-                        ";
-                        mysqli_query($conn, $te_update);
+                        $te_update = "UPDATE time_entries SET check_out_time = '$punch_time', day_status_2 = '$day_status_2', hours_worked = TIMEDIFF('$punch_time', check_in_time), updated_at = '$now' WHERE id = '$te_id'";
+                        if (!mysqli_query($conn, $te_update)) {
+                            echo "<div style='color:red'>Time Entries Update Error: ".mysqli_error($conn)."</div>";
+                        }
                     }
                 }
             }
         }
 
-        mysqli_query($conn, "
-            UPDATE att_devices
-            SET last_download='$now'
-            WHERE id='{$device['id']}'
-        ");
-
+        mysqli_query($conn, "UPDATE att_devices SET last_download='$now' WHERE id='{$device['id']}'");
         $zk->disconnect();
 
         echo "<div style='padding:10px;background:#d4edda;border:1px solid #28a745;margin:10px 0;border-radius:4px;'>";
         echo "<b>New Employees Synced :</b> ".$new_employees."<br>";
-        echo "<b>Total Machine Records Fetched :</b> ".count($attendance)."<br>";
-        echo "<b>Newly Synced Punches (Today + Missing Old) :</b> ".$inserted."<br>";
-        echo "<b>Existing Records Ignored :</b> ".$duplicate."<br>";
+        echo "<b>Total Fetched :</b> ".count($attendance)."<br>";
+        echo "<b>Newly Inserted :</b> ".$inserted."<br>";
+        echo "<b>Duplicates Ignored :</b> ".$duplicate."<br>";
+        if ($holiday_punches_detected > 0) {
+            echo "<b style='color:blue;'>Holiday Punches (HO) Marked :</b> ".$holiday_punches_detected."<br>";
+        }
         echo "</div>";
 
     } catch (Throwable $e) {
-        echo "<div style='color:#721c24;background:#f8d7da;padding:10px;border:1px solid #f5c6cb;margin:10px 0;border-radius:4px;'>";
-        echo "<b>Connection/Sync Error:</b> ".$e->getMessage();
-        echo "</div>";
+        echo "<div style='color:#721c24;background:#f8d7da;padding:10px;border:1px solid #f5c6cb;margin:10px 0;border-radius:4px;'><b>Error:</b> ".$e->getMessage()."</div>";
     }
 }
 ?>

@@ -1,0 +1,32 @@
+"Reg. No.","Name","Test(s)","Bill Details","Total Amount","Due Amt.","Ref. Doc","Users"
+"Reg: AS582 | Date: 19 Aug 2026","MR UMAKANT PANDEY","CT CORONARY ANGIOGRAPHY","11,000.00
+                 Dis.: 0.00 | Paid: 11,000.00 (Online)
+                 Dis. By:","11,000.00","0.00","Dr. ABHIJEET PRASAD DM (CARDIOLOGY), BHU","ritika"
+"Reg: AS581 | Date: 19 Aug 2026","MRS SANYOGITA MISHRA","USG OF WHOLE ABDOMEN","1,000.00
+                 Dis.: 0.00 | Paid: 1,000.00 (Online)
+                 Dis. By:","1,000.00","0.00","DR AKHILESH BHARAT","ritika"
+"Reg: AS580 | Date: 19 Aug 2026","RANJIT YADAV","USG LOCAL PART","1,500.00
+                 Dis.: 0.00 | Paid: 1,500.00 (Cash)
+                 Dis. By:","1,500.00","0.00","SRS MEMORIAL HOSPITAL","admin"
+"Reg: AS579 | Date: 19 Aug 2026","WAHID KHAN","RGU-MCU","4,000.00
+                 Dis.: 500.00 | Paid: 3,500.00 (Online)
+                 Dis. By:","3,500.00","0.00","SHRI RAM HOSPITAL","admin"
+"Reg: AS578 | Date: 19 Aug 2026","RANJATI","USG OF WHOLE ABDOMEN","1,000.00
+                 Dis.: 0.00 | Paid: 1,000.00 (Cash)
+                 Dis. By:","1,000.00","0.00","DR SELF","admin"
+"Reg: AS577 | Date: 19 Aug 2026","KESHARI BAI","3D CT L.S/C.S/D.L SPINE, NCCT BRAIN","7,000.00
+                 Dis.: 1,000.00 | Paid: 6,000.00 (Cash)
+                 Dis. By: Ref. Doctor","6,000.00","0.00","Dr. SUKITRI CHAUHAN MBBS, MS, Mch (NEUROSURGERY) (SANKALP HOSPITAL)","admin"
+"Reg: AS577 | Date: 19 Aug 2026","KESHARI BAI","3D CT L.S/C.S/D.L SPINE, NCCT BRAIN","7,000.00
+                 Dis.: 1,000.00 | Paid: 6,000.00 (Cash)
+                 Dis. By:","6,000.00","0.00","Dr. SUKITRI CHAUHAN MBBS, MS, Mch (NEUROSURGERY) (SANKALP HOSPITAL)","admin"
+"Reg: AS576 | Date: 19 Aug 2026","DIBYA MINJ","USG OBS","1,000.00
+                 Dis.: 0.00 | Paid: 1,000.00 (Cash)
+                 Dis. By:","1,000.00","0.00","DR SELF","admin"
+"Reg: AS575 | Date: 19 Aug 2026","RITIKA","USG OF WHOLE ABDOMEN","1,000.00
+                 Dis.: 0.00 | Paid: 1,000.00 (Cash)
+                 Dis. By:","1,000.00","0.00","SRS MEMORIAL HOSPITAL","admin"
+"Reg: AS574 | Date: 19 Aug 2026","NAINA","USG OF WHOLE ABDOMEN","1,000.00
+                 Dis.: 0.00 | Paid: 1,000.00 (Cash)
+                 Dis. By:","1,000.00","0.00","DR SELF","admin"
+"Sub Total:Overall Total:","Sub Total:Overall Total:","Sub Total:Overall Total:","Sub Total:Overall Total:","33000.00Total: 63000.00","0.00Total Due: 6000.00","",""

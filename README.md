@@ -85,9 +85,6 @@ Taxes - Pending (urgent)
 <!-- 08-08-2026 -->
 Reports - Pending (not urgent)
 
-
-
-
 CRM add tag filter in list view
 CRM add Extra Imformation
 dont chnage style write db table and fetch from table write full page code write also dami data
@@ -109,25 +106,37 @@ Process Payslip - Working
 Leave Policy  - Pending
 Work on AttDiscrepancies - Working
 
+<!-- 17-08-2026 -->
+affiliate-signup - Working 
+affiliate-terms - Done|
+Partner Program Section - Done
 
+<!-- 19-08-2026 -->
+CRM 
+Add Affilate Entry - Done
+Affilate Reports - Done
+
+<!-- This Week  -->
+   24-08-26
+  App - Apply Leave - Done
+  
 GMB Updates
 Successfully published 2 GMB posts for each location: 
 Siliguri, Coochbehar, and Raiganj.
 
+CRM Module Progress
+   Add Affilate Entry - Done
+   Affilate Reports - Done
+   Export Excel - Done
 Payroll Module Progress
-   Discrepancies - Done
-   Process Time Card - Working
+  App - Check In/Out
+  App - Apply Leave
+  App - Payslips
+
+
+
 
    
-
-GMB Updates
-Successfully published 2 GMB posts for each location: 
-Siliguri, Coochbehar, and Raiganj.
-
-Payroll Module Progress
-   Discrepancies - Done
-   Process Time Card - Working
-
 Insert
  check
  chars

@@ -1,0 +1,72 @@
+# Enable URL rewriting
+RewriteEngine On
+
+# Remove trailing slash if it's not a directory
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)/$ /$1 [R=301,L]
+
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^([^/.]+)$ $1.php [L]
+
+# Redirect URLs without trailing slashes to remove them
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^([^/]*)/?(.*)$ /$1.php [L]
+
+# Rewrite to dark mode if the 'user_preference' cookie is set to 'darkmode'
+RewriteCond %{HTTP_COOKIE} user_preference=darkmode
+RewriteRule ^(.*)$ /dark/$1 [L]
+
+# Fallback for normal URLs
+FallbackResource /cookie.php
+
+
+# Enable browser caching for static assets (CSS, JS, images, etc.)
+<IfModule mod_expires.c>
+  ExpiresActive On
+
+  # Cache CSS and JS for a very long time (1 year) until user clears browser cache
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType text/javascript "access plus 1 year"
+
+  # Cache image formats for 1 year
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/gif "access plus 1 year"
+  ExpiresByType image/webp "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+
+  # Cache fonts for 1 year
+  ExpiresByType font/ttf "access plus 1 year"
+  ExpiresByType font/otf "access plus 1 year"
+  ExpiresByType font/woff "access plus 1 year"
+  ExpiresByType font/woff2 "access plus 1 year"
+</IfModule>
+
+
+# Enable Brotli compression if supported
+<IfModule mod_brotli.c>
+  AddOutputFilterByType BROTLI_COMPRESS text/plain text/css application/javascript text/html
+</IfModule>
+
+# Fallback to index.php for clean URLs or SPA-like behavior
+FallbackResource /index.php
+
+<Files ".env">
+    Order allow,deny
+    Deny from all
+</Files>
+
+
+# ---------------------------------------------------------------------
+# 🚨 Custom error pages
+# ---------------------------------------------------------------------
+# You can create these files in your web root:
+
+ErrorDocument 404 /opd/admin/404.php
+ErrorDocument 500 /opd/admin/500.php
+ErrorDocument 403 /opd/admin/403.php
+ErrorDocument 401 /opd/admin/401.php
+
+

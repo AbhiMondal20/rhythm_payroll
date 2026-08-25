@@ -68,6 +68,23 @@ if (isset($conn)) {
             ['href'=>'reports', 'label'=>'Reports', 'badge'=>'','badge_color'=>''],
         ];
 
+        $mob_app = [
+            ['href'=>'employee/CheckInOut', 'label'=>'Check In/Out', 'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/ApplyLeave', 'label'=>'Apply Leave', 'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/PaySlip', 'label'=>'Pay Slip', 'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/MyApprovals', 'label'=>'My Approvals', 'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/MyRequests', 'label'=>'My Requests', 'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/Reimbursements',   'label'=>'Reimbursements',   'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/AttendanceOverview', 'label'=>'Attendance Overview', 'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/taxes',   'label'=>'Taxes',   'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/CreateRequest', 'label'=>'Create Request', 'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/EmployeeVisit', 'label'=>'Employee Visit', 'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/VisitLog', 'label'=>'Visit Log', 'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/PolicesLinks', 'label'=>'Policies Links', 'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/TaskManagement', 'label'=>'Task Management', 'badge'=>'','badge_color'=>''],
+            ['href'=>'employee/Documents', 'label'=>'Documents', 'badge'=>'','badge_color'=>''],
+        ];
+
         $nav_system = [
             ['href'=>'DataAuthorisation','label'=>'Data Import',   'badge'=>'','badge_color'=>''],
             ['href'=>'users',           'label'=>'Users',         'badge'=>'','badge_color'=>''],
@@ -76,22 +93,40 @@ if (isset($conn)) {
             ['href'=>'configuration',   'label'=>'Configuration', 'badge'=>'','badge_color'=>''],
         ];
         
+        // --- EXPANDED ICONS ARRAY START ---
         $icons = [
-            'dashboard' => '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
-            'employees' => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
-            'approvals' => '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
-            'attendance'=> '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
-            'leave'     => '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
-            'payroll'   => '<path d="M5 4h14M5 8h14M5 4c4.5 0 8 2.5 8 6s-3.5 6-8 6l9 7"/>',
-            'taxes'     => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
-            'reports'   => '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+            // Main, Finance & System Icons
+            'dashboard'         => '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
+            'employees'         => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+            'approvals'         => '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+            'attendance'        => '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+            'leave'             => '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+            'payroll'           => '<path d="M5 4h14M5 8h14M5 4c4.5 0 8 2.5 8 6s-3.5 6-8 6l9 7"/>',
+            'taxes'             => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+            'reports'           => '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
             'DataAuthorisation' => '<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>',
-            'users'         => '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
-            'configuration' => '<circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M5.34 17.66l-1.41 1.41M2 12h2M20 12h2M5.34 6.34L3.93 4.93M18.66 17.66l1.41 1.41M12 20v2M12 2v2"/>',
-            'AssetManagement' => '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="7.5 4.21 12 6.81 16.5 4.21"/><polyline points="12 22.08 12 12"/>',
-            'Training' => '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 0 4 24V4.5A2.5 2.5 0 0 1 6.5 2z"/>',
+            'users'             => '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+            'configuration'     => '<circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M5.34 17.66l-1.41 1.41M2 12h2M20 12h2M5.34 6.34L3.93 4.93M18.66 17.66l1.41 1.41M12 20v2M12 2v2"/>',
+            'AssetManagement'   => '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="7.5 4.21 12 6.81 16.5 4.21"/><polyline points="12 22.08 12 12"/>',
+            'Training'          => '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 0 4 24V4.5A2.5 2.5 0 0 1 6.5 2z"/>',
             
+            // Newly added Mobile App Icons
+            'checkInOut'         => '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>',
+            'ApplyLeave'         => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>',
+            'PaySlip'            => '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><line x1="6" y1="12" x2="6.01" y2="12"/><line x1="18" y1="12" x2="18.01" y2="12"/>',
+            'MyApprovals'        => '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+            'MyRequests'         => '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+            'Reimbursements'     => '<path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><rect x="16" y="12" width="6" height="4"/>',
+            'AttendanceOverview' => '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="12" cy="15" r="1"/>',
+            'Tax'                => '<line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+            'CreateRequest'      => '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+            'EmployeeVisit'      => '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+            'VisitLog'           => '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/>',
+            'PolicesLinks'       => '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+            'TaskManagement'     => '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+            'Documents'          => '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
         ];
+        // --- EXPANDED ICONS ARRAY END ---
 
         function render_nav(array $items, string $current, array $icons, array $allowed_pages, string $role): void {
             $is_admin = strtolower(trim($role)) === 'admin';
@@ -105,7 +140,8 @@ if (isset($conn)) {
 
                 $currentPage = basename($current, '.php');
                 $active = strtolower($currentPage) === $page_key ? 'active' : '';
-                $icon   = $icons[$item['href']] ?? '';
+                // Fallback to a default circle/dot icon if one is missing in the future
+                $icon   = $icons[$item['href']] ?? '<circle cx="12" cy="12" r="3"/>';
 
                 echo "<a class='nav-item {$active}' href='{$item['href']}'>";
                 echo "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>{$icon}</svg>";
@@ -119,14 +155,13 @@ if (isset($conn)) {
                     };
                     echo "<span class='badge' style='margin-left:auto;{$bg}'>{$item['badge']}</span>";
                 }
-
                 echo "</a>";
             }
         }
         ?>
 
         <?php ob_start(); render_nav($nav_main, $_SERVER['PHP_SELF'], $icons, $allowed_pages, $role); $main_html = ob_get_clean(); ?>
-        <?php if (trim($main_html) !== ''): /* FIX 3: Check if the string is empty instead of using str_contains with empty string */ ?>
+        <?php if (trim($main_html) !== ''): ?>
             <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:4px">MAIN</div>
             <?= $main_html ?>
         <?php endif; ?>
@@ -135,6 +170,12 @@ if (isset($conn)) {
         <?php if (trim($fin_html) !== ''): ?>
             <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:8px">FINANCE</div>
             <?= $fin_html ?>
+        <?php endif; ?>
+
+        <?php ob_start(); render_nav($mob_app, $_SERVER['PHP_SELF'], $icons, $allowed_pages, $role); $mob_html = ob_get_clean(); ?>
+        <?php if (trim($mob_html) !== ''): ?>
+            <div style="color:#4B5280;font-size:10px;font-weight:700;letter-spacing:1px;padding:6px 24px;margin-top:8px">MOBILE APP</div>
+            <?= $mob_html ?>
         <?php endif; ?>
 
         <?php ob_start(); render_nav($nav_system, $_SERVER['PHP_SELF'], $icons, $allowed_pages, $role); $sys_html = ob_get_clean(); ?>

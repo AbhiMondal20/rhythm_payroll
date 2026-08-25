@@ -127,9 +127,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // 4. Update secondary tables ONLY if final decision
                     if ($is_final) {
                         
-                        $applied_days = 0;
-                        $leave_type_id = 0;
-
                         if ($req_type === 'Leave') {
                             $stmt_get_days = $conn->prepare("SELECT `from_date`, `to_date`, `day_type`, `leave_type_id` FROM `leave_requests` WHERE `emp_code`=? AND `id`=?");
                             if ($stmt_get_days) {
@@ -164,34 +161,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
 
                         // Adjust leave_accumulations balance based on Approve or Reject
-                        if ($req_type === 'Leave' && $applied_days > 0) {
-                            $sql_accum = "";
+                        // if ($req_type === 'Leave' && $applied_days > 0) {
+                        //     $sql_accum = "";
                             
-                            if ($new_status === 'approved') {
-                                // Deduct balance if approved
-                                $sql_accum = "UPDATE `leave_accumulations` 
-                                              SET `balance` = `balance` - ?, `updated_at` = ? 
-                                              WHERE `emp_code` = ? AND `leave_type_id` = ?";
-                            } elseif ($new_status === 'rejected') {
-                                // Add back balance if rejected
-                                $sql_accum = "UPDATE `leave_accumulations` 
-                                              SET `balance` = `balance` + ?, `updated_at` = ? 
-                                              WHERE `emp_code` = ? AND `leave_type_id` = ?";
-                            }
+                        //     if ($new_status === 'approved') {
+                        //         // Deduct balance if approved
+                        //         $sql_accum = "UPDATE `leave_accumulations` 
+                        //                       SET `balance` = `balance` - ?, `updated_at` = ? 
+                        //                       WHERE `emp_code` = ? AND `leave_type_id` = ?";
+                        //     } elseif ($new_status === 'rejected') {
+                        //         // Add back balance if rejected
+                        //         $sql_accum = "UPDATE `leave_accumulations` 
+                        //                       SET `balance` = `balance` + ?, `updated_at` = ? 
+                        //                       WHERE `emp_code` = ? AND `leave_type_id` = ?";
+                        //     }
 
-                            if ($sql_accum !== "") {
-                                $stmt_accum = $conn->prepare($sql_accum);
-                                if ($stmt_accum) {
-                                    $stmt_accum->bind_param("dssi", $applied_days, $now, $emp_code, $leave_type_id);
-                                    if (!$stmt_accum->execute()) {
-                                        error_log("Failed to execute leave_accumulations update: " . $stmt_accum->error);
-                                    }
-                                    $stmt_accum->close();
-                                } else {
-                                    error_log("Failed to prepare leave_accumulations update: " . $conn->error);
-                                }
-                            }
-                        }
+                        //     if ($sql_accum !== "") {
+                        //         $stmt_accum = $conn->prepare($sql_accum);
+                        //         if ($stmt_accum) {
+                        //             $stmt_accum->bind_param("dssi", $applied_days, $now, $emp_code, $leave_type_id);
+                        //             if (!$stmt_accum->execute()) {
+                        //                 error_log("Failed to execute leave_accumulations update: " . $stmt_accum->error);
+                        //             }
+                        //             $stmt_accum->close();
+                        //         } else {
+                        //             error_log("Failed to prepare leave_accumulations update: " . $conn->error);
+                        //         }
+                        //     }
+                        // }
                     }
 
                     if ($new_status === 'approved') {

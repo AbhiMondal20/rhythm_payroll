@@ -641,7 +641,8 @@ const availableLeaveTypes = <?= json_encode(array_values($leave_types_db), JSON_
                     foreach($day_colors as $day=>$col):
                     ?>
                 <div class="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
-                    <span class="w-2.5 h-2.5 rounded-full" style="background:<?= esc($col) ?>"></span>
+                    <span class="w-2.5 hx .
+                    -2.5 rounded-full" style="background:<?= esc($col) ?>"></span>
                     <?= esc($day) ?>
                 </div>
                 <?php endforeach; ?>

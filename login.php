@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once 'includes/db_conn.php';
+require_once '../includes/db_conn.php';
 
 $error = '';
 $success = '';
@@ -18,14 +18,14 @@ function getRedirectPageLocal(): string {
     $access = $_SESSION['user_access'] ?? [];
 
     if (in_array('dashboard', $access, true)) {
-        return 'http://192.168.2.161/rhythm_payroll/dashboard';
+        return 'http://localhost/rhythm_payroll/dashboard';
     }
 
     if (!empty($access[0])) {
-        return 'http://192.168.2.161/rhythm_payroll/dashboard' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $access[0]);
+        return 'http://localhost/rhythm_payroll/dashboard' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $access[0]);
     }
 
-    return 'http://192.168.2.161/rhythm_payroll/dashboard';
+    return 'http://localhost/rhythm_payroll/dashboard';
 }
 
 if (!empty($_SESSION['login'])) {
@@ -162,7 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         $userQuery = "
                             SELECT 
-                                id, username, employee_name, email, password_hash, role, status, client_code
+                                id, username, employee_name, employee_code, email, password_hash, role, status, client_code
                             FROM users
                             WHERE username = '$username_esc' OR email = '$username_esc'
                             AND client_code = '{$db['client_code']}'
@@ -186,6 +186,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             } else {
 
                                 $user_id = (int)$user['id'];
+                                
+                                // Fetch corresponding employee record if employee_code exists
+                                $emp_id = 0;
+                                $emp_code_val = trim($user['employee_code'] ?? '');
+                                
+                                if ($emp_code_val !== '') {
+                                    $empCodeEsc = mysqli_real_escape_string($conn, $emp_code_val);
+                                    $empQuery = "SELECT id, employee_code, employee_name FROM employees WHERE employee_code = '$empCodeEsc' LIMIT 1";
+                                    $empRes = mysqli_query($conn, $empQuery);
+                                    if ($empRes && $empRow = mysqli_fetch_assoc($empRes)) {
+                                        $emp_id = (int)($empRow['id'] ?? 0);
+                                    }
+                                }
+
                                 $accQuery = "
                                     SELECT page_name
                                     FROM user_access
@@ -211,12 +225,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     } else {
                                         session_regenerate_id(true);
 
-                                        $_SESSION['login']       = true;
+                                        $_SESSION['login']         = true;
                                         $_SESSION['user_id']     = $user_id;
+                                        $_SESSION['emp_id']      = $emp_id; 
                                         $_SESSION['username']    = $user['username'];
                                         $_SESSION['email']       = $user['email'] ?? '';
                                         $_SESSION['role']        = $user['role'] ?? 'user';
                                         $_SESSION['employee_name'] = $user['employee_name'] ?? '';
+                                        $_SESSION['employee_code'] = $user['employee_code'] ?? '';
                                         $_SESSION['client_code'] = $client_code;
                                         $_SESSION['module_key']  = $module_key;
                                         $_SESSION['client_db']   = $db['db_name'];
