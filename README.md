@@ -120,6 +120,15 @@ Affilate Reports - Done
    24-08-26
   App - Apply Leave - Done
   
+27-08-26
+Leadkbuket App (Android)
+29-08-26
+TaskManagement - For App - Done
+TaskManagement - Admin - Done
+AddDocuments - For App - Done
+Employee Documents - For App - Done
+
+
 GMB Updates
 Successfully published 2 GMB posts for each location: 
 Siliguri, Coochbehar, and Raiganj.

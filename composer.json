@@ -1,5 +1,6 @@
 {
     "require": {
-        "rats/zkteco": "^002.0"
+        "rats/zkteco": "^002.0",
+        "dompdf/dompdf": "^3.1"
     }
 }

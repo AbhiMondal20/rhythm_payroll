@@ -451,9 +451,7 @@ ob_start();
         <span class="hp-topbar-title">Upload HR Policy</span>
       </div>
     </div>
-
     <div class="hp-form-body">
-
       <!-- Policy Name -->
       <div class="hp-form-field">
         <label class="hp-field-label">Policy Name</label>

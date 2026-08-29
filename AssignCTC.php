@@ -11,7 +11,6 @@ function esc($v){
    FETCH CTC TEMPLATES
 ───────────────────────────────────────── */
 $templates = [];
-
 $resTpl = mysqli_query($conn, "
     SELECT id, name 
     FROM ctc_templates 

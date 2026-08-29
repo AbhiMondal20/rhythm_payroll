@@ -137,6 +137,8 @@ $config_data = [
             ['icon'=>'roles',       'title'=>'User Roles',           'desc'=>'Create custom roles and add permissions.',                                                          'href'=>'UserRoles'],
             ['icon'=>'dataauth',    'title'=>'Data Authorisation',   'desc'=>'Set Restrictions on users access to data.',                                                         'href'=>'DataAuthorisation'],
             ['icon'=>'hrpolicy',    'title'=>'HR Policy',            'desc'=>'Select document and upload HR Policies, manage their active / inactive states.',                    'href'=>'HRPolicy'],
+            ['icon'=>'tasks',       'title'=>'Tasks',                'desc'=>'Manage tasks and their assignments.',                                                               'href'=>'Tasks'],
+            ['icon'=>'audit',       'title'=>'Audit Trail',          'desc'=>'View the history of changes made to the system.',                                                   'href'=>'AuditTrail'],
         ],
     ],
 ];

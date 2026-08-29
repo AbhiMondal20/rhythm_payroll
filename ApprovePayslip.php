@@ -6,6 +6,7 @@ if (!isset($_SESSION['login'])) {
 }
 require_once 'includes/db_client.php';
 require_once 'includes/config.php';
+
 if (isset($_POST['ajax_action'])) {
     header('Content-Type: application/json');
     
@@ -47,8 +48,6 @@ if (isset($_POST['ajax_action'])) {
     if ($_POST['ajax_action'] == 'fetch_template_components') {
         $ctc_template_id = mysqli_real_escape_string($conn, $_POST['ctc_template_id'] ?? '');
         
-        // Note: This assumes you have a mapping table linking the template to the components.
-        // If not, it fetches all components filtered by salary_type from the main table.
         $sql = "SELECT `id`, `salary_type`, `component_category`, `code`, `component_name`, `expression`, `status` 
                 FROM `salary_components` 
                 WHERE (`status` = 'Active' OR `status` = '1')";
@@ -131,27 +130,44 @@ if (isset($_POST['ajax_action'])) {
 // 2. FORM SUBMISSION (Approve/Reject Payslip)
 // ==========================================
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && !isset($_POST['ajax_action'])) {
-    $action = $_POST['action']; // 'approve' or 'reject'
+    $action = mysqli_real_escape_string($conn, $_POST['action']); // 'approved' or 'rejected'
     
-    if (($action == 'approve' || $action == 'reject') && !empty($_POST['selected_employees'])) {
+    if (($action == 'approved' || $action == 'rejected') && !empty($_POST['selected_employees'])) {
         $financial_year = mysqli_real_escape_string($conn, $_POST['financial_year']);
         $pay_month = mysqli_real_escape_string($conn, $_POST['pay_month']);
         
         foreach ($_POST['selected_employees'] as $emp_code) {
             $emp_code = mysqli_real_escape_string($conn, $emp_code);
-            $name_res = @mysqli_query($conn, "SELECT employee_name FROM employees WHERE employee_code='$emp_code'");
-            $emp_name = ($name_res && mysqli_num_rows($name_res) > 0) ? mysqli_fetch_assoc($name_res)['employee_name'] : '';
             
-            $insert = "INSERT INTO payslip_approvals (employee_code, employee_name, financial_year, pay_month, status) 
-                       VALUES ('$emp_code', '$emp_name', '$financial_year', '$pay_month', '$action')";
-            @mysqli_query($conn, $insert);
+            // Fetch Employee Name
+            $name_res = @mysqli_query($conn, "SELECT employee_name FROM employees WHERE employee_code='$emp_code'");
+            $emp_name = ($name_res && mysqli_num_rows($name_res) > 0) ? mysqli_real_escape_string($conn, mysqli_fetch_assoc($name_res)['employee_name']) : '';
+            
+            // Check if record already exists for the same month and year
+            $check_sql = "SELECT id FROM payslip_approvals WHERE employee_code='$emp_code' AND financial_year='$financial_year' AND pay_month='$pay_month'";
+            $check_res = @mysqli_query($conn, $check_sql);
+            
+            if ($check_res && mysqli_num_rows($check_res) > 0) {
+                // Exists: UPDATE the status
+                $update_sql = "UPDATE payslip_approvals 
+                               SET status='$action', employee_name='$emp_name' 
+                               WHERE employee_code='$emp_code' 
+                               AND financial_year='$financial_year' 
+                               AND pay_month='$pay_month'";
+                @mysqli_query($conn, $update_sql);
+            } else {
+                // Does Not Exist: INSERT new record
+                $insert_sql = "INSERT INTO payslip_approvals (employee_code, employee_name, financial_year, pay_month, status) 
+                               VALUES ('$emp_code', '$emp_name', '$financial_year', '$pay_month', '$action')";
+                @mysqli_query($conn, $insert_sql);
+            }
         }
         
         // Refresh to avoid resubmission and pass success flag
-        header("Location: " . $_SERVER['PHP_SELF'] . "?status=success&type=$action");
+        header("Location: ApprovePayslip?status=success&type=$action");
         exit();
     } elseif (empty($_POST['selected_employees'])) {
-        header("Location: " . $_SERVER['PHP_SELF'] . "?status=empty");
+        header("Location: ApprovePayslip?status=empty");
         exit();
     }
 }
@@ -220,8 +236,8 @@ ob_start();
 ?>
 <link rel="stylesheet" href="includes/assets/style.css">
 
+<!-- Styles remain unchanged -->
 <style>
-/* Common Styles */
 .btn-back { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: #6B7280; background: #fff; border: 1px solid #D1D5DB; text-decoration: none; transition: all 0.2s; cursor: pointer; }
 .btn-back:hover { background: #F3F4F6; color: #111827; border-color: #9CA3AF; }
 .payroll-header-wrapper { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 5px; }
@@ -336,7 +352,7 @@ select.line-input { cursor: pointer; appearance: none; background-image: url("da
         <a href="PaymentDeduction">Payment/Deduction</a> <span class="separator">|</span>
         <a href="HoldSalary">Hold Salary</a> <span class="separator">|</span>
         <a href="ApprovePayslip" class="payroll-tab active">Approve Payslip</a> <span class="separator">|</span>
-        <a href="EditPayslip" class="payroll-tab">Edit Payslip</a> <span class="separator">|</span>
+        <a href="EditPayslip">Edit Payslip</a> <span class="separator">|</span>
         <a href="Loans">Loans</a> <span class="separator">|</span>
         <a href="ProcessPayslip">Process Payslip</a> <span class="separator">|</span>
         <a href="FullFinal">Final Settlement</a> <span class="separator">|</span>
@@ -356,12 +372,10 @@ select.line-input { cursor: pointer; appearance: none; background-image: url("da
         
         <div class="search-filter-row">
             <div class="search-line-wrapper" style="position: relative;">
-                <!-- Main Search Magnifying Glass -->
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 
                 <input type="text" id="mainEmpSearch" placeholder="Search by name or #code" autocomplete="off">
                 
-                <!-- Custom Dropdown Container -->
                 <div id="empSearchDropdown" class="emp-search-dropdown" style="display: none;">
                     <ul id="empSearchList"></ul>
                     <div class="emp-search-footer" onclick="openFilterModal()">
@@ -401,9 +415,9 @@ select.line-input { cursor: pointer; appearance: none; background-image: url("da
         </div>
 
         <div class="form-actions">
-            <button type="submit" name="action" value="reject" class="btn-danger-outline">Reject</button>
+            <button type="submit" name="action" value="rejected" class="btn-danger-outline">Reject</button>
             <button type="button" class="btn-outline" onclick="window.location.reload();">Cancel</button>
-            <button type="submit" name="action" value="approve" class="btn-primary">Approve</button>
+            <button type="submit" name="action" value="approved" class="btn-primary">Approve</button>
         </div>
     </form>
 </div>
@@ -546,11 +560,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const type = urlParams.get("type");
 
     if (status === "success") {
-        const textMsg = type === "approve"
+        const textMsg = type === "approved"
             ? "Payslips have been approved successfully."
             : "Payslips have been rejected successfully.";
 
-        const toastType = type === "approve" ? "success" : "warning";
+        const toastType = type === "approved" ? "success" : "warning";
         showToast(textMsg, toastType);
         window.history.replaceState({}, document.title, window.location.pathname);
     } else if (status === "empty") {
@@ -789,10 +803,6 @@ searchInput.addEventListener('input', function() {
             `;
             li.onclick = () => {
                 addEmployeeToSelection(emp.employee_code, emp.employee_name);
-                
-                // Example call to fetch components based on the employee's template ID (if you intend to display them)
-                // fetchComponentsForEmployee(emp.ctc_template_id);
-                
                 searchInput.value = '';
                 searchDropdown.style.display = 'none';
                 searchInput.style.borderRadius = "4px";
@@ -814,7 +824,6 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// Example AJAX fetch to get the components linked to a specific CTC template
 function fetchComponentsForEmployee(ctcTemplateId) {
     if(!ctcTemplateId) return;
     
@@ -829,7 +838,6 @@ function fetchComponentsForEmployee(ctcTemplateId) {
     .then(response => response.json())
     .then(data => {
         console.log("Salary Components Loaded via Template ID: ", data);
-        // You can populate UI tables or forms here if you update the view logic
     })
     .catch(error => console.error('Error fetching component data:', error));
 }

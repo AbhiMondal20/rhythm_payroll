@@ -43,7 +43,6 @@ try {
                     DATE_FORMAT(created_at,'%d %b %Y') AS created_date
                 FROM hr_policies
                 WHERE is_deleted=0
-                AND created_by='$user_id'
                 ORDER BY created_at DESC
             ";
 

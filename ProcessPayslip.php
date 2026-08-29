@@ -91,7 +91,7 @@ if (isset($_POST['ajax_action'])) {
 }
 
 // ==========================================
-// 2. FORM SUBMISSION (Process Payslip)
+// 2. FORM SUBMISSION (Process Payslip & Calculations)
 // ==========================================
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['process_payslip']) && !isset($_POST['ajax_action'])) {
     
@@ -102,23 +102,186 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['process_payslip']) && 
         $end_date       = mysqli_real_escape_string($conn, $_POST['end_date']);
         $reprocess      = isset($_POST['reprocess']) ? 1 : 0;
         
-        // Ensure dates are correctly formatted for MySQL (YYYY-MM-DD)
-        $db_start_date = date('Y-m-d', strtotime($start_date));
-        $db_end_date   = date('Y-m-d', strtotime($end_date));
+        $db_start_date  = date('Y-m-d', strtotime($start_date));
+        $db_end_date    = date('Y-m-d', strtotime($end_date));
         
+        // Total calendar days in the selected period
+        $total_period_days = (strtotime($db_end_date) - strtotime($db_start_date)) / 86400 + 1;
+
         foreach ($_POST['selected_employees'] as $emp_code) {
             $emp_code = mysqli_real_escape_string($conn, $emp_code);
             
-            // Get Employee Name
-            $name_res = @mysqli_query($conn, "SELECT employee_name FROM employees WHERE employee_code='$emp_code'");
-            $emp_name = ($name_res && mysqli_num_rows($name_res) > 0) ? mysqli_fetch_assoc($name_res)['employee_name'] : '';
+            // --- A. Fetch Employee & CTC Template Details ---
+            $emp_query = "
+                SELECT e.*, t.pt_state, t.pf_applicable, t.esi_applicable 
+                FROM employees e
+                LEFT JOIN ctc_templates t ON e.ctc_template_id = t.id
+                WHERE e.employee_code = '$emp_code'
+            ";
+            $emp_res = @mysqli_query($conn, $emp_query);
+            if (!$emp_res || mysqli_num_rows($emp_res) == 0) continue;
             
-            // Insert tracking record into DB
-            $insert_sql = "INSERT INTO `processed_payslips` 
-                (`employee_code`, `employee_name`, `financial_year`, `pay_month`, `start_date`, `end_date`, `is_reprocessed`) 
-                VALUES 
-                ('$emp_code', '$emp_name', '$financial_year', '$pay_month', '$db_start_date', '$db_end_date', '$reprocess')";
-            @mysqli_query($conn, $insert_sql);
+            $emp_data = mysqli_fetch_assoc($emp_res);
+            $emp_name = mysqli_real_escape_string($conn, $emp_data['employee_name']);
+            $ctc_monthly = (float)$emp_data['ctc_monthly'];
+            $template_id = (int)$emp_data['ctc_template_id'];
+
+            // --- B. Calculate Attendance & Leaves ---
+            $att_query = "
+                SELECT COUNT(DISTINCT entry_date) as worked_days 
+                FROM time_entries 
+                WHERE employee_code = '$emp_code' 
+                AND entry_date BETWEEN '$db_start_date' AND '$db_end_date'
+                AND (day_status_1 = 'P' OR day_status_1 = 'Present' OR hours_worked > 0)
+            ";
+            $att_res = @mysqli_query($conn, $att_query);
+            $worked_days = $att_res ? (int)mysqli_fetch_assoc($att_res)['worked_days'] : 0;
+
+            $leave_query = "
+                SELECT SUM(DATEDIFF(LEAST(to_date, '$db_end_date'), GREATEST(from_date, '$db_start_date')) + 1) as paid_leaves
+                FROM leave_requests
+                WHERE emp_code = '$emp_code' AND status = 'Approved'
+                AND from_date <= '$db_end_date' AND to_date >= '$db_start_date'
+            ";
+            $leave_res = @mysqli_query($conn, $leave_query);
+            $paid_leaves = $leave_res ? (int)mysqli_fetch_assoc($leave_res)['paid_leaves'] : 0;
+
+            $total_payable_days = min($worked_days + $paid_leaves, $total_period_days);
+            $proration_ratio = ($total_period_days > 0) ? ($total_payable_days / $total_period_days) : 0;
+
+            // --- C. Calculate CTC Components ---
+            $gross_earnings = 0;
+            $gross_deductions = 0;
+            $basic_salary = 0; 
+            
+            $comp_query = "SELECT * FROM ctc_template_components WHERE template_id = '$template_id' ORDER BY sort_order";
+            $comp_res = @mysqli_query($conn, $comp_query);
+            
+            $component_breakdown = [];
+
+            if ($comp_res && mysqli_num_rows($comp_res) > 0) {
+                while ($comp = mysqli_fetch_assoc($comp_res)) {
+                    $amount = 0;
+                    
+                    // Force lowercase for robust matching against database typos
+                    $calc_type = strtolower(trim($comp['calc_type']));
+                    $comp_type = strtolower(trim($comp['component_type']));
+                    
+                    if (strpos($calc_type, 'flat') !== false || strpos($calc_type, 'fixed') !== false) {
+                        $amount = ((float)$comp['calc_value']) * $proration_ratio;
+                    } elseif (strpos($calc_type, 'percent') !== false || strpos($calc_type, '%') !== false || strpos($calc_type, 'per') !== false) {
+                        $amount = ($ctc_monthly * ((float)$comp['calc_value']) / 100) * $proration_ratio;
+                    }
+                    
+                    $amount = round($amount, 2);
+
+                    // Earning vs Deduction classification
+                    if (strpos($comp_type, 'earning') !== false) {
+                        $gross_earnings += $amount;
+                        if (stripos($comp['component_name'], 'basic') !== false) {
+                            $basic_salary = $amount;
+                        }
+                    } else {
+                        $gross_deductions += $amount;
+                    }
+                    
+                    $component_breakdown[$comp['component_name']] = $amount;
+                }
+                
+                // Safety Net: If basic wasn't found by name, assume 50% for PF purposes
+                if ($basic_salary == 0 && $gross_earnings > 0) {
+                    $basic_salary = $gross_earnings * 0.50; 
+                }
+                
+            } else {
+                // FALLBACK
+                $basic_salary = $ctc_monthly * $proration_ratio;
+                $gross_earnings = $basic_salary;
+                $component_breakdown['Basic Pay'] = round($basic_salary, 2);
+            }
+
+            // --- D. Calculate Statutory Deductions (PF, ESI, PT) ---
+            $pf_amount = 0;
+            $esi_amount = 0;
+            $pt_amount = 0;
+
+            if ($emp_data['pf_applicable'] == '1') {
+                $pf_amount = round($basic_salary * 0.12, 2); 
+            }
+
+            if ($emp_data['esi_applicable'] == '1') {
+                if ($gross_earnings <= 21000) {
+                    $esi_amount = round($gross_earnings * 0.0075, 2); 
+                }
+            }
+
+            if (!empty($emp_data['pt_state'])) {
+                if ($gross_earnings > 15000) {
+                    $pt_amount = 200;
+                }
+            }
+            
+            $total_statutory = $pf_amount + $esi_amount + $pt_amount;
+
+            // --- E. Calculate Loan EMI Deductions ---
+            $loan_query = "
+                SELECT SUM(emi_amount) as total_emi FROM employee_loans 
+                WHERE employee_code = '$emp_code' AND status = 'Active'
+                AND repayment_start <= '$db_end_date'
+            ";
+            $loan_res = @mysqli_query($conn, $loan_query);
+            $loan_emi = $loan_res ? round((float)mysqli_fetch_assoc($loan_res)['total_emi'], 2) : 0;
+
+            // --- F. Final Net Pay Calculation ---
+            $total_all_deductions = $gross_deductions + $total_statutory + $loan_emi;
+            $net_pay = $gross_earnings - $total_all_deductions;
+            
+            $component_json_str = mysqli_real_escape_string($conn, json_encode($component_breakdown));
+
+            // --- G. Database UPSERT Logic (Check if Exists -> Update, Else -> Insert) ---
+            $check_query = "SELECT id FROM `processed_payslips` WHERE `employee_code` = '$emp_code' AND `pay_month` = '$pay_month'";
+            $check_res = @mysqli_query($conn, $check_query);
+
+            if ($check_res && mysqli_num_rows($check_res) > 0) {
+                // Update Existing Record for this Month
+                $update_sql = "
+                    UPDATE `processed_payslips` SET 
+                        `financial_year` = '$financial_year',
+                        `start_date` = '$db_start_date',
+                        `end_date` = '$db_end_date',
+                        `total_days` = '$total_period_days',
+                        `paid_days` = '$total_payable_days',
+                        `gross_earnings` = '$gross_earnings',
+                        `total_deductions` = '$total_all_deductions',
+                        `net_pay` = '$net_pay',
+                        `pf_amount` = '$pf_amount',
+                        `esi_amount` = '$esi_amount',
+                        `pt_amount` = '$pt_amount',
+                        `loan_emi` = '$loan_emi',
+                        `components_json` = '$component_json_str',
+                        `is_reprocessed` = '$reprocess',
+                        `status` = 'Processed'
+                    WHERE `employee_code` = '$emp_code' AND `pay_month` = '$pay_month'
+                ";
+                @mysqli_query($conn, $update_sql);
+            } else {
+                // Insert New Record
+                $insert_sql = "
+                    INSERT INTO `processed_payslips` 
+                    (
+                        `employee_code`, `employee_name`, `financial_year`, `pay_month`, `start_date`, `end_date`, 
+                        `total_days`, `paid_days`, `gross_earnings`, `total_deductions`, `net_pay`,
+                        `pf_amount`, `esi_amount`, `pt_amount`, `loan_emi`, `components_json`, `is_reprocessed`, `status`
+                    ) 
+                    VALUES 
+                    (
+                        '$emp_code', '$emp_name', '$financial_year', '$pay_month', '$db_start_date', '$db_end_date', 
+                        '$total_period_days', '$total_payable_days', '$gross_earnings', '$total_all_deductions', '$net_pay',
+                        '$pf_amount', '$esi_amount', '$pt_amount', '$loan_emi', '$component_json_str', '$reprocess', 'Processed'
+                    )
+                ";
+                @mysqli_query($conn, $insert_sql);
+            }
         }
         ?>
         <script>window.location.href = window.location.href.split('?')[0] + "?status=success";</script>
@@ -135,15 +298,12 @@ $page_title = 'Payroll - Process Payslip';
 // ==========================================
 // 3. FETCH DATA FOR UI & DYNAMIC GENERATION
 // ==========================================
-
-// Dynamic Financial Years (2 Years back -> 2 Years forward)
 $current_year = (int)date('Y');
 $financial_years = [];
 for ($y = $current_year - 2; $y <= $current_year + 2; $y++) {
     $financial_years[] = $y;
 }
 
-// Data Lists
 $employees = [];
 $emp_sql = "SELECT `employee_code`, `employee_name` FROM `employees` WHERE `status` = 'Active' OR `status` = 1"; 
 $emp_result = @mysqli_query($conn, $emp_sql);
@@ -189,109 +349,24 @@ ob_start();
 
 <style>
 /* Common Styles */
-.btn-back {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-    color: #6B7280;
-    background: #fff;
-    border: 1px solid #D1D5DB;
-    text-decoration: none;
-    transition: all 0.2s;
-    cursor: pointer;
-}
+.btn-back { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: #6B7280; background: #fff; border: 1px solid #D1D5DB; text-decoration: none; transition: all 0.2s; cursor: pointer; }
+.btn-back:hover { background: #F3F4F6; color: #111827; border-color: #9CA3AF; }
 
-.btn-back:hover {
-    background: #F3F4F6;
-    color: #111827;
-    border-color: #9CA3AF;
-}
+.payroll-header-wrapper { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 5px; }
+.page-title { font-size: 20px; font-weight: 700; color: #111827; margin: 0; }
 
-.payroll-header-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
-    gap: 5px;
-}
+.payroll-top-links { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.payroll-top-links a { font-size: 13px; color: #6B7280; text-decoration: none; transition: color 0.15s; }
+.payroll-top-links a:hover { color: #2563EB; }
+.payroll-top-links .separator { color: #D1D5DB; font-size: 14px; }
 
-.page-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: #111827;
-    margin: 0;
-}
+.payroll-divider { border: none; border-top: 1px solid #D1D5DB; margin: 25px 0; }
 
-.payroll-top-links {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-}
+.payroll-card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); border: 1px solid #E5E7EB; padding: 24px; min-height: 400px; margin-bottom: 40px; }
 
-.payroll-top-links a {
-    font-size: 13px;
-    color: #6B7280;
-    text-decoration: none;
-    transition: color 0.15s;
-}
-
-.payroll-top-links a:hover {
-    color: #2563EB;
-}
-
-.payroll-top-links .separator {
-    color: #D1D5DB;
-    font-size: 14px;
-}
-
-.payroll-divider {
-    border: none;
-    border-top: 1px solid #D1D5DB;
-    margin: 25px 0;
-}
-
-.payroll-card {
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    border: 1px solid #E5E7EB;
-    padding: 24px;
-    min-height: 400px;
-    margin-bottom: 40px;
-}
-
-.payroll-tab {
-    padding: 5px 2px;
-    font-size: 13.5px;
-    font-weight: 500;
-    color: #6B7280;
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    border-bottom: 2.5px solid transparent;
-    white-space: nowrap;
-    transition: color .15s, border-color .15s;
-    font-family: inherit;
-    text-decoration: none;
-    display: block;
-    margin-bottom: -1px;
-}
-
-.payroll-tab:hover {
-    color: #111827;
-    border-bottom-color: #111827;
-}
-
-.payroll-tab.active {
-    color: #2563EB;
-    border-bottom-color: #2563EB;
-    font-weight: 600;
-}
+.payroll-tab { padding: 5px 2px; font-size: 13.5px; font-weight: 500; color: #6B7280; cursor: pointer; border: none; background: transparent; border-bottom: 2.5px solid transparent; white-space: nowrap; transition: color .15s, border-color .15s; font-family: inherit; text-decoration: none; display: block; margin-bottom: -1px; }
+.payroll-tab:hover { color: #111827; border-bottom-color: #111827; }
+.payroll-tab.active { color: #2563EB; border-bottom-color: #2563EB; font-weight: 600; }
 
 .card-top-bar { display: flex; align-items: center; margin-bottom: 30px; }
 .breadcrumb { font-size: 15px; color: #4B5563; }
@@ -319,59 +394,15 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator { color: #0066F
 .search-line-wrapper > input:focus { border-color: #0066FF; }
 
 /* ── Custom Employee Search Dropdown ── */
-.autocomplete-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    width: 100%;
-    background: #fff;
-    border: 1px solid #D1D5DB;
-    border-radius: 4px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    z-index: 1000;
-    display: none;
-    flex-direction: column;
-}
-.autocomplete-list {
-    max-height: 250px;
-    overflow-y: auto;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-.autocomplete-item {
-    display: flex;
-    align-items: center;
-    padding: 10px 15px;
-    cursor: pointer;
-    border-bottom: 1px solid #F3F4F6;
-    transition: background-color 0.1s;
-}
-.autocomplete-item:last-child {
-    border-bottom: none;
-}
-.autocomplete-item:hover {
-    background: #F9FAFB;
-}
-.autocomplete-avatar {
-    width: 32px; height: 32px; border-radius: 50%;
-    background: #9CA3AF; color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    margin-right: 15px; flex-shrink: 0;
-}
-.autocomplete-text {
-    font-size: 14px; color: #4B5563;
-}
-.autocomplete-footer {
-    padding: 12px 15px; border-top: 1px solid #E5E7EB;
-    font-size: 13px; color: #0066FF; cursor: pointer;
-    display: flex; align-items: center; gap: 8px;
-    background: #fff; border-radius: 0 0 4px 4px;
-}
-.autocomplete-footer:hover {
-    background: #F9FAFB;
-    text-decoration: underline;
-}
+.autocomplete-dropdown { position: absolute; top: calc(100% + 4px); left: 0; width: 100%; background: #fff; border: 1px solid #D1D5DB; border-radius: 4px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); z-index: 1000; display: none; flex-direction: column; }
+.autocomplete-list { max-height: 250px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.autocomplete-item { display: flex; align-items: center; padding: 10px 15px; cursor: pointer; border-bottom: 1px solid #F3F4F6; transition: background-color 0.1s; }
+.autocomplete-item:last-child { border-bottom: none; }
+.autocomplete-item:hover { background: #F9FAFB; }
+.autocomplete-avatar { width: 32px; height: 32px; border-radius: 50%; background: #9CA3AF; color: #fff; display: flex; align-items: center; justify-content: center; margin-right: 15px; flex-shrink: 0; }
+.autocomplete-text { font-size: 14px; color: #4B5563; }
+.autocomplete-footer { padding: 12px 15px; border-top: 1px solid #E5E7EB; font-size: 13px; color: #0066FF; cursor: pointer; display: flex; align-items: center; gap: 8px; background: #fff; border-radius: 0 0 4px 4px; }
+.autocomplete-footer:hover { background: #F9FAFB; text-decoration: underline; }
 
 .btn-filters { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #D1D5DB; color: #4B5563; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; height: 36px; }
 .btn-filters:hover { background: #F9FAFB; border-color: #9CA3AF; }
@@ -380,10 +411,7 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator { color: #0066F
 .reprocess-checkbox input { width: 16px; height: 16px; accent-color: #0066FF; cursor: pointer; }
 
 /* ── Selected Employees List ── */
-.selected-employee-box {
-    border: 1px solid #D1D5DB; border-radius: 4px; padding: 15px; max-width: 900px;
-    min-height: 60px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 40px;
-}
+.selected-employee-box { border: 1px solid #D1D5DB; border-radius: 4px; padding: 15px; max-width: 900px; min-height: 60px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 40px; }
 .employee-chip { display: flex; align-items: center; gap: 10px; }
 .employee-chip input[type="checkbox"] { width: 16px; height: 16px; accent-color: #0066FF; cursor: pointer; }
 .employee-chip label { font-size: 14px; color: #111827; cursor: pointer; }
@@ -615,13 +643,11 @@ input[type="date"].line-input::-webkit-calendar-picker-indicator { color: #0066F
 const allEmployeesList = <?= json_encode($employees) ?>;
 
 document.addEventListener("DOMContentLoaded", function() {
-    // Dropdown event listeners
     const searchInput = document.getElementById('mainEmpSearch');
     const dropdown = document.getElementById('customEmpDropdown');
     const list = document.getElementById('customEmpList');
 
     if(searchInput) {
-        // Handle typing in the search bar
         searchInput.addEventListener('input', function() {
             const val = this.value.toLowerCase().trim();
             list.innerHTML = '';
@@ -647,7 +673,6 @@ document.addEventListener("DOMContentLoaded", function() {
                         <div class="autocomplete-text">${emp.employee_name} - #${emp.employee_code}</div>
                     `;
                     
-                    // Add employee on click
                     li.addEventListener('click', function() {
                         addEmployeeToSelection(emp.employee_code, emp.employee_name);
                         searchInput.value = '';
@@ -663,14 +688,10 @@ document.addEventListener("DOMContentLoaded", function() {
             dropdown.style.display = 'flex';
         });
 
-        // Show dropdown if input has value on focus
         searchInput.addEventListener('focus', function() {
-            if (this.value.trim() !== '') {
-                dropdown.style.display = 'flex';
-            }
+            if (this.value.trim() !== '') { dropdown.style.display = 'flex'; }
         });
 
-        // Close dropdown when clicking outside
         document.addEventListener('click', function(e) {
             if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
                 dropdown.style.display = 'none';
@@ -678,7 +699,6 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    // Initialize the Pay Periods and Dates on page load
     updatePayPeriods();
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -687,7 +707,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (status === 'success') {
         Swal.fire({
             title: 'Processed!',
-            text: 'Payslips for the selected employees have been successfully saved.',
+            text: 'Payslips for the selected employees have been successfully calculated and saved.',
             icon: 'success',
             confirmButtonColor: '#0066FF'
         });
@@ -718,10 +738,9 @@ document.getElementById('processForm').addEventListener('submit', function(e) {
         return;
     }
 
-    e.preventDefault(); // Stop normal submission to show progress
+    e.preventDefault(); 
     const form = this;
 
-    // Ensure the button name is sent along with the form
     if (!document.querySelector('input[name="process_payslip"]')) {
         const hiddenBtn = document.createElement('input');
         hiddenBtn.type = 'hidden';
@@ -733,8 +752,8 @@ document.getElementById('processForm').addEventListener('submit', function(e) {
     let timerInterval;
     Swal.fire({
         title: 'Processing Payslips...',
-        html: 'Please wait. Progress: <b>0</b>%',
-        timer: 2000,
+        html: 'Calculating attendance, components, and deductions... <b>0</b>%',
+        timer: 2500,
         timerProgressBar: true,
         allowOutsideClick: false,
         didOpen: () => {
@@ -743,46 +762,36 @@ document.getElementById('processForm').addEventListener('submit', function(e) {
             timerInterval = setInterval(() => {
                 let left = Swal.getTimerLeft();
                 if(left !== undefined) {
-                    let percent = Math.min(100, Math.round(((2000 - left) / 2000) * 100));
+                    let percent = Math.min(100, Math.round(((2500 - left) / 2500) * 100));
                     b.textContent = percent;
                 }
             }, 50);
         },
-        willClose: () => {
-            clearInterval(timerInterval);
-        }
-    }).then(() => {
-        // Once the timer finishes, submit the form to the PHP backend
-        form.submit();
-    });
+        willClose: () => { clearInterval(timerInterval); }
+    }).then(() => { form.submit(); });
 });
 
 // ==========================================
 // DATE UI TOGGLE & CALCULATION LOGIC
 // ==========================================
-
 function updatePayPeriods() {
     const year = document.getElementById('financialYearSelect').value;
     const monthSelect = document.getElementById('payPeriodSelect');
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     
-    // Try to remember current selected month (e.g. 'May') if available, otherwise default to current real month
     let currentVal = monthSelect.value;
     let selectedMonth = currentVal ? currentVal.split('-')[0] : months[new Date().getMonth()];
 
     monthSelect.innerHTML = '';
     
-    // Populate exactly 12 months for the selected year
     months.forEach(month => {
         const val = `${month}-${year}`;
         const selected = (month === selectedMonth) ? 'selected' : '';
         monthSelect.innerHTML += `<option value="${val}" ${selected}>${val}</option>`;
     });
 
-    // Trigger date range link/inputs update based on the newly set month
     updateDateRange();
 }
-
 
 function showCustomDates(e) {
     if(e) e.preventDefault();
@@ -793,11 +802,11 @@ function showCustomDates(e) {
 function hideCustomDates() {
     document.getElementById('customDateView').style.display = 'none';
     document.getElementById('dateLinkView').style.display = 'flex';
-    updateDateRange(); // Reset back to standard selected period dates
+    updateDateRange();
 }
 
 function updateDateRange() {
-    const periodVal = document.getElementById('payPeriodSelect').value; // e.g. "May-2026"
+    const periodVal = document.getElementById('payPeriodSelect').value;
     if(!periodVal) return;
     
     const parts = periodVal.split('-');
@@ -808,10 +817,8 @@ function updateDateRange() {
     const monthIndex = monthNames.indexOf(monthStr);
     
     if(monthIndex > -1) {
-        // Calculate exact boundary dates
-        const endDate = new Date(year, monthIndex + 1, 0); // Day 0 is last day of previous month
+        const endDate = new Date(year, monthIndex + 1, 0); 
         
-        // Native date inputs require YYYY-MM-DD
         const mm = String(monthIndex + 1).padStart(2, '0');
         const startFormatted = `${year}-${mm}-01`;
         const endFormatted = `${year}-${mm}-${String(endDate.getDate()).padStart(2, '0')}`;
@@ -819,7 +826,6 @@ function updateDateRange() {
         document.getElementById('startDate').value = startFormatted;
         document.getElementById('endDate').value = endFormatted;
         
-        // Update Link Text directly to reflect exact date boundaries
         document.getElementById('dateRangeLink').innerText = `1 ${monthStr} ${year} to ${endDate.getDate()} ${monthStr} ${year}`;
     }
 }
@@ -860,7 +866,6 @@ function renderSelectedEmployees() {
     });
 }
 
-
 // ==========================================
 // MODAL SIDEBAR & AJAX LOGIC
 // ==========================================
@@ -889,13 +894,13 @@ function renderSidebarLists() {
     rList.innerHTML = recentSearches.length === 0 ? '<li style="justify-content:center; color:#9CA3AF;">No recent searches</li>' : '';
     recentSearches.forEach(search => {
         let sd = JSON.stringify(search.filter_data).replace(/'/g, "&apos;");
-        rList.innerHTML += `<li onclick='applySearchState(${sd})'><span>${search.search_name || "Filtered Search"}</span><button onclick="deleteSearchItem(${search.id}, event)" title="Remove">&minus;</button></li>`;
+        rList.innerHTML += `<li onclick='applySearchState(${sd})'><span>${search.search_name || "Filtered Search"}</span><button type="button" onclick="deleteSearchItem(${search.id}, event)" title="Remove">&minus;</button></li>`;
     });
 
     sList.innerHTML = savedSearches.length === 0 ? '<li style="justify-content:center; color:#9CA3AF;">No saved searches</li>' : '';
     savedSearches.forEach(search => {
         let sd = JSON.stringify(search.filter_data).replace(/'/g, "&apos;");
-        sList.innerHTML += `<li onclick='applySearchState(${sd})'><span>${search.search_name}</span><button onclick="deleteSearchItem(${search.id}, event)" title="Remove">&minus;</button></li>`;
+        sList.innerHTML += `<li onclick='applySearchState(${sd})'><span>${search.search_name}</span><button type="button" onclick="deleteSearchItem(${search.id}, event)" title="Remove">&minus;</button></li>`;
     });
 }
 
@@ -972,9 +977,7 @@ function saveCurrentSearch() {
         showCancelButton: true,
         confirmButtonColor: '#0066FF',
         inputValidator: (value) => {
-            if (!value) {
-                return 'You need to write something!'
-            }
+            if (!value) { return 'You need to write something!' }
         }
     }).then((result) => {
         if (result.isConfirmed) {
