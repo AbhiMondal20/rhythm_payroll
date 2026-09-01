@@ -129,18 +129,27 @@ AddDocuments - For App - Done
 Employee Documents - For App - Done
 
 
+31-08-26
+Salary Structure - Done
+Timesheet - Working
+
+LAST (31-08-26 Modany)
+
 GMB Updates
-Successfully published 2 GMB posts for each location: 
-Siliguri, Coochbehar, and Raiganj.
+  Successfully published 2 GMB posts for each location:
+  Siliguri
+  Coochbehar
+  Raiganj
 
 CRM Module Progress
-   Add Affilate Entry - Done
-   Affilate Reports - Done
-   Export Excel - Done
-Payroll Module Progress
-  App - Check In/Out
-  App - Apply Leave
-  App - Payslips
+  Leadkbuket App
+    Pipeline Dashboard - Done
+    Leads List View - Done
+  Payroll Module Progress
+    Apply Leave — done (Mobile App)
+    TaskManagement - Done (Mobile App)
+    Check In/Out — Working (Mobile App)
+
 
 
 

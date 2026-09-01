@@ -24,7 +24,8 @@ $current_month_name = date('M Y');
 // 1. Fetch Employee Details
 $emp_name = "Employee";
 $emp_code = "";
-$emp_stmt = $conn->prepare("SELECT employee_name, employee_code FROM employees WHERE id = ?");
+$profile_photo = "../includes/assets/img/default_avatar.png";
+$emp_stmt = $conn->prepare("SELECT employee_name, employee_code, profile_photo FROM employees WHERE id = ?");
 if ($emp_stmt) {
     $emp_stmt->bind_param("i", $emp_id);
     $emp_stmt->execute();
@@ -32,6 +33,7 @@ if ($emp_stmt) {
     if ($row = $res->fetch_assoc()) {
         $emp_name = $row['employee_name'];
         $emp_code = $row['employee_code'];
+        $profile_photo = !empty($row['profile_photo']) ? "../" . $row['profile_photo'] : $profile_photo;
     }
     $emp_stmt->close();
 }
@@ -132,7 +134,7 @@ if ($hol_stmt) {
 // Define All Quick Actions configuration
 // ==========================================
 $quick_actions = [
-    ['perm' => 'Check In/Out',               'icon' => 'fa-clock',                 'url' => '#',                 'label' => 'Check In / Out'],
+    ['perm' => 'Check In/Out',               'icon' => 'fa-clock',                 'url' => 'CheckInOut',                 'label' => 'Check In / Out'],
     ['perm' => 'Apply Leave',                'icon' => 'fa-umbrella-beach',        'url' => 'ApplyLeave',        'label' => 'Apply Leave'],
     ['perm' => 'My Approvals',               'icon' => 'fa-file-signature',        'url' => 'MyApprovals',       'label' => 'My Approvals'],
     ['perm' => 'View Attendance Logs',       'icon' => 'fa-clipboard-list',        'url' => 'AttendanceOverview','label' => 'Attendance Logs'],
@@ -144,7 +146,6 @@ $quick_actions = [
     ['perm' => 'Allow Employee Visit',       'icon' => 'fa-address-card',          'url' => 'EmployeeVisit',     'label' => 'Employee Visit'],
     ['perm' => 'Allow Employee Visit',       'icon' => 'fa-list-check',            'url' => 'VisitLogs',         'label' => 'Visit Logs'],
     ['perm' => 'View Taxes',                 'icon' => 'fa-file-invoice-dollar',   'url' => 'Tax',               'label' => 'Tax'],
-    ['perm' => 'View My Documents',          'icon' => 'fa-folder-open',           'url' => 'MyDocuments',       'label' => 'My Documents'],
     ['perm' => 'Can Access Tasks',           'icon' => 'fa-list-check',            'url' => 'Tasks',             'label' => 'My Tasks'],
     ['perm' => 'Can Access Time Sheet',      'icon' => 'fa-calendar-days',         'url' => 'TimeSheet',         'label' => 'Time Sheet'],
     ['perm' => 'Can Manage Task Management', 'icon' => 'fa-bars-progress',         'url' => 'TaskManagement',    'label' => 'Manage Tasks'],
@@ -202,7 +203,8 @@ $quick_actions = [
                     <button class="text-yellow-400 text-lg"><i class="fa-regular fa-bell"></i></button>
                     <button class="text-yellow-400 text-lg"><i class="fa-solid fa-magnifying-glass"></i></button>
                     <div onclick="openSettings()" class="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center overflow-hidden cursor-pointer hover:bg-gray-200 transition">
-                        <i class="fa-solid fa-user mt-2 text-xl text-gray-500"></i>
+                        <!-- profile -->
+                        <img src="<?= $profile_photo ?>" alt="Profile" class="w-full h-full object-cover">
                     </div>
                 </div>
             </header>
@@ -389,7 +391,7 @@ $quick_actions = [
                 <a href="#" class="block bg-white p-5 flex items-center justify-between border-b border-gray-100 shadow-sm hover:bg-gray-50 transition mb-4">
                     <div class="flex items-center">
                         <div class="w-[52px] h-[52px] rounded-full bg-[#e4e6eb] flex items-center justify-center text-gray-400 text-3xl mr-4 overflow-hidden">
-                            <i class="fa-solid fa-user mt-2"></i>
+                            <img src="<?= $profile_photo ?>" alt="Profile" class="w-full h-full object-cover">
                         </div>
                         <div>
                             <h2 class="text-gray-900 font-medium text-[16px]"><?= htmlspecialchars($emp_name) ?></h2>
